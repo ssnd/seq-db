@@ -12,25 +12,25 @@ type queryParser struct {
 	mapping seq.Mapping
 }
 
-var builtinIndexes = map[string]seq.TokenizerType{
+var builtinMapping = map[string]seq.TokenizerType{
 	seq.TokenAll:    seq.TokenizerTypeKeyword,
 	seq.TokenExists: seq.TokenizerTypeKeyword,
 	seq.TokenIndex:  seq.TokenizerTypeKeyword,
 }
 
-func (qp *queryParser) indexType(field string) (seq.TokenizerType, error) {
-	if qp.mapping == nil {
-		return seq.TokenizerTypeKeyword, nil
+func indexType(userMapping seq.Mapping, field string) seq.TokenizerType {
+	if userMapping == nil {
+		return seq.TokenizerTypeKeyword
 	}
-	tokKinds, has := qp.mapping[field]
+	tokKinds, has := userMapping[field]
 	if has {
-		return tokKinds.Main.TokenizerType, nil
+		return tokKinds.Main.TokenizerType
 	}
-	tokKind, has := builtinIndexes[field]
+	tokKind, has := builtinMapping[field]
 	if has {
-		return tokKind, nil
+		return tokKind
 	}
-	return seq.TokenizerTypeNoop, fmt.Errorf(`unindexed field "%s"`, field)
+	return seq.TokenizerTypeNoop
 }
 
 // parseSubexpr parses subexpression, delimited by AND, OR, NOT or enclosing round bracket
@@ -68,10 +68,10 @@ func (qp *queryParser) parseSubexpr(depth int) (*ASTNode, error) {
 	if fieldName == "" {
 		return nil, qp.errorUnexpectedSymbol("in place of field name")
 	}
-	indexType, err := qp.indexType(fieldName)
-	if err != nil {
+	indexType := indexType(qp.mapping, fieldName)
+	if indexType == seq.TokenizerTypeNoop {
 		qp.pos = pos
-		return nil, qp.errorWrap(err)
+		return nil, qp.errorWrap(fmt.Errorf(`unindexed field "%s"`, fieldName))
 	}
 	tokens, err := qp.parseTokenQuery(fieldName, indexType)
 	if err != nil {

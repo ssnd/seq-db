@@ -197,10 +197,10 @@ func unquotePrefix(q string) (out, rem string, _ error) {
 	}
 
 	// Unquote 'token' -> token.
-	prefix := q[1:end]
+	prefix := q[1:]
 	b := make([]byte, 0, len(prefix))
 	remIdx := 1
-	for prefix != "" {
+	for prefix != "" && prefix[0] != quote {
 		ch, _, newTail, err := strconv.UnquoteChar(prefix, quote)
 		if err != nil {
 			return "", "", err

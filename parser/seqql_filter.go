@@ -79,6 +79,7 @@ var termStopTokens = []string{"", "[", "]", "(", ")", "'", `"`, ":", "{", "}", "
 func parseSeqQLKeyword(lex *lexer, caseSensitive bool) ([]Term, error) {
 	var terms []Term
 	tokenStarts := false
+	current := Term{Kind: TermText}
 	for ; (!tokenStarts || !lex.SpaceSkipped) && !lex.IsKeywords(termStopTokens...); lex.Next() {
 		tokenStarts = true
 
@@ -87,7 +88,6 @@ func parseSeqQLKeyword(lex *lexer, caseSensitive bool) ([]Term, error) {
 			terms = append(terms, newTextTerm(""))
 			continue
 		}
-		current := Term{Kind: TermText}
 		for token != "" {
 			r, size := utf8.DecodeRuneInString(token)
 			if r == '*' {
@@ -107,9 +107,9 @@ func parseSeqQLKeyword(lex *lexer, caseSensitive bool) ([]Term, error) {
 			current.Data += string(r)
 			token = token[size:]
 		}
-		if current.Data != "" {
-			terms = append(terms, newCasedTextTerm(current.Data, caseSensitive))
-		}
+	}
+	if current.Data != "" {
+		terms = append(terms, newCasedTextTerm(current.Data, caseSensitive))
 	}
 
 	return terms, nil
@@ -131,7 +131,7 @@ func parseSeqQLText(field string, lex *lexer, sensitive bool) ([]Token, error) {
 		term := Term{Kind: TermText}
 		for token != "" {
 			r, size := utf8.DecodeRuneInString(token)
-			if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			if unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' {
 				term.Data += string(r)
 				token = token[size:]
 				continue

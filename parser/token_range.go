@@ -67,7 +67,7 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 		return r, err
 	}
 
-	if !lex.IsKeywords(",") {
+	if !lex.IsKeywords(",", "to") {
 		return r, fmt.Errorf("expected ',' keyword, got %q", lex.Token)
 	}
 

@@ -13,9 +13,10 @@ func TestSeqQLAll(t *testing.T) {
 	mapping := seq.Mapping{
 		"service": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 		"level":   seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
-		"уровень": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"message": seq.NewSingleType(seq.TokenizerTypeText, "", 0),
 		"text":    seq.NewSingleType(seq.TokenizerTypeText, "", 0),
 		"keyword": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"уровень": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 	}
 	test := func(in, out string) {
 		t.Helper()
@@ -99,7 +100,7 @@ func TestSeqQLAll(t *testing.T) {
 
 	// Parsing AST.
 	test(`service:"wms-svc-logistics-megasort" and level:""#`, `(service:"wms-svc-logistics-megasort" and level:"")`)
-	test(`service: composer-api`, `service:composer-api`)
+	test(`service: composer-api`, `service:"composer-api"`)
 	test(`  service    : a   or   level     :   3  `, `(service:a or level:3)`)
 	test(`service: a or level: 3 AND text:b`, `(service:a or (level:3 and text:b))`)
 	test(`service: a or level: 3 or text:b`, `((service:a or level:3) or text:b)`)
@@ -144,6 +145,8 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`keyword:"\t"`, `keyword:"\t"`)
 	test(`keyword:"\\t"`, `keyword:"\\t"`)
 	test(`keyword:"'\n\t'"`, `keyword:"'\n\t'"`)
+	test(`message:"\"quoted string\""`,
+		`(message:quoted and message:string)`)
 	// Test UTF8.
 	test(`text:"Произошла ошибка"`, `(text:произошла and text:ошибка)`)
 	test("text:`Произошла ошибка: недостаточно места на диске`", `(((((text:произошла and text:ошибка) and text:недостаточно) and text:места) and text:на) and text:диске)`)
@@ -154,6 +157,10 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`level:["*", "*"]`, `level:[*, *]`)
 	test(`level:[*, *]`, `level:[*, *]`)
 	test(`level:[abc, cbd]`, `level:[abc, cbd]`)
+
+	// Test separators without quotes.
+	test(`service:clickhouse-shard-1`, `service:"clickhouse-shard-1"`)
+	test(`x-forwarded-for: abc`, `"x-forwarded-for": abc`)
 }
 
 // error messages are actually readable

@@ -67,7 +67,6 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 		return r, err
 	}
 
-	lex.Next()
 	if !lex.IsKeywords(",") {
 		return r, fmt.Errorf("expected ',' keyword, got %q", lex.Token)
 	}
@@ -80,7 +79,6 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 		return r, err
 	}
 
-	lex.Next()
 	if !lex.IsKeywords(")", "]") {
 		return r, fmt.Errorf("range end not found")
 	}
@@ -91,13 +89,20 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 
 func parseRangeTerm(term *Term, lex *lexer, sensitive bool) error {
 	term.Kind = TermText
-	token := lex.Token
-	if !sensitive {
-		token = strings.ToLower(token)
+	terms, err := parseSeqQLKeyword(lex, sensitive)
+	if err != nil {
+		return err
 	}
-	term.Data = token
-	if lex.IsKeyword("*") {
-		term.Kind = TermSymbol
+	switch len(terms) {
+	case 1:
+		*term = terms[0]
+	case 0:
+		*term = Term{
+			Kind: TermText,
+			Data: "",
+		}
+	default:
+		return fmt.Errorf("only single wildcard is allowed")
 	}
 	return nil
 }

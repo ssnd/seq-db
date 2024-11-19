@@ -92,6 +92,9 @@ func (t Term) DumpSeqQL(b *strings.Builder) {
 		b.WriteString("-")
 		return
 	}
+	if t.Kind == TermText {
+		t.Data = strings.ReplaceAll(t.Data, "*", "\\*")
+	}
 	b.WriteString(quoteToken(t.Data))
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/seq"
@@ -50,14 +51,18 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 		return nil, fmt.Errorf("expected filter value for field %q, got %s", fieldName, lex.Token)
 	}
 
+	if lex.IsKeywords(termStopTokens...) {
+		return nil, fmt.Errorf("unexpected token %q", lex.Token)
+	}
+
 	// Parse fulltext search filter.
 	switch t {
 	case seq.TokenizerTypeKeyword, seq.TokenizerTypePath:
-		tokens, err := parseSeqQLKeyword(fieldName, lex, caseSensitive)
+		terms, err := parseSeqQLKeyword(lex, caseSensitive)
 		if err != nil {
 			return nil, fmt.Errorf("parsing keyword for field %q: %s", fieldName, err)
 		}
-		return tokens, nil
+		return []Token{&Literal{Field: fieldName, Terms: terms}}, nil
 	case seq.TokenizerTypeText:
 		tokens, err := parseSeqQLText(fieldName, lex, caseSensitive)
 		if err != nil {
@@ -71,49 +76,51 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 
 var termStopTokens = []string{"", "[", "]", "(", ")", "'", `"`, ":", "{", "}", "|", "and", "or", `\`, ","}
 
-func parseSeqQLKeyword(field string, lex *lexer, caseSensitive bool) ([]Token, error) {
-	if lex.IsKeywords(rangeStopTokens...) {
-		return nil, fmt.Errorf("unexpected token %q", lex.Token)
-	}
-
+func parseSeqQLKeyword(lex *lexer, caseSensitive bool) ([]Term, error) {
 	var terms []Term
 	tokenStarts := false
 	for ; (!tokenStarts || !lex.SpaceSkipped) && !lex.IsKeywords(termStopTokens...); lex.Next() {
 		tokenStarts = true
 
-		if lex.IsKeyword("*") {
-			if len(terms) > 0 && terms[len(terms)-1].IsWildcard() {
-				return nil, fmt.Errorf("duplicate wildcard")
-			}
-			terms = append(terms, Term{Kind: TermSymbol, Data: "*"})
+		token := lex.Token
+		if token == "" {
+			terms = append(terms, newTextTerm(""))
 			continue
 		}
-
-		value := lex.Token
-		if !caseSensitive {
-			value = strings.ToLower(value)
+		current := Term{Kind: TermText}
+		for token != "" {
+			r, size := utf8.DecodeRuneInString(token)
+			if r == '*' {
+				if current.Data != "" {
+					terms = append(terms, newCasedTextTerm(current.Data, caseSensitive))
+				}
+				current = Term{Kind: TermText}
+				terms = append(terms, newSymbolTerm('*'))
+				token = token[1:]
+				continue
+			}
+			if strings.HasPrefix(token, "\\*") {
+				current.Data += "*"
+				token = token[2:]
+				continue
+			}
+			current.Data += string(r)
+			token = token[size:]
 		}
-		terms = append(terms, Term{Kind: TermText, Data: value})
+		if current.Data != "" {
+			terms = append(terms, newCasedTextTerm(current.Data, caseSensitive))
+		}
 	}
 
-	return []Token{&Literal{Field: field, Terms: terms}}, nil
+	return terms, nil
 }
 
 func parseSeqQLText(field string, lex *lexer, sensitive bool) ([]Token, error) {
 	var tokens []Token
-	current := &Literal{
-		Field: field,
-		Terms: []Term{},
-	}
-
+	current := &Literal{Field: field}
 	tokenStarts := false
 	for ; (!tokenStarts || !lex.SpaceSkipped) && !lex.IsKeywords(termStopTokens...); lex.Next() {
 		tokenStarts = true
-
-		if lex.IsKeyword("*") {
-			current.Terms = append(current.Terms, newSymbolTerm('*'))
-			continue
-		}
 
 		token := lex.Token
 		if token == "" {
@@ -121,38 +128,54 @@ func parseSeqQLText(field string, lex *lexer, sensitive bool) ([]Token, error) {
 			continue
 		}
 
-		startIdx := 0
-		for i, r := range token {
+		term := Term{Kind: TermText}
+		for token != "" {
+			r, size := utf8.DecodeRuneInString(token)
 			if unicode.IsLetter(r) || unicode.IsNumber(r) {
-				// Term is not complete.
+				term.Data += string(r)
+				token = token[size:]
+				continue
+			}
+			// Unescape wildcard.
+			if strings.HasPrefix(token, "\\*") {
+				term.Data += "*"
+				token = token[2:]
 				continue
 			}
 
-			// Start new literal because of space or other symbols.
-			if term := token[startIdx:i]; term != "" {
-				current.appendCasedTerm(Term{Kind: TermText, Data: term}, sensitive)
+			// Term is done.
+			if term.Data != "" {
+				current.appendCasedTerm(term, sensitive)
+				term = Term{Kind: TermText}
 			}
-			startIdx = i + 1
-			if len(current.Terms) > 0 {
+			if r == '*' {
+				current.Terms = append(current.Terms, newSymbolTerm('*'))
+				token = token[1:]
+				continue
+			}
+
+			// This is separator character like ':', '&', ' ', emoji, etc.
+			// So create new literal.
+
+			if len(current.Terms) != 0 {
 				tokens = append(tokens, current)
+				current = &Literal{Field: field}
 			}
-			current = &Literal{
-				Field: field,
-				Terms: []Term{},
-			}
+			token = token[size:]
 		}
-		if tail := token[startIdx:]; tail != "" {
-			current.appendCasedTerm(Term{Kind: TermText, Data: tail}, sensitive)
+		if term.Data != "" {
+			current.appendCasedTerm(term, sensitive)
+			term = Term{Kind: TermText}
 		}
 	}
 
-	if len(current.Terms) > 0 {
+	if current != nil && len(current.Terms) > 0 {
 		tokens = append(tokens, current)
 		current = nil
 	}
 
-	// todo: no tokens, return an error?
 	if len(tokens) == 0 {
+		// There are no tokens to search, return an empty filter.
 		tokens = append(tokens, &Literal{
 			Field: field,
 			Terms: []Term{{Kind: TermText, Data: ""}},

@@ -15,7 +15,7 @@ type SeqQLQuery struct {
 	Pipes []Pipe
 }
 
-func (q *SeqQLQuery) String() string {
+func (q *SeqQLQuery) SeqQLString() string {
 	b := &strings.Builder{}
 	q.Root.DumpSeqQL(b)
 	for _, p := range q.Pipes {
@@ -159,7 +159,7 @@ again:
 		token := quotedPrefix[1 : len(quotedPrefix)-1]
 		token = strings.ReplaceAll(token, "*", `\*`)
 		lex.Token = token
-		lex.q = lex.q[len(token):]
+		lex.q = lex.q[len(quotedPrefix):]
 		lex.tokenQuoted = true
 		return
 	default:

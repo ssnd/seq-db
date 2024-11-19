@@ -3,120 +3,157 @@ package parser
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 	"github.com/ozontech/seq-db/conf"
+
 	"github.com/ozontech/seq-db/seq"
 )
 
-func TestSeqQLParsingAST(t *testing.T) {
-	tests := []astTest{
-		{
-			name:  `empty`,
-			query: `*`,
-			exp:   `*`,
-		},
-		//{
-		//	name:  `in`,
-		//	query: `service:in("hello", world, "wild"*"card","", "c", *"prefix", "in"*"fix", postfix*)`,
-		//	exp:   ``,
-		//},
-		{
-			name: "comments",
-			query: `#
+func TestSeqQLAll(t *testing.T) {
+	mapping := seq.Mapping{
+		"service": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"level":   seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"уровень": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"text":    seq.NewSingleType(seq.TokenizerTypeText, "", 0),
+		"keyword": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+	}
+	test := func(in, out string) {
+		t.Helper()
+		seqql, err := ParseSeqQL(in, mapping)
+		require.NoError(t, err)
+		require.Equal(t, out, seqql.SeqQLString())
+	}
+
+	test("*", "*")
+
+	// Propagate "not".
+	test(`NOT NOT text:a`, `text:a`)
+	test(`text:a AND NOT NOT text:b`, `(text:a and text:b)`)
+	test(`text:a AND NOT text:b`, `(not text:b and text:a)`)
+	test(`NOT NOT text:a OR text:b`, `(text:a or text:b)`)
+	test(`NOT text:a OR text:b`, `(not (not text:b and text:a))`)
+	test(`NOT (NOT text:a AND NOT text:b)`, `(text:a or text:b)`)
+	test(`NOT text:a OR text:b OR text:c OR text:d`, `(not (not text:d and (not text:c and (not text:b and text:a))))`)
+	test(`text:a OR text:b OR text:c OR NOT text:d`, `(not (not ((text:a or text:b) or text:c) and text:d))`)
+	test(`NOT text:a AND text:b AND text:c AND text:d`, `(((not text:a and text:b) and text:c) and text:d)`)
+	test(`text:a AND text:b AND text:c AND NOT text:d`, `(not text:d and ((text:a and text:b) and text:c))`)
+	test(`NOT ((NOT text:a OR (NOT text:b AND text:c)) AND (NOT text:d AND NOT text:e))`, `((not (not text:b and text:c) and text:a) or (text:d or text:e))`)
+
+	// Simple test cases.
+	test(`service:some`, `service:some`)
+	test(`service:"some text"`, `service:"some text"`)
+	test(`text:"some text"`, `(text:some and text:text)`)
+	test(`text:"some very long text"`, `(((text:some and text:very) and text:long) and text:text)`)
+	test(`text:"a b" AND text:"c d f" or text:"e f"`, `(((text:a and text:b) and ((text:c and text:d) and text:f)) or (text:e and text:f))`)
+	test(`service:"some*"`, `service:some*`)
+	test(`service:some*`, `service:some*`)
+	test(`service:"some*thing"`, `service:some*thing`)
+	test(`service:some*thing`, `service:some*thing`)
+	test(`service:"some*thing*"`, `service:some*thing*`)
+	test(`service:some*thing*`, `service:some*thing*`)
+	test(`service:*thing*`, `service:*thing*`)
+	test(`service:*thing*`, `service:*thing*`)
+	test(`service:"*"`, `service:*`)
+	test(`service:*`, `service:*`)
+	test(`service:some AND level:[1, 3] AND level:[3, 5]`, `((service:some and level:[1, 3]) and level:[3, 5])`)
+
+	// Test case sensitivity.
+	conf.CaseSensitive = true
+	test("service: AbCdEf", "service:AbCdEf")
+	test("text: AbCdEf", "text:AbCdEf")
+	test("_exists_: 'AbCdEf'", "_exists_:AbCdEf")
+	conf.CaseSensitive = false
+	test("service: AbCdEf", "service:abcdef")
+	test("text: AbCdEf", "text:abcdef")
+	test("_exists_: `AbCdEf`", "_exists_:AbCdEf")
+
+	// Test tokenization.
+	test(`service:abc`, `service:abc`)
+	test(`service:"quoted"`, `service:quoted`)
+	test(`service:"quoted spaces"`, `service:"quoted spaces"`)
+	test(`service:'"symbols"'`, `service:"\"symbols\""`)
+	test(`service:"[1 TO 3]"`, `service:"[1 to 3]"`)
+	test(`  service  :   hi  `, `service:hi`)
+	test(`service:""`, `service:""`)
+	test(`service:"cms*"`, `service:cms*`)
+	test(`service:cms*`, `service:cms*`)
+	test(`service:"cms*api"`, `service:cms*api`)
+	test(`service:cms*api`, `service:cms*api`)
+	test(`service:cms*inter*api`, `service:cms*inter*api`)
+	test(`service:cms*inter*api`, `service:cms*inter*api`)
+	test(`service:"cms"*"inter"*"api"`, `service:cms*inter*api`)
+	test(`level:[1, 3]`, `level:[1, 3]`)
+	test(`level:[*, 3]`, `level:[*, 3]`)
+	test(`level:["*", 3]`, `level:[*, 3]`)
+	test(`level:(1, "*"]`, `level:(1, *]`)
+	test(`level:(1, *]`, `level:(1, *]`)
+	test(`level:[1, 3] AND service:["*", "*"]`, `(level:[1, 3] and service:[*, *])`)
+	test(`level:["from", "to"]`, `level:[from, to]`)
+	test(`level:[from, to]`, `level:[from, to]`)
+	test(`level:["a b c", "d e f"]`, `level:["a b c", "d e f"]`)
+	test(`level:["hi", "ho"]`, `level:[hi, ho]`)
+	test(`level:["-123", "-456"]`, `level:["-123", "-456"]`)
+	test(`  level  :  [  1  ,  3  ]  `, `level:[1, 3]`)
+	test(`level:["", "a\\*b"]`, `level:["", "a\\*b"]`)
+	test(`level:["-3", 6) OR (service:"hel lo" AND level:[1, 3])`, `(level:["-3", 6) or (service:"hel lo" and level:[1, 3]))`)
+
+	// Parsing AST.
+	test(`service:"wms-svc-logistics-megasort" and level:""#`, `(service:"wms-svc-logistics-megasort" and level:"")`)
+	test(`service: composer-api`, `service:composer-api`)
+	test(`  service    : a   or   level     :   3  `, `(service:a or level:3)`)
+	test(`service: a or level: 3 AND text:b`, `(service:a or (level:3 and text:b))`)
+	test(`service: a or level: 3 or text:b`, `((service:a or level:3) or text:b)`)
+	test(` not  service : a `, `(not service:a)`)
+	test(`service:a or not service:b or service:c`, `(not (not service:c and (not service:a and service:b)))`)
+	test(`not (service:a or service:c)`, `(not (service:a or service:c))`)
+	test(`NOT Not service:a`, `service:a`)
+	test(`service:*`, `service:*`)
+	test(` service : * `, `service:*`)
+	test(`service:a or service:b AND NOT service:c`, `(service:a or (not service:c and service:b))`)
+
+	test(`#
 # search by logistics-megasort service
 service:"wms-svc-logistics-megasort" and level:"#"
-# end of query`,
-			exp: `(service:"wms-svc-logistics-megasort" and level:"#")`,
-		},
-		{
-			name:  "ends with comment",
-			query: `service:"wms-svc-logistics-megasort" and level:""#`,
-			exp:   `(service:"wms-svc-logistics-megasort" and level:"")`,
-		},
-		{
-			name:  `simple_0`,
-			query: `service: composer-api`,
-			exp:   `service:composer-api`,
-		},
-		{
-			name:  `simple_1`,
-			query: `  s    : a   or   l     :   3  `,
-			exp:   `(s:a or l:3)`,
-		},
-		{
-			name:  `simple_2`,
-			query: `s: a or l: 3 AND q:b`,
-			exp:   `(s:a or (l:3 and q:b))`,
-		},
-		{
-			name:  `simple_3`,
-			query: `s: a or l: 3 or q:b`,
-			exp:   `((s:a or l:3) or q:b)`,
-		},
-		{
-			name:  `simple_4`,
-			query: ` not  s : a `,
-			exp:   `(not s:a)`,
-		},
-		{
-			name:  `simple_5`,
-			query: `s:a or not s:b or s:c`,
-			exp:   `(not (not s:c and (not s:a and s:b)))`,
-		},
-		{
-			name:  `simple_6`,
-			query: `not (s:a or s:c)`,
-			exp:   `(not (s:a or s:c))`,
-		},
-		{
-			name:  `simple_7`,
-			query: `NOT Not s:a`,
-			exp:   `s:a`,
-		},
-		{
-			name:  `wildcard_0`,
-			query: `service:*`,
-			exp:   `service:*`,
-		},
-		{
-			name:  `wildcard_1`,
-			query: ` service : * `,
-			exp:   `service:*`,
-		},
-		{
-			name:  `wildcard_2`,
-			query: `a:a or b:b AND NOT c:c`,
-			exp:   `(a:a or (not c:c and b:b))`,
-		},
-	}
-	for _, tst := range tests {
-		t.Run(tst.name, func(t *testing.T) {
-			act, err := ParseSeqQL(tst.query, nil)
-			require.NoError(t, err)
+# end of query`, `(service:"wms-svc-logistics-megasort" and level:"#")`)
 
-			genStr := act.String()
-			assert.Equal(t, tst.exp, genStr)
-			second, err := ParseSeqQL(genStr, nil)
-			require.NoError(t, err)
-			assert.Equal(t, genStr, second.String())
-		})
-	}
-}
+	// Test text wildcards.
+	test(`text:some*thing`, `text:some*thing`)
+	test(`text:"a**b**"`, `text:a**b**`)
+	test(`text:"some* weird* *cases"`, `((text:some* and text:weird*) and text:*cases)`)
+	test(`text:"some *weird cases* hmm very*intrs"`, `((((text:some and text:*weird) and text:cases*) and text:hmm) and text:very*intrs)`)
 
-func TestSeqQLParsingASTStress(t *testing.T) {
-	iterations := 5000
-	if testing.Short() {
-		iterations = 50
-	}
-	for i := 0; i < iterations; i++ {
-		exp := &ASTNode{}
-		for i := 0; i < 100; i++ {
-			addOperator(exp, 2*i)
-			checkSelf(t, exp)
-		}
-	}
+	test(`text:"\\*\\**"`, `text:"\\*\\*"*`)
+	test(`text:value=* AND text:value="\\*"*`, `((text:value and text:*) and (text:value and text:"\\*"*))`)
+	test(`text:value="\\*\\*"* AND text:"\\*\\*"`, `((text:value and text:"\\*\\*"*) and text:"\\*\\*")`)
+	// Complex search based on previous cases.
+	test(`text:value=* AND text:value="\\*"* AND text:value="\\*\\*"* AND text:"\\*\\*" AND text:"\\*\\**"`,
+		`(((((text:value and text:*) and (text:value and text:"\\*"*)) and (text:value and text:"\\*\\*"*)) and text:"\\*\\*") and text:"\\*\\*"*)`)
+
+	test(`text:"val*" AND text:"val\\**"`, `(text:val* and text:"val\\*"*)`)
+	// Test keyword wildcards.
+	test(`service:**`, `service:**`)
+	test(`service:a**`, `service:a**`)
+	test(`service:**b`, `service:**b`)
+	test(`service:a**b`, `service:a**b`)
+	// Test quotes.
+	test("keyword:`+7 995 28 07`", "keyword:\"+7 995 28 07\"")
+	test("keyword:'+7 995 28 07'", "keyword:\"+7 995 28 07\"")
+	test("keyword:`+7 995 ** **`", `keyword:"+7 995 \\*\\* \\*\\*"`)
+	test("keyword:`+7 995 \\** **`", `keyword:"+7 995 \\\\*\\* \\*\\*"`)
+	test("keyword:`\\t`", `keyword:"\\t"`)
+	test(`keyword:"\t"`, `keyword:"\t"`)
+	test(`keyword:"\\t"`, `keyword:"\\t"`)
+	test(`keyword:"'\n\t'"`, `keyword:"'\n\t'"`)
+	// Test UTF8.
+	test(`text:"Произошла ошибка"`, `(text:произошла and text:ошибка)`)
+	test("text:`Произошла ошибка: недостаточно места на диске`", `(((((text:произошла and text:ошибка) and text:недостаточно) and text:места) and text:на) and text:диске)`)
+	test("уровень:😖", `уровень:"😖"`)
+	// Test range.
+	test(`level:[1, 3]`, `level:[1, 3]`)
+	test(`level:(1, 3)`, `level:(1, 3)`)
+	test(`level:["*", "*"]`, `level:[*, *]`)
+	test(`level:[*, *]`, `level:[*, *]`)
+	test(`level:[abc, cbd]`, `level:[abc, cbd]`)
 }
 
 // error messages are actually readable
@@ -176,24 +213,20 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`m:a( AND m:a`, `expected 'and', 'or', 'not', got: "("`)
 	test(`m:a (AND m:a)`, `expected 'and', 'or', 'not', got: "("`)
 	test(`m:a) AND m:a`, `expected 'and', 'or', 'not', got: ")"`)
-	test(`service:**`, `parsing keyword for field "service": duplicate wildcard`)
-	test(`service:a**`, `parsing keyword for field "service": duplicate wildcard`)
-	test(`service:**b`, `parsing keyword for field "service": duplicate wildcard`)
-	test(`service:a**b`, `parsing keyword for field "service": duplicate wildcard`)
 	test(`some field:abc`, `field "some" is not indexed`)
 	test(`level service:abc`, `missing ':' after "level"`)
 	test(`(level:3 AND level level:abc)`, `missing ':' after "level"`)
 	test(`:"abc"`, `expected field name, got ":"`)
 	test(`NOT (:"abc")`, `expected field name, got ":"`)
 	test(`message:--||`, `unknown pipe: |`)
-	test(`level:[** TO 1]`, `parsing range for field "level": expected ',' keyword, got "*"`)
+	test(`level:[** TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
 	test(`level:[1 TO a*]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
 	test(`level:[1 TO a*b]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
 	test(`level:[1 TO *b]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
-	test(`level:["**" TO 1]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
+	test(`level:["**" TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
 	test(`level:[1 TO "a*"]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
-	test(`level:[1 TO "a*b"]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
-	test(`level:[1 TO "*b"]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
+	test(`level:[1, "a*b"]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1, "*b"]`, `parsing range for field "level": only single wildcard is allowed`)
 	test(`level:[`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:[ `, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:[1`, `parsing range for field "level": expected ',' keyword, got ""`)
@@ -215,6 +248,7 @@ func TestParseSeqQLError(t *testing.T) {
 }
 
 func TestSeqQLParserFuzz(t *testing.T) {
+	t.Parallel()
 	// test, that any permutation of these characters will be invalid
 	// template must be <= 11 symbols, or test will be very long
 	templates := []string{
@@ -247,424 +281,20 @@ func TestSeqQLParserFuzz(t *testing.T) {
 	}
 }
 
-func TestSeqQLAll(t *testing.T) {
-	tests := []testCase{
-		{
-			name:   `simple_0`,
-			query:  `service:some`,
-			expect: `service:some`,
-		},
-		{
-			name:   `simple_1`,
-			query:  `service:"some text"`,
-			expect: `service:"some text"`,
-		},
-		{
-			name:   `simple_2`,
-			query:  `text:"some text"`,
-			expect: `(text:some and text:text)`,
-		},
-		{
-			name:   `simple_3`,
-			query:  `text:"some very long text"`,
-			expect: `(((text:some and text:very) and text:long) and text:text)`,
-		},
-		{
-			name:   `simple_4`,
-			query:  `text:"a b" AND text:"c d f" or text:"e f"`,
-			expect: `(((text:a and text:b) and ((text:c and text:d) and text:f)) or (text:e and text:f))`,
-		},
-		{
-			name:   `wildcard_0`,
-			query:  `service:"some*"`,
-			expect: `service:"some*"`,
-		},
-		{
-			name:   `wildcard_0`,
-			query:  `service:"some"*`,
-			expect: `service:some*`,
-		},
-		{
-			name:   `wildcard_1`,
-			query:  `service:"some*thing"`,
-			expect: `service:"some*thing"`,
-		},
-		{
-			name:   `wildcard_1`,
-			query:  `service:some*thing`,
-			expect: `service:some*thing`,
-		},
-		{
-			name:   `wildcard_2`,
-			query:  `service:"some*thing*"`,
-			expect: `service:"some*thing*"`,
-		},
-		{
-			name:   `wildcard_2`,
-			query:  `service:some*thing*`,
-			expect: `service:some*thing*`,
-		},
-		{
-			name:   `wildcard_3`,
-			query:  `service:"*thing*"`,
-			expect: `service:"*thing*"`,
-		},
-		{
-			name:   `wildcard_3`,
-			query:  `service:*thing*`,
-			expect: `service:*thing*`,
-		},
-		{
-			name:   `wildcard_4`,
-			query:  `service:"*"`,
-			expect: `service:"*"`,
-		},
-		{
-			name:   `wildcard_4`,
-			query:  `service:*`,
-			expect: `service:*`,
-		},
-		{
-			name:   `wildcard_5`,
-			query:  `text:some*thing`,
-			expect: `text:some*thing`,
-		},
-		{
-			name:   `wildcard_6`,
-			query:  `text:"a**b**"`,
-			expect: `(text:a and text:b)`,
-		},
-		{
-			name:   `range_0`,
-			query:  `level:[1, 3]`,
-			expect: `level:[1, 3]`,
-		},
-		{
-			name:   `range_1`,
-			query:  `level:(1, 3)`,
-			expect: `level:(1, 3)`,
-		},
-		{
-			name:   `range_2`,
-			query:  `level:["*", "*"]`,
-			expect: `level:["*", "*"]`,
-		},
-		{
-			name:   `range_2`,
-			query:  `level:[*, *]`,
-			expect: `level:[*, *]`,
-		},
-		{
-			name:   `range_3`,
-			query:  `level:[abc, cbd]`,
-			expect: `level:[abc, cbd]`,
-		},
-		{
-			name:   `range_4`,
-			query:  `service:some AND level:[1, 3] AND level:[3, 5]`,
-			expect: `((service:some and level:[1, 3]) and level:[3, 5])`,
-		},
+func TestSeqQLParsingASTStress(t *testing.T) {
+	t.Parallel()
+	iterations := 5000
+	if testing.Short() {
+		iterations = 50
 	}
-	for _, tst := range tests {
-		t.Run(tst.name, func(t *testing.T) {
-			expr, err := ParseSeqQL(tst.query, seq.TestMapping)
-			require.NoError(t, err)
-			assert.Equalf(t, tst.expect, expr.Root.SeqQLString(), "%+v", expr.Root)
-		})
+	for i := 0; i < iterations; i++ {
+		exp := &ASTNode{}
+		for i := 0; i < 100; i++ {
+			addOperator(exp, 2*i)
+			checkSelf(t, exp)
+		}
 	}
 }
-
-func TestSeqQLTokenization(t *testing.T) {
-	tests := []testCase{
-		{
-			name:   `token_0`,
-			query:  `service:abc`,
-			expect: `service:abc`,
-		},
-		{
-			name:   `token_1`,
-			query:  `service:"quoted"`,
-			expect: `service:quoted`,
-		},
-		{
-			name:   `token_2`,
-			query:  `service:"quoted spaces"`,
-			expect: `service:"quoted spaces"`,
-		},
-		{
-			name:   `token_3`,
-			query:  `service:'"symbols"'`,
-			expect: `service:"\"symbols\""`,
-		},
-		{
-			name:   `token_4`,
-			query:  `message:"[1 TO 3]"`,
-			expect: `message:"[1 to 3]"`,
-		},
-		{
-			name:   `token_5`,
-			query:  `  message  :   hi  `,
-			expect: `message:hi`,
-		},
-		{
-			name:   `token_6`,
-			query:  `MiXeD_CaSe:TeSt`,
-			expect: `MiXeD_CaSe:test`,
-		},
-		{
-			name:   `token_7`,
-			query:  `MiXeD_CaSe:"TeSt"`,
-			expect: `MiXeD_CaSe:test`,
-		},
-		{
-			name:   `token_8`,
-			query:  `service:""`,
-			expect: `service:""`,
-		},
-		{
-			name:   `wildcard_0`,
-			query:  `service:"cms*"`,
-			expect: `service:"cms*"`,
-		},
-		{
-			name:   `wildcard_0`,
-			query:  `service:cms*`,
-			expect: `service:cms*`,
-		},
-		{
-			name:   `wildcard_1`,
-			query:  `service:"cms*api"`,
-			expect: `service:"cms*api"`,
-		},
-		{
-			name:   `wildcard_1`,
-			query:  `service:cms*api`,
-			expect: `service:cms*api`,
-		},
-		{
-			name:   `wildcard_2`,
-			query:  `service:cms*inter*api`,
-			expect: `service:cms*inter*api`,
-		},
-		{
-			name:   `wildcard_3`,
-			query:  `service:cms*inter*api`,
-			expect: `service:cms*inter*api`,
-		},
-		{
-			name:   `wildcard_4`,
-			query:  `service:"cms"*"inter"*"api"`,
-			expect: `service:cms*inter*api`,
-		},
-		{
-			name:   `range_0`,
-			query:  `level:[1, 3]`,
-			expect: `level:[1, 3]`,
-		},
-		{
-			name:   `range_1`,
-			query:  `level:[*, 3]`,
-			expect: `level:[*, 3]`,
-		},
-		{
-			name:   `range_1`,
-			query:  `level:["*", 3]`,
-			expect: `level:["*", 3]`,
-		},
-		{
-			name:   `range_2`,
-			query:  `level:(1, "*"]`,
-			expect: `level:(1, "*"]`,
-		},
-		{
-			name:   `range_2`,
-			query:  `level:(1, *]`,
-			expect: `level:(1, *]`,
-		},
-		{
-			name:   `range_3`,
-			query:  `level:[1, 3] AND id:["*", "*"]`,
-			expect: `(level:[1, 3] and id:["*", "*"])`,
-		},
-		{
-			name:   `range_4`,
-			query:  `level:["from", "to"]`,
-			expect: `level:[from, to]`,
-		},
-		{
-			name:   `range_5`,
-			query:  `level:[from, to]`,
-			expect: `level:[from, to]`,
-		},
-		{
-			name:   `range_6`,
-			query:  `level:["a b c", "d e f"]`,
-			expect: `level:["a b c", "d e f"]`,
-		},
-		{
-			name:   `range_7`,
-			query:  `level:["hi", "ho"]`,
-			expect: `level:[hi, ho]`,
-		},
-		{
-			name:   `range_8`,
-			query:  `level:["-123", "-456"]`,
-			expect: `level:["-123", "-456"]`,
-		},
-		{
-			name:   `range_9`,
-			query:  `  level  :  [  1  ,  3  ]  `,
-			expect: `level:[1, 3]`,
-		},
-		{
-			name:   `range_10`,
-			query:  `level:["", "a\\*b"]`,
-			expect: `level:["", "a\\*b"]`,
-		},
-		{
-			name:   `complex_0`,
-			query:  `id:["-3", 6) OR (message:"hel lo" AND level:[1, 3])`,
-			expect: `(id:["-3", 6) or (message:"hel lo" and level:[1, 3]))`,
-		},
-	}
-	for _, tst := range tests {
-		t.Run(tst.name, func(t *testing.T) {
-			expr, err := ParseSeqQL(tst.query, nil)
-			require.NoError(t, err)
-			assert.Equal(t, tst.expect, expr.Root.SeqQLString())
-		})
-	}
-}
-
-func TestSeqQLTokenizationCaseSensitive(t *testing.T) {
-	tests := []testCase{
-		{
-			name:   `case_0`,
-			query:  `service:AbCdEf`,
-			expect: `service:AbCdEf`,
-		},
-		{
-			name:   `case_0`,
-			query:  `service:"AbC"`,
-			expect: `service:AbC`,
-		},
-	}
-	conf.CaseSensitive = true
-	for _, tst := range tests {
-		t.Run(tst.name, func(t *testing.T) {
-			expr, err := ParseSeqQL(tst.query, nil)
-			require.NoError(t, err)
-			assert.Equal(t, tst.expect, expr.Root.String())
-		})
-	}
-}
-
-func TestSeqQLExistsCaseSensitive(t *testing.T) {
-	q := `_exists_:AbCdEfG`
-	for _, cs := range []bool{true, false} {
-		conf.CaseSensitive = cs
-		expr, err := ParseSeqQL(q, nil)
-		assert.NoError(t, err)
-		assert.Equal(t, expr.Root.String(), q)
-	}
-}
-
-func TestSeqQLPropagateNot(t *testing.T) {
-	tests := []testCase{
-		{
-			name:   `double_not`,
-			query:  `NOT NOT m:a`,
-			expect: `m:a`,
-		},
-		{
-			name:   `and_double_not`,
-			query:  `m:a AND NOT NOT m:b`,
-			expect: `(m:a AND m:b)`,
-		},
-		{
-			name:   `nand`,
-			query:  `m:a AND NOT m:b`,
-			expect: `(NOT m:b AND m:a)`,
-		},
-		{
-			name:   `or_double_not`,
-			query:  `NOT NOT m:a OR m:b`,
-			expect: `(m:a OR m:b)`,
-		},
-		{
-			name:   `nor`,
-			query:  `NOT m:a OR m:b`,
-			expect: `(NOT (NOT m:b AND m:a))`,
-		},
-		{
-			name:   `propagate_and`,
-			query:  `NOT (NOT m:a AND NOT m:b)`,
-			expect: `(m:a OR m:b)`,
-		},
-		{
-			name:   `or_tree_left`,
-			query:  `NOT m:a OR m:b OR m:c OR m:d`,
-			expect: `(NOT (NOT m:d AND (NOT m:c AND (NOT m:b AND m:a))))`,
-		},
-		{
-			name:   `or_tree_right`,
-			query:  `m:a OR m:b OR m:c OR NOT m:d`,
-			expect: `(NOT (NOT ((m:a OR m:b) OR m:c) AND m:d))`,
-		},
-		{
-			name:   `and_tree_left`,
-			query:  `NOT m:a AND m:b AND m:c AND m:d`,
-			expect: `(((NOT m:a AND m:b) AND m:c) AND m:d)`,
-		},
-		{
-			name:   `and_tree_right`,
-			query:  `m:a AND m:b AND m:c AND NOT m:d`,
-			expect: `(NOT m:d AND ((m:a AND m:b) AND m:c))`,
-		},
-		{
-			name:   `big_tree`,
-			query:  `NOT ((NOT m:a OR (NOT m:b AND m:c)) AND (NOT m:d AND NOT m:e))`,
-			expect: `((NOT (NOT m:b AND m:c) AND m:a) OR (m:d OR m:e))`,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			node, err := ParseSeqQL(test.query, nil)
-			require.NoError(t, err)
-			assert.Equal(t, test.expect, node.Root.String())
-		})
-	}
-}
-
-//func TestSeqQLWildcardText(t *testing.T) {
-//	tests := []testCase{
-//		{
-//			query:  `text:"some* weird* *cases"`,
-//			expect: `((text:some* AND text:weird*) AND text:*cases)`,
-//		},
-//		{
-//			query:  `text:"some *weird cases* hmm very*intrs"`,
-//			expect: `((((text:some AND text:*weird) AND text:cases*) AND text:hmm) AND text:very*intrs)`,
-//		},
-//		{
-//			query:  `text:"value=*" AND text:"value=\**" AND text:"value=\*\**" AND text:"\*\*" AND text:"\*\**"`,
-//			expect: `(((((text:value AND text:*) AND (text:value AND text:\**)) AND (text:value AND text:\*\**)) AND text:\*\*) AND text:\*\**)`,
-//		},
-//		{
-//			query:  `text:"val*" AND text:"val\**"`,
-//			expect: `(text:val* AND text:val\**)`,
-//		},
-//	}
-//
-//	for _, test := range tests {
-//		t.Run("wildcard", func(t *testing.T) {
-//			ast, err := ParseSeqQL(test.query, seq.TestMapping)
-//			require.NoErrorf(t, err, "%s", test.query)
-//			assert.Equalf(t, test.expect, ast.Root.String(), "%s", test.query)
-//		})
-//	}
-//}
 
 func BenchmarkSeqQLParsing(b *testing.B) {
 	var query SeqQLQuery

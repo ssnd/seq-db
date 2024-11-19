@@ -93,6 +93,11 @@ func TestProcessDocuments(t *testing.T) {
 		Payload func() TestPayload
 	}
 
+	var (
+		all       = newToken(seq.TokenAll, "")
+		existsMsg = newToken(seq.TokenExists, "message")
+	)
+
 	tests := []TestCase{
 		{
 			Name: "empty_doc",
@@ -105,6 +110,39 @@ func TestProcessDocuments(t *testing.T) {
 						Size:   2,
 						Tokens: []frac.MetaToken{newToken(seq.TokenAll, "")},
 					}},
+				}
+			},
+		},
+		{
+			Name: "text_with_asterisks",
+			Payload: func() TestPayload {
+				tk := func(val string) frac.MetaToken {
+					return newToken("message", val)
+				}
+				return TestPayload{
+					InDocs: []string{
+						`{"message":"*prefix_asterisk"}`,
+						`{"message":"* prefix_asterisk"}`,
+
+						`{"message":"infix*asterisk"}`,
+						`{"message":"infix * asterisk"}`,
+						`{"message":"infix *asterisk"}`,
+						`{"message":"infix* asterisk"}`,
+
+						`{"message":"postfix asterisk*"}`,
+						`{"message":"postfix asterisk *"}`,
+					},
+					ExpDocs: nil,
+					ExpMeta: []frac.MetaData{
+						{ID: id, Size: 30, Tokens: []frac.MetaToken{all, tk("*prefix_asterisk"), existsMsg}},
+						{ID: id, Size: 31, Tokens: []frac.MetaToken{all, tk("*"), tk("prefix_asterisk"), existsMsg}},
+						{ID: id, Size: 28, Tokens: []frac.MetaToken{all, tk("infix*asterisk"), existsMsg}},
+						{ID: id, Size: 30, Tokens: []frac.MetaToken{all, tk("infix"), tk("*"), tk("asterisk"), existsMsg}},
+						{ID: id, Size: 29, Tokens: []frac.MetaToken{all, tk("infix"), tk("*asterisk"), existsMsg}},
+						{ID: id, Size: 29, Tokens: []frac.MetaToken{all, tk("infix*"), tk("asterisk"), existsMsg}},
+						{ID: id, Size: 31, Tokens: []frac.MetaToken{all, tk("postfix"), tk("asterisk*"), existsMsg}},
+						{ID: id, Size: 32, Tokens: []frac.MetaToken{all, tk("postfix"), tk("asterisk"), tk("*"), existsMsg}},
+					},
 				}
 			},
 		},

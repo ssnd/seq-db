@@ -11,7 +11,7 @@ func TestParsePipeFields(t *testing.T) {
 		t.Helper()
 		query, err := ParseSeqQL(q, nil)
 		require.NoError(t, err)
-		require.Equal(t, expected, query.String())
+		require.Equal(t, expected, query.SeqQLString())
 	}
 
 	test("* | fields  message,error, level", "* | fields message, error, level")
@@ -27,7 +27,7 @@ func TestParsePipeDelete(t *testing.T) {
 		t.Helper()
 		query, err := ParseSeqQL(q, nil)
 		require.NoError(t, err)
-		require.Equal(t, expected, query.String())
+		require.Equal(t, expected, query.SeqQLString())
 	}
 
 	test("* | delete message,error, level", "* | delete message, error, level")

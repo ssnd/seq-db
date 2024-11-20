@@ -58,11 +58,17 @@ func ParseSeqQL(q string, mapping seq.Mapping) (SeqQLQuery, error) {
 }
 
 type lexer struct {
+	// q is query tail.
 	q string
 
-	Token        string
-	tokenQuoted  bool
+	// Token is current token.
+	Token string
+	// SpaceSkipped is true if space was skipped before current token.
 	SpaceSkipped bool
+	// tokenQuoted is true if current token is quoted.
+	tokenQuoted bool
+	// rawString is true if current token is raw string (string quoted with `).
+	rawString bool
 }
 
 func newLexer(q string) lexer {
@@ -71,6 +77,7 @@ func newLexer(q string) lexer {
 		Token:        "",
 		tokenQuoted:  false,
 		SpaceSkipped: false,
+		rawString:    false,
 	}
 }
 
@@ -97,10 +104,16 @@ func (lex *lexer) IsEnd() bool {
 	return lex.q == "" && lex.Token == "" && !lex.tokenQuoted
 }
 
+// IsRawString returns true if current token is raw string (string quoted with `).
+func (lex *lexer) IsRawString() bool {
+	return lex.rawString && lex.tokenQuoted
+}
+
 func (lex *lexer) Next() {
 	lex.Token = ""
 	lex.tokenQuoted = false
 	lex.SpaceSkipped = false
+	lex.rawString = false
 
 again:
 	r, size := utf8.DecodeRuneInString(lex.q)
@@ -157,10 +170,10 @@ again:
 			return
 		}
 		token := quotedPrefix[1 : len(quotedPrefix)-1]
-		token = strings.ReplaceAll(token, "*", `\*`)
 		lex.Token = token
 		lex.q = lex.q[len(quotedPrefix):]
 		lex.tokenQuoted = true
+		lex.rawString = true
 		return
 	default:
 		// Consume only 1 rune.
@@ -203,13 +216,22 @@ func unquotePrefix(q string) (out, rem string, _ error) {
 	for prefix != "" && prefix[0] != quote {
 		ch, _, newTail, err := strconv.UnquoteChar(prefix, quote)
 		if err != nil {
-			return "", "", err
+			// Skip invalid escaped characters.
+			b = append(b, '\\')
+			prefix = prefix[1:]
+			remIdx++
+			continue
 		}
 		b = utf8.AppendRune(b, ch)
 		remIdx += len(prefix) - len(newTail)
 		prefix = newTail
 	}
 	remIdx++ // Skip last quote.
+
+	// Verify prefix ends with quote.
+	if prefix == "" || prefix[0] != quote {
+		return "", "", strconv.ErrSyntax
+	}
 
 	return string(b), q[remIdx:], nil
 }

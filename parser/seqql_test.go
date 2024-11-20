@@ -11,12 +11,14 @@ import (
 
 func TestSeqQLAll(t *testing.T) {
 	mapping := seq.Mapping{
-		"service": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
-		"level":   seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
-		"message": seq.NewSingleType(seq.TokenizerTypeText, "", 0),
-		"text":    seq.NewSingleType(seq.TokenizerTypeText, "", 0),
-		"keyword": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
-		"уровень": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"service":         seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"level":           seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"message":         seq.NewSingleType(seq.TokenizerTypeText, "", 0),
+		"text":            seq.NewSingleType(seq.TokenizerTypeText, "", 0),
+		"keyword":         seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"уровень":         seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"x-forwarded-for": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"user-agent":      seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 	}
 	test := func(in, out string) {
 		t.Helper()
@@ -158,12 +160,21 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`level:[*, *]`, `level:[*, *]`)
 	test(`level:[abc, cbd]`, `level:[abc, cbd]`)
 
+	// Test escape.
+	test(`keyword:"kafka_impl/producer.go:84"`, `keyword:"kafka_impl/producer.go:84"`)
+	test(`keyword:"\/ready"`, `keyword:"\\/ready"`)
+	test(`message:'7916\*\*\*\*\*79'`, `message:"7916\\*\\*\\*\\*\\*79"`)
+	test(`keyword:"a\*b"`, `keyword:"a\\*b"`)
+	test(`keyword:a\*b`, `keyword:"a\\*b"`)
+	test(`message:"a\*b"`, `message:"a\\*b"`)
+	test(`message:a\*b`, `message:"a\\*b"`)
+
 	// Test separators without quotes.
 	test(`service:clickhouse-shard-1`, `service:"clickhouse-shard-1"`)
-	test(`x-forwarded-for: abc`, `"x-forwarded-for": abc`)
+	test(`x-forwarded-for: abc`, `x-forwarded-for:abc`)
+	test(`user-agent:"ozondeliveryapp_ios_prod"`, `user-agent:ozondeliveryapp_ios_prod`)
 }
 
-// error messages are actually readable
 func TestParseSeqQLError(t *testing.T) {
 	test := func(got, expected string) {
 		t.Helper()
@@ -199,15 +210,15 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`NOT NOT`, `unexpected end of query`)
 	test(`level:[1 3]`, `parsing range for field "level": expected ',' keyword, got "3"`)
 	test(`level:[1TO3]`, `parsing range for field "level": expected ',' keyword, got "]"`)
-	test(`level:[1 TO 3`, `parsing range for field "level": expected ',' keyword, got "TO"`)
+	test(`level:[1 TO 3`, `parsing range for field "level": range end not found`)
 	test(`level:1 TO 3]`, `expected 'and', 'or', 'not', got: "TO"`)
 	test(`level:[]`, `parsing range for field "level": unexpected token "]"`)
-	test(`level:[1 TO [3]]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
-	test(`level:[1 TO 3]]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
+	test(`level:[1 TO [3]]`, `parsing range for field "level": unexpected token "["`)
+	test(`level:[1 TO 3]]`, `expected 'and', 'or', 'not', got: "]"`)
 	test(`level:[[1 TO 3]]`, `parsing range for field "level": unexpected token "["`)
 	test(`level:[[1 TO 3]`, `parsing range for field "level": unexpected token "["`)
 	test(`level:[1 TP 3]`, `parsing range for field "level": expected ',' keyword, got "TP"`)
-	test(`level:[1 TO 3[`, `parsing range for field "level": expected ',' keyword, got "TO"`)
+	test(`level:[1 TO 3[`, `parsing range for field "level": range end not found`)
 	test(`level:]1 TO 3]`, `expected filter value for field "level", got ]`)
 	test(`:some`, `expected field name, got ":"`)
 	test(`:[1 TO 3]`, `expected field name, got ":"`)
@@ -220,6 +231,7 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`m:a( AND m:a`, `expected 'and', 'or', 'not', got: "("`)
 	test(`m:a (AND m:a)`, `expected 'and', 'or', 'not', got: "("`)
 	test(`m:a) AND m:a`, `expected 'and', 'or', 'not', got: ")"`)
+	test(`"":value`, `empty field name`)
 	test(`some field:abc`, `field "some" is not indexed`)
 	test(`level service:abc`, `missing ':' after "level"`)
 	test(`(level:3 AND level level:abc)`, `missing ':' after "level"`)
@@ -227,31 +239,30 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`NOT (:"abc")`, `expected field name, got ":"`)
 	test(`message:--||`, `unknown pipe: |`)
 	test(`level:[** TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1 TO a*]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
-	test(`level:[1 TO a*b]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
-	test(`level:[1 TO *b]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
+	test(`level:[1 TO a*]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1 TO a*b]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1 TO *b]`, `parsing range for field "level": only single wildcard is allowed`)
 	test(`level:["**" TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1 TO "a*"]`, `parsing range for field "level": expected ',' keyword, got "TO"`)
+	test(`level:[1 TO "a*"]`, `parsing range for field "level": only single wildcard is allowed`)
 	test(`level:[1, "a*b"]`, `parsing range for field "level": only single wildcard is allowed`)
 	test(`level:[1, "*b"]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[`, `parsing range for field "level": expected ',' keyword, got ""`)
-	test(`level:[ `, `parsing range for field "level": expected ',' keyword, got ""`)
+	test(`level:[`, `parsing range for field "level": unexpected token ""`)
 	test(`level:[1`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:[ 1`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:[*`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:[ *`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:["1"`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:["1`, `parsing range for field "level": unexpected token "\""`)
-	test(`level:[ 1 to`, `parsing range for field "level": expected ',' keyword, got "to"`)
-	test(`level:[1 to`, `parsing range for field "level": expected ',' keyword, got "to"`)
-	test(`level:[1 to *`, `parsing range for field "level": expected ',' keyword, got "to"`)
-	test(`level:[1 to 2`, `parsing range for field "level": expected ',' keyword, got "to"`)
-	test(`level:[1 to 2*`, `parsing range for field "level": expected ',' keyword, got "to"`)
-	test(`level:[1 to "2`, `parsing range for field "level": expected ',' keyword, got "to"`)
-	test(`level:[1 to "2"`, `parsing range for field "level": expected ',' keyword, got "to"`)
+	test(`level:[ 1 to`, `parsing range for field "level": unexpected token ""`)
+	test(`level:[1 to`, `parsing range for field "level": unexpected token ""`)
+	test(`level:[1 to *`, `parsing range for field "level": range end not found`)
+	test(`level:[1 to 2`, `parsing range for field "level": range end not found`)
+	test(`level:[1 to 2*`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1 to "2`, `parsing range for field "level": unexpected token "\""`)
+	test(`level:[1 to "2"`, `parsing range for field "level": range end not found`)
 	test(`level:[1]`, `parsing range for field "level": expected ',' keyword, got "]"`)
 	test(`level:[*]`, `parsing range for field "level": expected ',' keyword, got "]"`)
-	test(`level:[1 to "2]`, `parsing range for field "level": expected ',' keyword, got "to"`)
+	test(`level:[1 to "2]`, `parsing range for field "level": unexpected token "\""`)
 }
 
 func TestSeqQLParserFuzz(t *testing.T) {

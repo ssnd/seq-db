@@ -89,7 +89,11 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 
 func parseRangeTerm(term *Term, lex *lexer, sensitive bool) error {
 	term.Kind = TermText
-	terms, err := parseSeqQLKeyword(lex, sensitive)
+	value, err := parseCompositeToken(lex, true)
+	if err != nil {
+		return err
+	}
+	terms, err := parseSeqQLKeyword(value, sensitive)
 	if err != nil {
 		return err
 	}

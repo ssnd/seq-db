@@ -1,8 +1,8 @@
 package tokenizer
 
 import (
-	"strings"
-	"unsafe"
+	"bytes"
+	"unicode"
 
 	"github.com/ozontech/seq-db/frac"
 )
@@ -12,10 +12,73 @@ type Tokenizer interface {
 }
 
 func toLowerIfCaseInsensitive(isCaseSensitive bool, x []byte) []byte {
-	if !isCaseSensitive {
-		// Use strings.ToLower instead of bytes.ToLower to avoid allocating a new slice in case x is already in lower case.
-		lowered := strings.ToLower(unsafe.String(unsafe.SliceData(x), len(x)))
-		return unsafe.Slice(unsafe.StringData(lowered), len(lowered))
+	if isCaseSensitive {
+		return x
 	}
-	return x
+
+	return toLowerTryInplace(x)
+}
+
+// toLowerTryInplace tries to lowercase given []byte inplace (without allocations)
+// but if utf-8 is encountered, fallbacks to bytes.Map which returns new []byte
+func toLowerTryInplace(s []byte) []byte {
+	hasUpper := false
+	for i := 0; i < len(s); i++ {
+		if !isAscii(s[i]) {
+			return toLowerUnicode(s)
+		}
+
+		hasUpper = hasUpper || upperCaseMap[s[i]]
+	}
+
+	if hasUpper {
+		for i := 0; i < len(s); i++ {
+			// In case of '@', '[', '\', ']', '^', '_' bithack below will not work
+			// E.g. '_' | 0x20 == '\x7f'
+			// Therefore, the check is needed
+			if !upperCaseMap[s[i]] {
+				continue
+			}
+
+			// 'a'    - 01100001
+			// 'A'    - 01000001
+			// '0x20' - 00100000
+			// 'A' | 0x20 == 'a'
+			// 'a' | 0x20 == 'a'
+			s[i] |= 0x20
+		}
+	}
+
+	return s
+}
+
+func toLowerUnicode(s []byte) []byte {
+	return bytes.Map(unicode.ToLower, s)
+}
+
+const asciiMask byte = 0x7F
+
+func isAscii(c byte) bool {
+	return c & ^asciiMask == 0
+}
+
+// allTextTokenChars contains text token symbols that are ASCII.
+// 128 bytes is enough for them, but we use 256 to skip bound checks when we use allTextTokenChars[byte(i)].
+var allTextTokenChars = [256]bool{
+	'0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true,
+
+	'a': true, 'b': true, 'c': true, 'd': true, 'e': true, 'f': true, 'g': true, 'h': true, 'i': true, 'j': true,
+	'k': true, 'l': true, 'm': true, 'n': true, 'o': true, 'p': true, 'q': true, 'r': true, 's': true, 't': true,
+	'u': true, 'v': true, 'w': true, 'x': true, 'y': true, 'z': true,
+	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
+	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
+	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
+
+	'_': true, '*': true,
+}
+
+var upperCaseMap = [256]bool{
+	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
+	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
+	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
 }

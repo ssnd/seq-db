@@ -1,7 +1,6 @@
 package tokenizer
 
 import (
-	"bytes"
 	"unicode"
 	"unicode/utf8"
 
@@ -84,7 +83,7 @@ func (t *TextTokenizer) Tokenize(tokens []frac.MetaToken, name, value []byte, ma
 		if len(token) != 0 && len(token) <= t.maxTokenSize {
 			if !t.caseSensitive && (!asciiOnly || hasUpper) {
 				// We can skip the ToLower call if we are sure that there are only ASCII characters and no uppercase letters.
-				token = bytes.ToLower(token)
+				token = toLowerTryInplace(token)
 			}
 			tokens = append(tokens, frac.MetaToken{Key: name, Value: token})
 		}
@@ -99,30 +98,9 @@ func (t *TextTokenizer) Tokenize(tokens []frac.MetaToken, name, value []byte, ma
 
 	token := value[k:]
 	if !t.caseSensitive && (asciiOnly && hasUpper || !asciiOnly) {
-		token = bytes.ToLower(token)
+		token = toLowerTryInplace(token)
 	}
 	tokens = append(tokens, frac.MetaToken{Key: name, Value: token})
 
 	return tokens
-}
-
-// allTextTokenChars contains text token symbols that are ASCII.
-// 128 bytes is enough for them, but we use 256 to skip bound checks when we use allTextTokenChars[byte(i)].
-var allTextTokenChars = [256]bool{
-	'0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true,
-
-	'a': true, 'b': true, 'c': true, 'd': true, 'e': true, 'f': true, 'g': true, 'h': true, 'i': true, 'j': true,
-	'k': true, 'l': true, 'm': true, 'n': true, 'o': true, 'p': true, 'q': true, 'r': true, 's': true, 't': true,
-	'u': true, 'v': true, 'w': true, 'x': true, 'y': true, 'z': true,
-	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
-	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
-	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
-
-	'_': true, '*': true,
-}
-
-var upperCaseMap = [256]bool{
-	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
-	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
-	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
 }

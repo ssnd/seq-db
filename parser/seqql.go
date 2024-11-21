@@ -333,38 +333,6 @@ func parseSeqQLSubexpr(lex *lexer, mapping seq.Mapping, depth int) (*ASTNode, er
 	return buildAndTree(tokens), nil
 }
 
-type Pipe interface {
-	DumpSeqQL(*strings.Builder)
-}
-
-func parsePipes(lex *lexer) ([]Pipe, error) {
-	var pipes []Pipe
-	for !lex.IsEnd() {
-		if !lex.IsKeyword("|") {
-			return nil, fmt.Errorf("expect pipe separator '|', got %s", lex.Token)
-		}
-		lex.Next()
-
-		switch {
-		case lex.IsKeyword("fields"):
-			p, err := parsePipeFields(lex)
-			if err != nil {
-				return nil, fmt.Errorf("parsing 'fields' pipe: %s", err)
-			}
-			pipes = append(pipes, p)
-		case lex.IsKeyword("delete"):
-			p, err := parsePipeDelete(lex)
-			if err != nil {
-				return nil, fmt.Errorf("parsing 'delete' pipe: %s", err)
-			}
-			pipes = append(pipes, p)
-		default:
-			return nil, fmt.Errorf("unknown pipe: %s", lex.Token)
-		}
-	}
-	return pipes, nil
-}
-
 func uniqueTokens(s []string) map[string]struct{} {
 	m := make(map[string]struct{})
 	for _, v := range s {

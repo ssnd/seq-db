@@ -37,3 +37,20 @@ func TestParsePipeDelete(t *testing.T) {
 	test(`* | delete "_\\message\\_"`, `* | delete "_\\message\\_"`)
 	test(`* | delete "_\\message*"`, `* | delete "_\\message*"`)
 }
+
+func TestParsePipeWhere(t *testing.T) {
+	test := func(q, expected string) {
+		t.Helper()
+		query, err := ParseSeqQL(q, nil)
+		require.NoError(t, err)
+		require.Equal(t, expected, query.SeqQLString())
+	}
+
+	test("* | where __MESSAGE__:`error*`*", `* | where __MESSAGE__:"error\\*"*`)
+	test("* | where 'level':`info`", "* | where level:info")
+	test("* | where level:error | where message:error | where _id:42", "* | where level:error | where message:error | where _id:42")
+	test(`* | where "User-Agent":"curl"`, `* | where User-Agent:curl`)
+	test(`* | where "_\\message*":"*"`, `* | where _\message*:*`)
+	test(`* | where _\message*:*`, `* | where _\message*:*`)
+	test(`* | where test:composite-pipes | delete level | fields level`, `* | where test:"composite-pipes" | delete level | fields level`)
+}

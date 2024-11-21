@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -10,10 +12,10 @@ import (
 	"github.com/ozontech/seq-db/seq"
 )
 
-var filterStopTokens = []string{"'", `"`, ":", "{", "}", "|", "*", "and", "or"}
+var filterStopTokens = uniqueTokens([]string{"'", `"`, ":", "{", "}", "|", "*", "and", "or"})
 
 func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
-	if lex.IsKeywords(filterStopTokens...) || lex.IsKeywords(rangeStopTokens...) {
+	if lex.IsKeywordSet(filterStopTokens) || lex.IsKeywordSet(rangeStopTokens) {
 		return nil, fmt.Errorf("expected field name, got %q", lex.Token)
 	}
 
@@ -52,11 +54,11 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 		return []Token{r}, nil
 	}
 
-	if lex.IsKeywords(termStopTokens...) {
+	if lex.IsKeywordSet(termStopTokens) {
 		return nil, fmt.Errorf("expected filter value for field %q, got %s", fieldName, lex.Token)
 	}
 
-	if lex.IsKeywords(termStopTokens...) {
+	if lex.IsKeywordSet(termStopTokens) {
 		return nil, fmt.Errorf("unexpected token %q", lex.Token)
 	}
 
@@ -83,33 +85,44 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 	}
 }
 
-var termStopTokens = []string{"", "[", "]", "(", ")", "'", `"`, ":", "{", "}", "|", "and", "or", ","}
+var bytesBufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
+
+var termStopTokens = uniqueTokens([]string{"", "[", "]", "(", ")", "'", `"`, ":", "{", "}", "|", "and", "or", ","})
 
 func parseCompositeToken(lex *lexer, quoteAsterisks bool) (string, error) {
-	if lex.IsKeywords(termStopTokens...) {
+	if lex.IsKeywordSet(termStopTokens) {
 		return "", fmt.Errorf("unexpected token %q", lex.Token)
 	}
-	firstToken := lex.Token
-	if quoteAsterisks && lex.IsRawString() {
-		// Replace asterisks with in raw strings.
-		firstToken = strings.ReplaceAll(firstToken, `*`, `\*`)
-	}
+	firstToken := quoteAsterisksIfNeeded(lex, quoteAsterisks)
 	lex.Next()
-	if lex.SpaceSkipped || lex.IsKeywords(termStopTokens...) {
+	if lex.SpaceSkipped || lex.IsKeywordSet(termStopTokens) {
+		// Avoid allocations.
 		return firstToken, nil
 	}
 
-	b := strings.Builder{}
+	b := bytesBufferPool.Get().(*bytes.Buffer)
+	defer bytesBufferPool.Put(b)
+	b.Reset()
+
 	b.WriteString(firstToken)
-	for ; (!lex.SpaceSkipped) && !lex.IsKeywords(termStopTokens...); lex.Next() {
-		token := lex.Token
-		if quoteAsterisks && lex.IsRawString() {
-			// Replace asterisks with in raw strings.
-			token = strings.ReplaceAll(token, `*`, `\*`)
-		}
+	for ; (!lex.SpaceSkipped) && !lex.IsKeywordSet(termStopTokens); lex.Next() {
+		token := quoteAsterisksIfNeeded(lex, quoteAsterisks)
 		b.WriteString(token)
 	}
 	return b.String(), nil
+}
+
+func quoteAsterisksIfNeeded(lex *lexer, quoteAsterisks bool) string {
+	token := lex.Token
+	if quoteAsterisks && lex.IsRawString() {
+		// Quote asterisks in raw strings.
+		token = strings.ReplaceAll(token, `*`, `\*`)
+	}
+	return token
 }
 
 func parseSeqQLKeyword(token string, caseSensitive bool) ([]Term, error) {
@@ -117,29 +130,32 @@ func parseSeqQLKeyword(token string, caseSensitive bool) ([]Term, error) {
 		return []Term{newTextTerm("")}, nil
 	}
 	var terms []Term
-	current := Term{Kind: TermText}
+
+	b := bytesBufferPool.Get().(*bytes.Buffer)
+	defer bytesBufferPool.Put(b)
+	b.Reset()
 
 	for token != "" {
 		r, size := utf8.DecodeRuneInString(token)
 		if r == '*' {
-			if current.Data != "" {
-				terms = append(terms, newCasedTextTerm(current.Data, caseSensitive))
+			if data := b.String(); data != "" {
+				terms = append(terms, newCasedTextTerm(data, caseSensitive))
 			}
-			current = Term{Kind: TermText}
+			b.Reset()
 			terms = append(terms, newSymbolTerm('*'))
 			token = token[1:]
 			continue
 		}
 		if strings.HasPrefix(token, "\\*") {
-			current.Data += "*"
+			b.WriteByte('*')
 			token = token[2:]
 			continue
 		}
-		current.Data += string(r)
+		b.WriteRune(r)
 		token = token[size:]
 	}
-	if current.Data != "" {
-		terms = append(terms, newCasedTextTerm(current.Data, caseSensitive))
+	if data := b.String(); data != "" {
+		terms = append(terms, newCasedTextTerm(data, caseSensitive))
 	}
 
 	return terms, nil

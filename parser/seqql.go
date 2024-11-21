@@ -81,6 +81,7 @@ func newLexer(q string) lexer {
 	}
 }
 
+// IsKeyword returns true if current token is keyword.
 func (lex *lexer) IsKeyword(token string) bool {
 	if lex.tokenQuoted {
 		return false
@@ -88,6 +89,7 @@ func (lex *lexer) IsKeyword(token string) bool {
 	return strings.EqualFold(lex.Token, token)
 }
 
+// IsKeywords returns true if current token is in tokens list.
 func (lex *lexer) IsKeywords(tokens ...string) bool {
 	if lex.tokenQuoted {
 		return false
@@ -98,6 +100,16 @@ func (lex *lexer) IsKeywords(tokens ...string) bool {
 		}
 	}
 	return false
+}
+
+// IsKeywordSet returns true if current token is in tokens set.
+func (lex *lexer) IsKeywordSet(tokens map[string]struct{}) bool {
+	if lex.tokenQuoted {
+		return false
+	}
+	token := strings.ToLower(lex.Token)
+	_, ok := tokens[token]
+	return ok
 }
 
 func (lex *lexer) IsEnd() bool {

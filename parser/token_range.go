@@ -49,7 +49,7 @@ func (n *Range) DumpSeqQL(b *strings.Builder) {
 	}
 }
 
-var rangeStopTokens = []string{"[", "]", "(", ")", "'", `"`, ":", "{", "}", "|", "and", "or", `\`}
+var rangeStopTokens = uniqueTokens([]string{"[", "]", "(", ")", "'", `"`, ":", "{", "}", "|", "and", "or", `\`})
 
 func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, error) {
 	r := &Range{Field: field}
@@ -60,7 +60,7 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 	r.IncludeFrom = lex.Token == "["
 
 	lex.Next()
-	if lex.IsKeywords(rangeStopTokens...) {
+	if lex.IsKeywordSet(rangeStopTokens) {
 		return r, fmt.Errorf("unexpected token %q", lex.Token)
 	}
 	if err := parseRangeTerm(&r.From, lex, sensitive); err != nil {
@@ -72,7 +72,7 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 	}
 
 	lex.Next()
-	if lex.IsKeywords(rangeStopTokens...) {
+	if lex.IsKeywordSet(rangeStopTokens) {
 		return r, fmt.Errorf("unexpected token %q", lex.Token)
 	}
 	if err := parseRangeTerm(&r.To, lex, sensitive); err != nil {

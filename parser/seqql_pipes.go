@@ -68,7 +68,7 @@ func parsePipeFields(lex *lexer) (*PipeFields, error) {
 	lex.Next()
 	var fields []string
 	for !lex.IsKeywords("|", "") {
-		if lex.IsKeywords(filterStopTokens...) {
+		if lex.IsKeywordSet(filterStopTokens) {
 			return nil, fmt.Errorf("unexpected '%s'", lex.Token)
 		}
 		fields = append(fields, lex.Token)
@@ -109,7 +109,7 @@ func parsePipeDelete(lex *lexer) (*PipeDelete, error) {
 	lex.Next()
 	var fields []string
 	for !lex.IsKeywords("|", "") {
-		if lex.IsKeywords(filterStopTokens...) {
+		if lex.IsKeywordSet(filterStopTokens) {
 			return nil, fmt.Errorf("unexpected '%s'", lex.Token)
 		}
 		fields = append(fields, lex.Token)

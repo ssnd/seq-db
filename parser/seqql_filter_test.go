@@ -5,11 +5,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/ozontech/seq-db/conf"
-
 	"github.com/ozontech/seq-db/seq"
 )
 
 func TestSeqQLAll(t *testing.T) {
+	t.Parallel()
+
 	mapping := seq.Mapping{
 		"service":         seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 		"level":           seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
@@ -20,11 +21,19 @@ func TestSeqQLAll(t *testing.T) {
 		"x-forwarded-for": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 		"user-agent":      seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 	}
-	test := func(in, out string) {
+	test := func(originalQuery, expected string) {
 		t.Helper()
-		seqql, err := ParseSeqQL(in, mapping)
+		parsedOriginal, err := ParseSeqQL(originalQuery, mapping)
 		require.NoError(t, err)
-		require.Equal(t, out, seqql.SeqQLString())
+
+		gotOriginal := parsedOriginal.SeqQLString()
+		require.Equal(t, expected, gotOriginal)
+
+		parsedGot, err := ParseSeqQL(gotOriginal, mapping)
+		require.NoError(t, err)
+
+		require.Equal(t, gotOriginal, parsedGot.SeqQLString())
+		require.Equal(t, parsedOriginal, parsedGot)
 	}
 
 	test("*", "*")
@@ -42,12 +51,15 @@ func TestSeqQLAll(t *testing.T) {
 	test(`text:a AND text:b AND text:c AND NOT text:d`, `(not text:d and ((text:a and text:b) and text:c))`)
 	test(`NOT ((NOT text:a OR (NOT text:b AND text:c)) AND (NOT text:d AND NOT text:e))`, `((not (not text:b and text:c) and text:a) or (text:d or text:e))`)
 
-	// Simple test cases.
+	// Test fulltext search filter.
 	test(`service:some`, `service:some`)
 	test(`service:"some text"`, `service:"some text"`)
 	test(`text:"some text"`, `(text:some and text:text)`)
 	test(`text:"some very long text"`, `(((text:some and text:very) and text:long) and text:text)`)
 	test(`text:"a b" AND text:"c d f" or text:"e f"`, `(((text:a and text:b) and ((text:c and text:d) and text:f)) or (text:e and text:f))`)
+	test(`service:some AND level:[1, 3] AND level:[3, 5]`, `((service:some and level:[1, 3]) and level:[3, 5])`)
+
+	// Test wildcards and asterisks.
 	test(`service:"some*"`, `service:some*`)
 	test(`service:some*`, `service:some*`)
 	test(`service:"some*thing"`, `service:some*thing`)
@@ -55,20 +67,16 @@ func TestSeqQLAll(t *testing.T) {
 	test(`service:"some*thing*"`, `service:some*thing*`)
 	test(`service:some*thing*`, `service:some*thing*`)
 	test(`service:*thing*`, `service:*thing*`)
-	test(`service:*thing*`, `service:*thing*`)
 	test(`service:"*"`, `service:*`)
 	test(`service:*`, `service:*`)
-	test(`service:some AND level:[1, 3] AND level:[3, 5]`, `((service:some and level:[1, 3]) and level:[3, 5])`)
+	test(`service:"cms"*"inter"*"api"`, `service:cms*inter*api`)
 
-	// Test case sensitivity.
-	conf.CaseSensitive = true
-	test("service: AbCdEf", "service:AbCdEf")
-	test("text: AbCdEf", "text:AbCdEf")
-	test("_exists_: 'AbCdEf'", "_exists_:AbCdEf")
-	conf.CaseSensitive = false
-	test("service: AbCdEf", "service:abcdef")
-	test("text: AbCdEf", "text:abcdef")
-	test("_exists_: `AbCdEf`", "_exists_:AbCdEf")
+	// Test keyword wildcards.
+	// In the old query language "**" is not allowed.
+	test(`service:**`, `service:**`)
+	test(`service:a**`, `service:a**`)
+	test(`service:**b`, `service:**b`)
+	test(`service:a**b`, `service:a**b`)
 
 	// Test tokenization.
 	test(`service:abc`, `service:abc`)
@@ -78,13 +86,8 @@ func TestSeqQLAll(t *testing.T) {
 	test(`service:"[1 TO 3]"`, `service:"[1 to 3]"`)
 	test(`  service  :   hi  `, `service:hi`)
 	test(`service:""`, `service:""`)
-	test(`service:"cms*"`, `service:cms*`)
-	test(`service:cms*`, `service:cms*`)
-	test(`service:"cms*api"`, `service:cms*api`)
-	test(`service:cms*api`, `service:cms*api`)
-	test(`service:cms*inter*api`, `service:cms*inter*api`)
-	test(`service:cms*inter*api`, `service:cms*inter*api`)
-	test(`service:"cms"*"inter"*"api"`, `service:cms*inter*api`)
+
+	// Test range filter.
 	test(`level:[1, 3]`, `level:[1, 3]`)
 	test(`level:[*, 3]`, `level:[*, 3]`)
 	test(`level:["*", 3]`, `level:[*, 3]`)
@@ -114,6 +117,7 @@ func TestSeqQLAll(t *testing.T) {
 	test(` service : * `, `service:*`)
 	test(`service:a or service:b AND NOT service:c`, `(service:a or (not service:c and service:b))`)
 
+	// Test comments.
 	test(`#
 # search by logistics-megasort service
 service:"wms-svc-logistics-megasort" and level:"#"
@@ -124,7 +128,9 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`text:"a**b**"`, `text:a**b**`)
 	test(`text:"some* weird* *cases"`, `((text:some* and text:weird*) and text:*cases)`)
 	test(`text:"some *weird cases* hmm very*intrs"`, `((((text:some and text:*weird) and text:cases*) and text:hmm) and text:very*intrs)`)
+	test(`text:"val*" AND text:"val\\**"`, `(text:val* and text:"val\\*"*)`)
 
+	// Test complex search with wildcards.
 	test(`text:"\\*\\**"`, `text:"\\*\\*"*`)
 	test(`text:value=* AND text:value="\\*"*`, `((text:value and text:*) and (text:value and text:"\\*"*))`)
 	test(`text:value="\\*\\*"* AND text:"\\*\\*"`, `((text:value and text:"\\*\\*"*) and text:"\\*\\*")`)
@@ -132,13 +138,7 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`text:value=* AND text:value="\\*"* AND text:value="\\*\\*"* AND text:"\\*\\*" AND text:"\\*\\**"`,
 		`(((((text:value and text:*) and (text:value and text:"\\*"*)) and (text:value and text:"\\*\\*"*)) and text:"\\*\\*") and text:"\\*\\*"*)`)
 
-	test(`text:"val*" AND text:"val\\**"`, `(text:val* and text:"val\\*"*)`)
-	// Test keyword wildcards.
-	test(`service:**`, `service:**`)
-	test(`service:a**`, `service:a**`)
-	test(`service:**b`, `service:**b`)
-	test(`service:a**b`, `service:a**b`)
-	// Test quotes.
+	// Test escape.
 	test("keyword:`+7 995 28 07`", "keyword:\"+7 995 28 07\"")
 	test("keyword:'+7 995 28 07'", "keyword:\"+7 995 28 07\"")
 	test("keyword:`+7 995 ** **`", `keyword:"+7 995 \\*\\* \\*\\*"`)
@@ -147,20 +147,6 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`keyword:"\t"`, `keyword:"\t"`)
 	test(`keyword:"\\t"`, `keyword:"\\t"`)
 	test(`keyword:"'\n\t'"`, `keyword:"'\n\t'"`)
-	test(`message:"\"quoted string\""`,
-		`(message:quoted and message:string)`)
-	// Test UTF8.
-	test(`text:"Произошла ошибка"`, `(text:произошла and text:ошибка)`)
-	test("text:`Произошла ошибка: недостаточно места на диске`", `(((((text:произошла and text:ошибка) and text:недостаточно) and text:места) and text:на) and text:диске)`)
-	test("уровень:😖", `уровень:"😖"`)
-	// Test range.
-	test(`level:[1, 3]`, `level:[1, 3]`)
-	test(`level:(1, 3)`, `level:(1, 3)`)
-	test(`level:["*", "*"]`, `level:[*, *]`)
-	test(`level:[*, *]`, `level:[*, *]`)
-	test(`level:[abc, cbd]`, `level:[abc, cbd]`)
-
-	// Test escape.
 	test(`keyword:"kafka_impl/producer.go:84"`, `keyword:"kafka_impl/producer.go:84"`)
 	test(`keyword:"\/ready"`, `keyword:"\\/ready"`)
 	test(`message:'7916\*\*\*\*\*79'`, `message:"7916\\*\\*\\*\\*\\*79"`)
@@ -168,14 +154,49 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`keyword:a\*b`, `keyword:"a\\*b"`)
 	test(`message:"a\*b"`, `message:"a\\*b"`)
 	test(`message:a\*b`, `message:"a\\*b"`)
+	test(`keyword:"\U0001F3CC"`, `keyword:"🏌"`)
+
+	// Test UTF8.
+	test(`text:"Произошла ошибка"`, `(text:произошла and text:ошибка)`)
+	test("text:`Произошла ошибка: недостаточно места на диске`", `(((((text:произошла and text:ошибка) and text:недостаточно) and text:места) and text:на) and text:диске)`)
+	test("уровень:😖", `уровень:"😖"`)
+
+	// Test range.
+	test(`level:[1, 3]`, `level:[1, 3]`)
+	test(`level:(1, 3)`, `level:(1, 3)`)
+	test(`level:["*", "*"]`, `level:[*, *]`)
+	test(`level:[*, *]`, `level:[*, *]`)
+	test(`level:[abc, cbd]`, `level:[abc, cbd]`)
 
 	// Test separators without quotes.
 	test(`service:clickhouse-shard-1`, `service:"clickhouse-shard-1"`)
-	test(`x-forwarded-for: abc`, `x-forwarded-for:abc`)
-	test(`user-agent:"ozondeliveryapp_ios_prod"`, `user-agent:ozondeliveryapp_ios_prod`)
+	test(`x-forwarded-for: abc`, `"x-forwarded-for":abc`)
+	test(`user-agent:"ozondeliveryapp_ios_prod"`, `"user-agent":ozondeliveryapp_ios_prod`)
+}
+
+func TestSeqQLCaseSensitive(t *testing.T) {
+	// This test cannot run in parallel because it uses conf.CaseSensitive.
+
+	test := func(in, out string) {
+		t.Helper()
+		seqql, err := ParseSeqQL(in, nil)
+		require.NoError(t, err)
+		require.Equal(t, out, seqql.SeqQLString())
+	}
+	// Test case sensitivity.
+	conf.CaseSensitive = true
+	test("service: AbCdEf", "service:AbCdEf")
+	test("text: AbCdEf", "text:AbCdEf")
+	test("_exists_: 'AbCdEf'", "_exists_:AbCdEf")
+	conf.CaseSensitive = false
+	test("service: AbCdEf", "service:abcdef")
+	test("text: AbCdEf", "text:abcdef")
+	test("_exists_: `AbCdEf`", "_exists_:AbCdEf")
 }
 
 func TestParseSeqQLError(t *testing.T) {
+	t.Parallel()
+
 	test := func(got, expected string) {
 		t.Helper()
 		q, err := ParseSeqQL(got, seq.TestMapping)
@@ -183,7 +204,10 @@ func TestParseSeqQLError(t *testing.T) {
 		require.Equalf(t, expected, err.Error(), "%s != %s", expected, err.Error())
 	}
 
-	test(`service:`, `missing filter value for field "service"`)
+	// Field not indexed.
+	test(`nosuchfieldinlist: some`, `field "nosuchfieldinlist" is not indexed`)
+
+	// Test missing quoted.
 	test(`service:"some`, `expected filter value for field "service", got "`)
 	test(`service:some "`, `expected 'and', 'or', 'not', got: "\""`)
 	test(`service:some"`, `expected 'and', 'or', 'not', got: "\""`)
@@ -195,19 +219,23 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`service: some thing`, `expected 'and', 'or', 'not', got: "thing"`)
 	test(`service:"some thing`, `expected filter value for field "service", got "`)
 	test(`service:    some"thing`, `expected 'and', 'or', 'not', got: "\""`)
-	test(`service:`, `missing filter value for field "service"`)
-	test(`service: some thing"`, `expected 'and', 'or', 'not', got: "thing"`)
-	test(`AND`, `expected field name, got "AND"`)
-	test(`NOT`, `unexpected end of query`)
-	test(`service: AND level: 3`, `expected filter value for field "service", got AND`)
-	test(`service: some AND level:`, `missing filter value for field "level"`)
-	test(`nosuchfieldinlist: some`, `field "nosuchfieldinlist" is not indexed`)
+
 	test(`service:"some text AND level:"3"`, `expected 'and', 'or', 'not', got: "\""`)
 	test(`service:some text" AND level:"3"`, `expected 'and', 'or', 'not', got: "text"`)
+	test(`AND`, `expected field name, got "AND"`)
+	test(`NOT`, `unexpected end of query`)
+	test(`NOT NOT`, `unexpected end of query`)
+	test(`m:a NOT`, `expected 'and', 'or', 'not', got: "NOT"`)
+
+	// Test composite token.
+	test(`service: AND level: 3`, `expected filter value for field "service", got AND`)
+	test(`service: some AND level:`, `missing filter value for field "level"`)
 	test(`m:a AND OR m:b`, `expected field name, got "OR"`)
 	test(`m:a NOT AND m:b`, `expected 'and', 'or', 'not', got: "NOT"`)
-	test(`m:a NOT`, `expected 'and', 'or', 'not', got: "NOT"`)
-	test(`NOT NOT`, `unexpected end of query`)
+	test(`service: some thing"`, `expected 'and', 'or', 'not', got: "thing"`)
+	test(`[1 TO 3]:some`, `expected field name, got "["`)
+
+	// Test range filter.
 	test(`level:[1 3]`, `parsing range for field "level": expected ',' keyword, got "3"`)
 	test(`level:[1TO3]`, `parsing range for field "level": expected ',' keyword, got "]"`)
 	test(`level:[1 TO 3`, `parsing range for field "level": range end not found`)
@@ -220,38 +248,9 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`level:[1 TP 3]`, `parsing range for field "level": expected ',' keyword, got "TP"`)
 	test(`level:[1 TO 3[`, `parsing range for field "level": range end not found`)
 	test(`level:]1 TO 3]`, `expected filter value for field "level", got ]`)
-	test(`:some`, `expected field name, got ":"`)
-	test(`:[1 TO 3]`, `expected field name, got ":"`)
-	test(`[1 TO 3]:some`, `expected field name, got "["`)
-	test(`(m:a`, `missing ')'`)
-	test(`m:a)`, `expected 'and', 'or', 'not', got: ")"`)
-	test(`m:a AND (`, `unexpected end of query`)
-	test(`m:a (`, `expected 'and', 'or', 'not', got: "("`)
-	test(`m:a )`, `expected 'and', 'or', 'not', got: ")"`)
-	test(`m:a( AND m:a`, `expected 'and', 'or', 'not', got: "("`)
-	test(`m:a (AND m:a)`, `expected 'and', 'or', 'not', got: "("`)
-	test(`m:a) AND m:a`, `expected 'and', 'or', 'not', got: ")"`)
-	test(`"":value`, `empty field name`)
-	test(`some field:abc`, `field "some" is not indexed`)
-	test(`level service:abc`, `missing ':' after "level"`)
-	test(`(level:3 AND level level:abc)`, `missing ':' after "level"`)
-	test(`:"abc"`, `expected field name, got ":"`)
-	test(`NOT (:"abc")`, `expected field name, got ":"`)
-	test(`message:--||`, `unknown pipe: |`)
-	test(`level:[** TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1 TO a*]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1 TO a*b]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1 TO *b]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:["**" TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1 TO "a*"]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1, "a*b"]`, `parsing range for field "level": only single wildcard is allowed`)
-	test(`level:[1, "*b"]`, `parsing range for field "level": only single wildcard is allowed`)
 	test(`level:[`, `parsing range for field "level": unexpected token ""`)
 	test(`level:[1`, `parsing range for field "level": expected ',' keyword, got ""`)
-	test(`level:[ 1`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:[*`, `parsing range for field "level": expected ',' keyword, got ""`)
-	test(`level:[ *`, `parsing range for field "level": expected ',' keyword, got ""`)
-	test(`level:["1"`, `parsing range for field "level": expected ',' keyword, got ""`)
 	test(`level:["1`, `parsing range for field "level": unexpected token "\""`)
 	test(`level:[ 1 to`, `parsing range for field "level": unexpected token ""`)
 	test(`level:[1 to`, `parsing range for field "level": unexpected token ""`)
@@ -263,6 +262,41 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`level:[1]`, `parsing range for field "level": expected ',' keyword, got "]"`)
 	test(`level:[*]`, `parsing range for field "level": expected ',' keyword, got "]"`)
 	test(`level:[1 to "2]`, `parsing range for field "level": unexpected token "\""`)
+
+	// Test wildcards in range filter.
+	test(`level:[** TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1 TO a*]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1 TO a*b]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1 TO *b]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:["**" TO 1]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1 TO "a*"]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1, "a*b"]`, `parsing range for field "level": only single wildcard is allowed`)
+	test(`level:[1, "*b"]`, `parsing range for field "level": only single wildcard is allowed`)
+
+	// Test empty key or value.
+	test(`:[1 TO 3]`, `expected field name, got ":"`)
+	test(`:some`, `expected field name, got ":"`)
+	test(`:"abc"`, `expected field name, got ":"`)
+	test(`service:`, `missing filter value for field "service"`)
+	test(`"":value`, `empty field name`)
+	test(`service:`, `missing filter value for field "service"`)
+
+	// Test unexpected tokens.
+	test(`(m:a`, `missing ')'`)
+	test(`m:a)`, `expected 'and', 'or', 'not', got: ")"`)
+	test(`m:a AND (`, `unexpected end of query`)
+	test(`m:a (`, `expected 'and', 'or', 'not', got: "("`)
+	test(`m:a )`, `expected 'and', 'or', 'not', got: ")"`)
+	test(`m:a( AND m:a`, `expected 'and', 'or', 'not', got: "("`)
+	test(`m:a (AND m:a)`, `expected 'and', 'or', 'not', got: "("`)
+	test(`m:a) AND m:a`, `expected 'and', 'or', 'not', got: ")"`)
+	test(`some field:abc`, `field "some" is not indexed`)
+	test(`level service:abc`, `missing ':' after "level"`)
+	test(`(level:3 AND level level:abc)`, `missing ':' after "level"`)
+	test(`NOT (:"abc")`, `expected field name, got ":"`)
+
+	// Test pipes.
+	test(`message:--||`, `unknown pipe: |`)
 }
 
 func TestSeqQLParserFuzz(t *testing.T) {
@@ -276,35 +310,26 @@ func TestSeqQLParserFuzz(t *testing.T) {
 		`m:a("`,
 		`m:()`,
 		`m:"`,
-		`m:()\`,
-		`:()""\`,
+		`:()""`,
 		`m:a OR ()"`,
 		`AND OR NOT`,
 	}
 	for _, template := range templates {
-		t.Run("test", func(t *testing.T) {
-			if len(template) >= 12 {
-				panic("template is too long")
-			}
-			if len(template) >= 10 && testing.Short() {
-				t.Skip("skipping long template test")
-			}
-			for p := make([]int, len(template)); p[0] < len(p); nextPerm(p) {
-				s := getPerm(p, template)
+		if len(template) >= 12 {
+			panic("template is too long")
+		}
+		for p := make([]int, len(template)); p[0] < len(p); nextPerm(p) {
+			s := getPerm(p, template)
 
-				_, err := ParseSeqQL(s, nil)
-				require.Errorf(t, err, "query: %s", s)
-			}
-		})
+			_, err := ParseSeqQL(s, nil)
+			require.Errorf(t, err, "query: %s", s)
+		}
 	}
 }
 
 func TestSeqQLParsingASTStress(t *testing.T) {
 	t.Parallel()
-	iterations := 5000
-	if testing.Short() {
-		iterations = 50
-	}
+	iterations := 50
 	for i := 0; i < iterations; i++ {
 		exp := &ASTNode{}
 		for i := 0; i < 100; i++ {

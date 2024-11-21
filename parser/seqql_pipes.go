@@ -56,7 +56,7 @@ func (f *PipeFields) DumpSeqQL(o *strings.Builder) {
 		if i > 0 {
 			o.WriteString(", ")
 		}
-		o.WriteString(quoteToken(field))
+		o.WriteString(quoteTokenIfNeeded(field))
 	}
 }
 
@@ -97,7 +97,7 @@ func (p *PipeDelete) DumpSeqQL(o *strings.Builder) {
 		if i > 0 {
 			o.WriteString(", ")
 		}
-		o.WriteString(quoteToken(field))
+		o.WriteString(quoteTokenIfNeeded(field))
 	}
 }
 
@@ -150,7 +150,7 @@ func (p *PipeWhere) DumpSeqQL(o *strings.Builder) {
 	p.Root.DumpSeqQL(o)
 }
 
-func quoteToken(token string) string {
+func quoteTokenIfNeeded(token string) string {
 	if !needQuoteToken(token) {
 		return token
 	}

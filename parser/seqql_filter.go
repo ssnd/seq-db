@@ -161,7 +161,7 @@ func parseSeqQLKeyword(token string, caseSensitive bool) ([]Term, error) {
 	return terms, nil
 }
 
-func parseSeqQLText(field string, token string, sensitive bool) ([]Token, error) {
+func parseSeqQLText(field, token string, sensitive bool) ([]Token, error) {
 	if token == "" {
 		return []Token{&Literal{Field: field, Terms: []Term{newTextTerm("")}}}, nil
 	}

@@ -14,7 +14,7 @@ type Range struct {
 }
 
 func (n *Range) Dump(builder *strings.Builder) {
-	builder.WriteString(n.Field)
+	builder.WriteString(quoteTokenIfNeeded(n.Field))
 	builder.WriteString(`:`)
 	if n.IncludeFrom {
 		builder.WriteByte('[')
@@ -32,7 +32,7 @@ func (n *Range) Dump(builder *strings.Builder) {
 }
 
 func (n *Range) DumpSeqQL(b *strings.Builder) {
-	b.WriteString(n.Field)
+	b.WriteString(quoteTokenIfNeeded(n.Field))
 	b.WriteString(`:`)
 	if n.IncludeFrom {
 		b.WriteByte('[')

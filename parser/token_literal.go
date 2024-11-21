@@ -26,7 +26,7 @@ func (n *Literal) DumpSeqQL(o *strings.Builder) {
 		o.WriteString("*")
 		return
 	}
-	o.WriteString(n.Field)
+	o.WriteString(quoteTokenIfNeeded(n.Field))
 	o.WriteString(`:`)
 	for _, term := range n.Terms {
 		term.DumpSeqQL(o)
@@ -95,7 +95,7 @@ func (t Term) DumpSeqQL(b *strings.Builder) {
 	if t.Kind == TermText {
 		t.Data = strings.ReplaceAll(t.Data, "*", "\\*")
 	}
-	b.WriteString(quoteToken(t.Data))
+	b.WriteString(quoteTokenIfNeeded(t.Data))
 }
 
 var specialSymbol = map[rune]bool{

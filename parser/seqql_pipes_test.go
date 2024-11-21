@@ -49,8 +49,8 @@ func TestParsePipeWhere(t *testing.T) {
 	test("* | where __MESSAGE__:`error*`*", `* | where __MESSAGE__:"error\\*"*`)
 	test("* | where 'level':`info`", "* | where level:info")
 	test("* | where level:error | where message:error | where _id:42", "* | where level:error | where message:error | where _id:42")
-	test(`* | where "User-Agent":"curl"`, `* | where User-Agent:curl`)
-	test(`* | where "_\\message*":"*"`, `* | where _\message*:*`)
-	test(`* | where _\message*:*`, `* | where _\message*:*`)
+	test(`* | where "User-Agent":"curl"`, `* | where "User-Agent":curl`)
+	test(`* | where "_\\message*":"*"`, `* | where "_\\message*":*`)
+	test(`* | where _\message*:*`, `* | where "_\\message*":*`)
 	test(`* | where test:composite-pipes | delete level | fields level`, `* | where test:"composite-pipes" | delete level | fields level`)
 }

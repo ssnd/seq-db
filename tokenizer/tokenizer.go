@@ -34,19 +34,11 @@ func toLowerTryInplace(s []byte) []byte {
 
 	if hasUpper {
 		for i := 0; i < len(s); i++ {
-			// In case of '@', '[', '\', ']', '^', '_' bithack below will not work
-			// E.g. '_' | 0x20 == '\x7f'
-			// Therefore, the check is needed
 			if !upperCaseMap[s[i]] {
 				continue
 			}
 
-			// 'a'    - 01100001
-			// 'A'    - 01000001
-			// '0x20' - 00100000
-			// 'A' | 0x20 == 'a'
-			// 'a' | 0x20 == 'a'
-			s[i] |= 0x20
+			s[i] += 'a' - 'A'
 		}
 	}
 

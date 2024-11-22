@@ -69,7 +69,7 @@ func analyzeIndex(
 	reader *disk.Reader,
 	mergedTokensUniq map[string]map[string]int,
 ) Stats {
-	var blockIndex uint32 = 0
+	var blockIndex uint32
 	cache := cm.CreateSealedIndexCache()
 	br := disk.NewBlocksReader(cache.Registry, path, nil)
 
@@ -152,7 +152,7 @@ func analyzeIndex(
 	}
 
 	mergeAllTokens(mergedTokensUniq, tokenTable, tokens, lidsLens)
-	return reportTokenStats(path, mergedTokensUniq, tokens, docsCount, lidsUniqCnt, lidsTotal)
+	return reportTokenStats(mergedTokensUniq, tokens, docsCount, lidsUniqCnt, lidsTotal)
 }
 
 func getLIDsHash(lids []uint32) [16]byte {

@@ -7,7 +7,6 @@ import (
 )
 
 type Stats struct {
-	path      string
 	docsCount int
 
 	fields     int
@@ -25,7 +24,6 @@ type Stats struct {
 }
 
 func reportTokenStats(
-	f string,
 	tokensUniq map[string]map[string]int,
 	tokens [][]byte,
 	docsCount, lidsUniqCount, lidsTotalCount int,
@@ -51,7 +49,6 @@ func reportTokenStats(
 	}
 
 	return Stats{
-		path:      f,
 		docsCount: docsCount,
 
 		tokenCount: len(tokens),

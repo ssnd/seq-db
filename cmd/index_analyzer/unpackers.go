@@ -22,7 +22,7 @@ func unpackInfo(result []byte) *frac.Info {
 
 func unpackTokens(data []byte, dst [][]byte) [][]byte {
 	const sizeOfUint32 = uint32(unsafe.Sizeof(uint32(0)))
-	for i := 0; len(data) != 0; i++ {
+	for len(data) != 0 {
 		l := binary.LittleEndian.Uint32(data)
 		data = data[sizeOfUint32:]
 		if l == math.MaxUint32 {

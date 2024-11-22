@@ -4,7 +4,6 @@
 /seqdb
 docker-compose.override.yaml
 build-docker/
-Makefile
 cmd.test
 cpu.out
 mem.out

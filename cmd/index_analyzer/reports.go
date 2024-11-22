@@ -23,7 +23,7 @@ type Stats struct {
 	tokensHist map[int]int
 }
 
-func reportTokenStats(
+func newStats(
 	tokensUniq map[string]map[string]int,
 	tokens [][]byte,
 	docsCount, lidsUniqCount, lidsTotalCount int,

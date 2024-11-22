@@ -152,7 +152,7 @@ func analyzeIndex(
 	}
 
 	mergeAllTokens(mergedTokensUniq, tokenTable, tokens, lidsLens)
-	return reportTokenStats(mergedTokensUniq, tokens, docsCount, lidsUniqCnt, lidsTotal)
+	return newStats(mergedTokensUniq, tokens, docsCount, lidsUniqCnt, lidsTotal)
 }
 
 func getLIDsHash(lids []uint32) [16]byte {

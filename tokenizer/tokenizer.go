@@ -46,6 +46,7 @@ func toLowerTryInplace(s []byte) []byte {
 }
 
 func toLowerUnicode(s []byte) []byte {
+	// nolint
 	return bytes.Map(unicode.ToLower, s)
 }
 

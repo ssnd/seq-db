@@ -3,6 +3,7 @@ package tokenizer
 import (
 	"bytes"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/ozontech/seq-db/frac"
 )
@@ -24,7 +25,7 @@ func toLowerIfCaseInsensitive(isCaseSensitive bool, x []byte) []byte {
 func toLowerTryInplace(s []byte) []byte {
 	hasUpper := false
 	for i := 0; i < len(s); i++ {
-		if !isAscii(s[i]) {
+		if s[i] >= utf8.RuneSelf {
 			return toLowerUnicode(s)
 		}
 
@@ -54,12 +55,6 @@ func toLowerTryInplace(s []byte) []byte {
 
 func toLowerUnicode(s []byte) []byte {
 	return bytes.Map(unicode.ToLower, s)
-}
-
-const asciiMask byte = 0x7F
-
-func isAscii(c byte) bool {
-	return c & ^asciiMask == 0
 }
 
 // allTextTokenChars contains text token symbols that are ASCII.

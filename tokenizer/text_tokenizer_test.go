@@ -15,7 +15,7 @@ const (
 )
 
 func copyStr(s string) []byte {
-	return []byte(strings.Clone(s))
+	return []byte(s)
 }
 
 func TestTokenizeEmptyValue(t *testing.T) {

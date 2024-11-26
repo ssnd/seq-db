@@ -111,7 +111,7 @@ func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mapping s
 			workerPool: search.NewWorkerPool(config.Search.WorkersCount),
 		},
 		fetchData: fetchData{
-			docFetcher: fetch.NewDocumentFetcherOld(conf.FetchWorkers),
+			docFetcher: fetch.New(conf.FetchWorkers),
 		},
 	}
 

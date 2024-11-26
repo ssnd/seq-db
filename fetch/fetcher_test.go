@@ -80,9 +80,9 @@ func testFetcher(t *testing.T, fetcher *Fetcher, hasHint bool) {
 }
 
 func TestOldFetchWithHint(t *testing.T) {
-	testFetcher(t, NewDocumentFetcherOld(1), true)
+	testFetcher(t, New(1), true)
 }
 
 func TestOldFetchWithoutHint(t *testing.T) {
-	testFetcher(t, NewDocumentFetcherOld(1), false)
+	testFetcher(t, New(1), false)
 }

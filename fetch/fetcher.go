@@ -31,7 +31,7 @@ type Task struct {
 	Context context.Context
 }
 
-func NewDocumentFetcherOld(fetchWorkers int) *Fetcher {
+func New(fetchWorkers int) *Fetcher {
 	f := &Fetcher{
 		fetchCh: make(chan *Task, fetchWorkers*2),
 	}

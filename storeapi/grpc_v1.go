@@ -81,7 +81,7 @@ type searchData struct {
 }
 
 type fetchData struct {
-	docFetcher fetch.Fetcher
+	docFetcher *fetch.Fetcher
 }
 
 type GrpcV1 struct {

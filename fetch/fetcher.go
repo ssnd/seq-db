@@ -44,14 +44,12 @@ func New(fetchWorkers int) *Fetcher {
 }
 
 func (df *Fetcher) launchWorker() {
-	docsBuf := make([]byte, 0)
-
 	midCache := frac.NewUnpackCache()
 	ridCache := frac.NewUnpackCache()
 	for fetchTask := range df.fetchCh {
 		metric.FetchWorkerIDsPerTask.Observe(float64(len(fetchTask.IDs)))
 		if fetchTask.Context.Err() == nil {
-			fetchTask.Docs, docsBuf, fetchTask.Err = df.fetchMany(fetchTask, docsBuf, midCache, ridCache)
+			fetchTask.Docs, fetchTask.Err = df.fetchMany(fetchTask, midCache, ridCache)
 		}
 
 		fetchTask.Out <- fetchTask
@@ -59,23 +57,21 @@ func (df *Fetcher) launchWorker() {
 	}
 }
 
-func fetchWithRecover(f frac.Fraction, id seq.ID, docsBuf []byte, midCache, ridCache *frac.UnpackCache) (_, dBuf []byte, err error) {
+func fetchWithRecover(f frac.Fraction, id seq.ID, midCache, ridCache *frac.UnpackCache) (_ []byte, err error) {
 	defer func() {
 		if panicData := recover(); panicData != nil {
 			// prevent to return nil instead buf after panic
-			dBuf = docsBuf
 			err = fmt.Errorf("internal error: fetch panicked on fraction %s: %s", f.Info().Name(), panicData)
-
 			util.Recover(metric.StorePanics, err)
 		}
 	}()
 
 	dp, release, ok := f.DataProvider(context.Background())
 	if !ok {
-		return nil, docsBuf, nil
+		return nil, nil
 	}
 	defer release()
-	return dp.Fetch(id, docsBuf, midCache, ridCache)
+	return dp.Fetch(id, midCache, ridCache)
 }
 
 func (df *Fetcher) submitFetch(ctx context.Context, fracs fracmanager.FracsList, ids []seq.IDSource) chan *Task {
@@ -136,7 +132,7 @@ func (df *Fetcher) FetchDocs(ctx context.Context, fracs fracmanager.FracsList, i
 	return docs, util.CollapseErrors(errors)
 }
 
-func (df *Fetcher) fetchMany(fetchTask *Task, docsBuf []byte, midCache, ridCache *frac.UnpackCache) ([][]byte, []byte, error) {
+func (df *Fetcher) fetchMany(fetchTask *Task, midCache, ridCache *frac.UnpackCache) ([][]byte, error) {
 	docs := make([][]byte, 0, len(fetchTask.IDs))
 	for _, id := range fetchTask.IDs {
 		var err error
@@ -147,22 +143,21 @@ func (df *Fetcher) fetchMany(fetchTask *Task, docsBuf []byte, midCache, ridCache
 			fetchFunc = df.fetchOneWithHint
 		}
 
-		doc, docsBuf, err = fetchFunc(id, fetchTask.Fracs, docsBuf, midCache, ridCache)
+		doc, err = fetchFunc(id, fetchTask.Fracs, midCache, ridCache)
 		if err != nil {
-			return docs, docsBuf, err
+			return docs, err
 		}
 		docs = append(docs, doc)
 	}
 
-	return docs, docsBuf, nil
+	return docs, nil
 }
 
 func (df *Fetcher) fetchOneWithHint(
 	id seq.IDSource,
 	fracs fracmanager.FracsList,
-	docsBuf []byte,
 	midCache, ridCache *frac.UnpackCache,
-) ([]byte, []byte, error) {
+) ([]byte, error) {
 	metric.FetchWithHints.Inc()
 	idTime := seq.ExtractMID(id.ID)
 
@@ -179,7 +174,7 @@ func (df *Fetcher) fetchOneWithHint(
 		logger.Error("fraction not found by hint",
 			zap.String("hint", id.Hint))
 		metric.FetchHintMisses.Inc()
-		return nil, docsBuf, nil
+		return nil, nil
 	}
 	if !fracInstance.Contains(idTime) {
 		logger.Error("fraction from hint does not contain MID",
@@ -187,31 +182,30 @@ func (df *Fetcher) fetchOneWithHint(
 			zap.Uint64("mid", uint64(idTime)))
 		metric.FetchHintMisses.Inc()
 
-		return nil, docsBuf, nil
+		return nil, nil
 	}
 
 	var err error
 	var doc []byte
 	m2 := t.Start("fetch_fraction")
-	doc, docsBuf, err = fetchWithRecover(fracInstance, id.ID, docsBuf, midCache, ridCache)
+	doc, err = fetchWithRecover(fracInstance, id.ID, midCache, ridCache)
 	if err != nil {
-		return doc, docsBuf, err
+		return doc, err
 	}
 	m2.Stop()
 	if doc != nil {
 		metric.FetchWorkerFracsPerTask.Observe(float64(1))
-		return doc, docsBuf, nil
+		return doc, nil
 	}
 
-	return nil, docsBuf, nil
+	return nil, nil
 }
 
 func (df *Fetcher) fetchOne(
 	id seq.IDSource,
 	fracs fracmanager.FracsList,
-	docsBuf []byte,
 	midCache, ridCache *frac.UnpackCache,
-) ([]byte, []byte, error) {
+) ([]byte, error) {
 	metric.FetchWithoutHint.Inc()
 	idTime := seq.ExtractMID(id.ID)
 
@@ -232,14 +226,14 @@ func (df *Fetcher) fetchOne(
 		var err error
 		var doc []byte
 		m2 := t.Start("fetch_fraction")
-		if doc, docsBuf, err = fetchWithRecover(fracs[i], id.ID, docsBuf, midCache, ridCache); err != nil {
-			return doc, docsBuf, err
+		if doc, err = fetchWithRecover(fracs[i], id.ID, midCache, ridCache); err != nil {
+			return doc, err
 		}
 		m2.Stop()
 		if doc != nil {
-			return doc, docsBuf, nil
+			return doc, nil
 		}
 	}
 
-	return nil, docsBuf, nil
+	return nil, nil
 }

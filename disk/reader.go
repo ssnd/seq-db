@@ -6,9 +6,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/ozontech/seq-db/bytespool"
 	"github.com/ozontech/seq-db/conf"
-	"github.com/ozontech/seq-db/metric"
-	"github.com/ozontech/seq-db/util"
 )
 
 type readTask struct {
@@ -27,9 +26,8 @@ type ReadDocTask readTask
 type ReadIndexTask readTask
 
 type Reader struct {
-	in          chan *readTask
-	readBufPool sync.Pool
-	metric      prometheus.Counter
+	in     chan *readTask
+	metric prometheus.Counter
 }
 
 func NewReader(counter prometheus.Counter) *Reader {
@@ -49,86 +47,99 @@ func (r *Reader) process(task *readTask) {
 	task.wg.Wait()
 }
 
-// ReadDocBlock attempts to reuse outBuf as ReadDocTask.Buf
-// thus it should be copied before storing unless outBuf was nil
-func (r *Reader) ReadDocBlock(f *os.File, offset int64, length uint64, outBuf []byte) *ReadDocTask {
+func (r *Reader) ReadDocBlock(f *os.File, offset int64) ([]byte, uint64, error) {
+	l, err := r.GetDocBlockLen(f, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	return r.readDocBlockInBuf(f, offset, make([]byte, l))
+}
+
+func (r *Reader) ReadDocBlockPayload(f *os.File, offset int64) ([]byte, uint64, error) {
+	l, err := r.GetDocBlockLen(f, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	buf := bytespool.Acquire(int(l))
+	defer bytespool.Release(buf)
+
+	var n uint64
+	buf.B, n, err = r.readDocBlockInBuf(f, offset, buf.B)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// decompress
+	docBlock := DocBlock(buf.B)
+	dst, err := docBlock.DecompressTo(make([]byte, docBlock.RawLen()))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return dst, n, nil
+}
+
+func (r *Reader) readDocBlockInBuf(f *os.File, offset int64, buf []byte) ([]byte, uint64, error) {
+	task := &ReadDocTask{
+		f:      f,
+		offset: offset,
+		Buf:    buf,
+	}
+	r.process((*readTask)(task))
+	return task.Buf, task.N, task.Err
+}
+
+func (r *Reader) GetDocBlockLen(f *os.File, offset int64) (uint64, error) {
 	task := &ReadDocTask{
 		f:      f,
 		offset: offset,
 	}
 
-	if length == 0 {
-		// determine len
-		task.Buf = util.EnsureSliceSize(outBuf, DocBlockHeaderLen)
-		r.process((*readTask)(task))
-		if task.Err != nil {
-			return task
-		}
-		// for the sake of simplicity we read the whole block again
-		length = DocBlock(task.Buf).FullLen()
-		outBuf = task.Buf
+	buf := bytespool.Acquire(DocBlockHeaderLen)
+	defer bytespool.Release(buf)
+
+	task.Buf = buf.B
+	r.process((*readTask)(task))
+	if task.Err != nil {
+		return 0, task.Err
 	}
 
-	task.Buf = util.EnsureSliceSize(outBuf, int(length))
-	r.process((*readTask)(task))
-	return task
+	return DocBlock(task.Buf).FullLen(), nil
 }
 
-// ReadIndexBlock attempts to reuse outBuf as ReadIndexTask.Buf
-// thus it should be copied before storing unless outBuf was nil
-func (r *Reader) ReadIndexBlock(blocksReader *BlocksReader, blockIndex uint32, outBuf []byte) (task *ReadIndexTask) {
-	task = &ReadIndexTask{}
+func (r *Reader) ReadIndexBlock(blocksReader *BlocksReader, blockIndex uint32) (_ []byte, _ uint64, err error) {
+	header, err := blocksReader.TryGetBlockHeader(blockIndex)
+	if err != nil {
+		return nil, 0, err
+	}
 
-	// actually, it protects only GetBlockHeader
-	defer func() {
-		if e := util.RecoverToError(recover(), metric.StorePanics); e != nil {
-			task.Err = e
-		}
-	}()
-
-	header := blocksReader.GetBlockHeader(blockIndex)
-
-	// always succeeds after GetBlockHeader
-	task.f = blocksReader.tryOpenFile()
-	task.offset = int64(header.GetPos())
+	task := &ReadIndexTask{
+		f:      blocksReader.tryOpenFile(),
+		offset: int64(header.GetPos()),
+	}
 
 	if header.Codec() == CodecNo {
-		task.Buf = util.EnsureSliceSize(outBuf, int(header.Len()))
+		dst := make([]byte, header.Len())
+		task.Buf = dst
 		r.process((*readTask)(task))
-		return
+		return dst, task.N, task.Err
 	}
 
-	readBuf := r.readBufPool.Get()
-	defer func() { r.readBufPool.Put(readBuf) }()
+	readBuf := bytespool.Acquire(int(header.Len()))
+	defer bytespool.Release(readBuf)
 
-	if readBuf != nil {
-		task.Buf = readBuf.([]byte)
-	}
-	task.Buf = util.EnsureSliceSize(task.Buf, int(header.Len()))
+	task.Buf = readBuf.B
 	r.process((*readTask)(task))
-	readBuf = task.Buf
 
 	if task.Err != nil {
-		task.Buf = outBuf[:0]
-		return
+		return nil, task.N, task.Err
 	}
 
-	task.Buf, task.Err = header.Codec().decompressBlock(int(header.RawLen()), task.Buf, outBuf)
+	dst := make([]byte, header.RawLen())
+	dst, err = header.Codec().decompressBlock(int(header.RawLen()), task.Buf, dst)
 
-	return
-}
-
-// Decompress always makes a copy of ReadDocTask.Buf
-// thus it shouldn't be copied again
-func (task *ReadDocTask) Decompress() {
-	block := DocBlock(task.Buf)
-
-	if block.Codec() == CodecNo {
-		task.Buf = append([]byte{}, block.Payload()...)
-		return
-	}
-
-	task.Buf, task.Err = block.Codec().decompressBlock(int(block.RawLen()), block.Payload(), nil)
+	return dst, task.N, err
 }
 
 func (r *Reader) Stop() {

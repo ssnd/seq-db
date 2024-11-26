@@ -45,10 +45,10 @@ func (l *TableLoader) readHeader() disk.BlocksRegistryEntry {
 }
 
 func (l *TableLoader) readBlock() ([]byte, error) {
-	task := l.reader.ReadIndexBlock(l.br, l.i, l.buf)
-	l.buf = task.Buf
+	block, _, err := l.reader.ReadIndexBlock(l.br, l.i)
+	l.buf = block
 	l.i++
-	return task.Buf, task.Err
+	return block, err
 }
 
 func (l *TableLoader) load() (Table, int, error) {

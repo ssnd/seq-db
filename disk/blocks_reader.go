@@ -36,26 +36,31 @@ func (r *BlocksReader) GetFileName() string {
 
 // GetFileStat only used during loading
 func (r *BlocksReader) GetFileStat() (os.FileInfo, error) {
-	r.fileMu.Lock()
-	defer r.fileMu.Unlock()
-
 	return r.file.Stat()
 }
 
-func (r *BlocksReader) GetBlockHeader(index uint32) BlocksRegistryEntry {
+func (r *BlocksReader) TryGetBlockHeader(index uint32) (BlocksRegistryEntry, error) {
 	data := r.getRegistry()
 
 	if (uint64(index)+1)*BlocksRegistryEntrySize > uint64(len(data)) {
-		logger.Panic(
-			"too large block index",
-			zap.Uint32("index", index),
-			zap.String("file", r.fileName),
-			zap.Int("data_len", len(data)),
+		return nil, fmt.Errorf(
+			"too large index block in file %s, with index %d, registry size %d",
+			r.fileName,
+			index,
+			len(data),
 		)
 	}
 
 	pos := index * BlocksRegistryEntrySize
-	return data[pos : pos+BlocksRegistryEntrySize]
+	return data[pos : pos+BlocksRegistryEntrySize], nil
+}
+
+func (r *BlocksReader) GetBlockHeader(index uint32) BlocksRegistryEntry {
+	block, err := r.TryGetBlockHeader(index)
+	if err != nil {
+		logger.Panic("error reading block header", zap.Error(err))
+	}
+	return block
 }
 
 func (r *BlocksReader) getRegistry() []byte {

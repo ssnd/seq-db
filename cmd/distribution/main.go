@@ -48,11 +48,11 @@ func getReader(path string) *disk.BlocksReader {
 }
 
 func readBlock(blocksReader *disk.BlocksReader, blockIndex uint32) []byte {
-	readTask := reader.ReadIndexBlock(blocksReader, blockIndex, nil)
-	if readTask.Err != nil {
-		logger.Fatal("error reading block", zap.String("file", blocksReader.GetFileName()), zap.Error(readTask.Err))
+	data, _, err := reader.ReadIndexBlock(blocksReader, blockIndex)
+	if err != nil {
+		logger.Fatal("error reading block", zap.String("file", blocksReader.GetFileName()), zap.Error(err))
 	}
-	return readTask.Buf
+	return data
 }
 
 func loadInfo(path string) *frac.Info {

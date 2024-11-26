@@ -154,8 +154,7 @@ build-binaries:
   artifacts:
     paths:
       - ./bin/amd64/seq-db
-      - ./bin/amd64/distribution
-      - ./bin/amd64/analyzer
+      - ./bin/amd64/distribution      
     expire_in: 1 day
     when: on_success
   rules:

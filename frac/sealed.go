@@ -167,7 +167,7 @@ func (dp *SealedDataProvider) GetLIDsFromTIDs(tids []uint32, stats lids.Counter,
 	return dp.Sealed.GetLIDsFromTIDs(dp.sc, tids, stats, minLID, maxLID, dp.tracer, order)
 }
 
-func (dp *SealedDataProvider) Fetch(id seq.ID, docsBuf []byte, midCache, ridCache *UnpackCache) ([]byte, []byte, error) {
+func (dp *SealedDataProvider) Fetch(id seq.ID, midCache, ridCache *UnpackCache) ([]byte, error) {
 	defer dp.tracer.UpdateMetric(metric.FetchSealedStagesSeconds)
 
 	midCache.Start()
@@ -183,7 +183,7 @@ func (dp *SealedDataProvider) Fetch(id seq.ID, docsBuf []byte, midCache, ridCach
 	lid := seq.LID(util.BinSearchInRange(1, ids.Len()-1, f))
 	if id.MID != ids.GetMID(lid) || id.RID != ids.GetRID(lid) {
 		m.Stop()
-		return nil, docsBuf, nil
+		return nil, nil
 	}
 	m.Stop()
 
@@ -197,10 +197,10 @@ func (dp *SealedDataProvider) Fetch(id seq.ID, docsBuf []byte, midCache, ridCach
 
 	m = dp.tracer.Start("read_doc")
 	dp.lastFetchTime.Store(time.Now().UnixNano())
-	doc, outBuf, err := dp.readDoc(blockPos, 0, docOffset, docsBuf)
+	docs, err := dp.readDocs(blockPos, []uint64{docOffset})
 	m.Stop()
 
-	return doc, outBuf, err
+	return docs[0], err
 }
 
 type Sealed struct {
@@ -255,8 +255,7 @@ func NewSealed(baseFile string, reader *disk.Reader, sealedIndexCache *SealedInd
 		return f
 	}
 
-	f.frac.info = &Info{Path: baseFile}
-	f.loadHeader()
+	f.info = f.loadHeader()
 
 	return f
 }
@@ -308,36 +307,36 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 	return f
 }
 
-func (f *Sealed) loadHeader() {
-	readTask := f.reader.ReadIndexBlock(f.blocksReader, 0, nil)
-
-	if readTask.Err != nil {
+func (f *Sealed) readHeader() *Info {
+	block, _, err := f.reader.ReadIndexBlock(f.blocksReader, 0)
+	if err != nil {
 		logger.Panic("todo")
 	}
-	result := readTask.Buf
-	if len(result) < 4 || string(result[:4]) != seqDBMagic {
-		logger.Fatal("seq-db index file header corrupted",
+	if len(block) < 4 || string(block[:4]) != seqDBMagic {
+		logger.Fatal("seq-db index file header corrupted", zap.String("file", f.blocksReader.GetFileName()))
+	}
+	info := &Info{}
+	info.Load(block[4:])
+	return info
+}
+
+func (f *Sealed) loadHeader() *Info {
+	info := f.readHeader()
+	info.Path = f.BaseFileName
+	info.MetaOnDisk = 0
+	info.IndexOnDisk = f.getIndexSize()
+	return info
+}
+
+func (f *Sealed) getIndexSize() uint64 {
+	stat, err := f.blocksReader.GetFileStat()
+	if err != nil {
+		logger.Fatal("can't stat index file",
 			zap.String("file", f.blocksReader.GetFileName()),
+			zap.Error(err),
 		)
 	}
-
-	result = result[4:]
-	func() {
-		f.statsMu.Lock()
-		defer f.statsMu.Unlock()
-
-		f.info.Load(result)
-		f.info.MetaOnDisk = 0
-		stat, err := f.blocksReader.GetFileStat()
-		if err != nil {
-			logger.Fatal("can't stat index file",
-				zap.String("file", f.blocksReader.GetFileName()),
-				zap.Error(err),
-			)
-			panic("_")
-		}
-		f.info.IndexOnDisk = uint64(stat.Size())
-	}()
+	return uint64(stat.Size())
 }
 
 func (f *Sealed) Type() string {

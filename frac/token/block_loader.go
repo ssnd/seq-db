@@ -138,18 +138,18 @@ func (l *BlockLoader) Load(entry *TableEntry) *Block {
 
 func (l *BlockLoader) readBinary(stats StatsCollector, blockIndex uint32) []byte {
 	t := time.Now()
-	readTask := l.reader.ReadIndexBlock(l.blocksReader, blockIndex, nil)
-	if util.IsRecoveredPanicError(readTask.Err) {
-		logger.Panic("todo: handle read err", zap.Error(readTask.Err))
+	data, n, err := l.reader.ReadIndexBlock(l.blocksReader, blockIndex)
+	if util.IsRecoveredPanicError(err) {
+		logger.Panic("todo: handle read err", zap.Error(err))
 	}
 
 	if stats != nil {
 		stats.AddReadFieldTimeNS(time.Since(t))
-		stats.AddFieldBytesRead(readTask.N)
+		stats.AddFieldBytesRead(n)
 		stats.AddFieldBlocksRead(1)
 	}
 
-	return readTask.Buf
+	return data
 }
 
 func (l *BlockLoader) read(entry *TableEntry) *Block {

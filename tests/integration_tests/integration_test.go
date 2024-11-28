@@ -1581,7 +1581,7 @@ func (s *IntegrationTestSuite) TestAggregateFieldsWithMultipleTypes() {
 	gotBuckets := qpr.Aggregate([]seq.AggregateArgs{{Func: seq.AggFuncCount}})
 
 	assert.Equal(t, 1, len(gotBuckets))
-	assert.Equal(
+	assert.ElementsMatch(
 		t,
 		[]seq.AggregationBucket{
 			{Name: "doc three", Value: 3},

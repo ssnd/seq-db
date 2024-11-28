@@ -1562,6 +1562,10 @@ func (s *IntegrationTestSuite) TestAggregateFieldsWithMultipleTypes() {
 		`{"service":"b", "message":"doc three", "level":"error"}`,
 		`{"service":"c", "message":"doc three", "level":"error"}`,
 		`{"service":"c", "message":"doc info", "level":"info"}`,
+		`{"service":"c", "message":true, "level":"error"}`,
+		`{"service":"c", "message":true, "level":"error"}`,
+		`{"service":"c", "message":false, "level":"error"}`,
+		`{"service":"c", "message":false, "level":"info"}`,
 	}
 
 	setup.Bulk(s.T(), env.IngestorBulkAddr(), docs)
@@ -1583,6 +1587,8 @@ func (s *IntegrationTestSuite) TestAggregateFieldsWithMultipleTypes() {
 			{Name: "doc three", Value: 3},
 			{Name: "doc two", Value: 2},
 			{Name: "doc one", Value: 1},
+			{Name: "true", Value: 2},
+			{Name: "false", Value: 1},
 		},
 		gotBuckets[0].Buckets,
 	)

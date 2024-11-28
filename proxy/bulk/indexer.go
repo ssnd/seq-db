@@ -146,7 +146,7 @@ func (i *indexer) appendNestedMeta() {
 }
 
 func encodeInsaneNode(field *insaneJSON.Node) []byte {
-	if field.IsArray() || field.IsObject() {
+	if field.IsArray() || field.IsObject() || field.IsNull() || field.IsTrue() || field.IsFalse() {
 		return field.Encode(nil)
 	}
 	return field.AsBytes()

@@ -60,7 +60,7 @@ func (t *TextTokenizer) Tokenize(tokens []frac.MetaToken, name, value []byte, ma
 			// Fast path: c is ASCII, check it directly using isTextToken.
 
 			// Save information about uppercase letters to skip ToLower stage.
-			hasUpper = hasUpper || isUpperAscii[c]
+			hasUpper = hasUpper || isUpperASCII[c]
 			if isTextToken[c] {
 				i++
 				continue

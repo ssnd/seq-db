@@ -25,7 +25,7 @@ func toLowerIfCaseInsensitive(isCaseSensitive bool, x []byte) []byte {
 func toLowerTryInplace(s []byte) []byte {
 
 	for i := 0; i < len(s); i++ {
-		if !isAscii[s[i]] {
+		if !isASCII[s[i]] {
 			return toLowerUnicode(s)
 		}
 
@@ -45,11 +45,11 @@ var (
 	// since ASCII symbol cannot be a part of other utf8 encoded symbol https://en.wikipedia.org/wiki/UTF-8#Description
 	toLowerMap [256]byte
 
-	// isAscii      returns true for given byte `b` if b < utf8.RuneSelf
-	isAscii [256]bool
+	// isASCII      returns true for given byte `b` if b < utf8.RuneSelf
+	isASCII [256]bool
 
-	// isUpperAscii returns true for given byte `b` if 'A' <= b && b <= 'Z'
-	isUpperAscii [256]bool
+	// isUpperASCII returns true for given byte `b` if 'A' <= b && b <= 'Z'
+	isUpperASCII [256]bool
 
 	// isTextToken  returns true for given byte `b` if that byte should be parsed by tokenizer (for more information refer to initIsTextToken).
 	//
@@ -59,8 +59,8 @@ var (
 
 func init() {
 	initUpperToLowerMap()
-	initIsAscii()
-	initIsUpperAscii()
+	initIsASCII()
+	initIsUpperASCII()
 	initIsTextToken()
 }
 
@@ -74,15 +74,15 @@ func initUpperToLowerMap() {
 	}
 }
 
-func initIsAscii() {
+func initIsASCII() {
 	for i := 0; i < utf8.RuneSelf; i++ {
-		isAscii[i] = true
+		isASCII[i] = true
 	}
 }
 
-func initIsUpperAscii() {
+func initIsUpperASCII() {
 	for i := 'A'; i <= 'Z'; i++ {
-		isUpperAscii[i] = true
+		isUpperASCII[i] = true
 	}
 }
 

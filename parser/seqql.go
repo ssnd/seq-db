@@ -253,7 +253,7 @@ func (lex *lexer) nextToken(size int) {
 	lex.q = lex.q[size:]
 }
 
-// parseSeqQLFilter parses SeqQL full text search filters like `"payment-api" and level:"info"` and returns AST node.
+// parseSeqQLFilter parses SeqQL full text search filters like `service:payment-api and level:"info"` and returns AST node.
 func parseSeqQLFilter(lex *lexer, mapping seq.Mapping, depth int) (*ASTNode, error) {
 	leftHigh, err := parseSeqQLSubexpr(lex, mapping, depth) // left operand of AND, of high priority
 	if err != nil {

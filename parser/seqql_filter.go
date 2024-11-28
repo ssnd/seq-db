@@ -58,10 +58,6 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 		return nil, fmt.Errorf("expected filter value for field %q, got %s", fieldName, lex.Token)
 	}
 
-	if lex.IsKeywordSet(termStopTokens) {
-		return nil, fmt.Errorf("unexpected token %q", lex.Token)
-	}
-
 	// Parse fulltext search filter.
 	value, err := parseCompositeToken(lex, true)
 	if err != nil {

@@ -23,23 +23,13 @@ func toLowerIfCaseInsensitive(isCaseSensitive bool, x []byte) []byte {
 // toLowerTryInplace tries to lowercase given []byte inplace (without allocations)
 // but if utf-8 is encountered, fallbacks to bytes.Map which returns new []byte
 func toLowerTryInplace(s []byte) []byte {
-	hasUpper := false
+
 	for i := 0; i < len(s); i++ {
-		if s[i] >= utf8.RuneSelf {
+		if !isAscii[s[i]] {
 			return toLowerUnicode(s)
 		}
 
-		hasUpper = hasUpper || upperCaseMap[s[i]]
-	}
-
-	if hasUpper {
-		for i := 0; i < len(s); i++ {
-			if !upperCaseMap[s[i]] {
-				continue
-			}
-
-			s[i] += 'a' - 'A'
-		}
+		s[i] = toLowerMap[s[i]]
 	}
 
 	return s
@@ -50,23 +40,62 @@ func toLowerUnicode(s []byte) []byte {
 	return bytes.Map(unicode.ToLower, s)
 }
 
-// allTextTokenChars contains text token symbols that are ASCII.
-// 128 bytes is enough for them, but we use 256 to skip bound checks when we use allTextTokenChars[byte(i)].
-var allTextTokenChars = [256]bool{
-	'0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true,
+var (
+	// toLowerMap maps upper ASCII symbols to lower. It is safe to use it on utf8 bytes (i > utf8.RuneSelf),
+	// since ASCII symbol cannot be a part of other utf8 encoded symbol https://en.wikipedia.org/wiki/UTF-8#Description
+	toLowerMap [256]byte
 
-	'a': true, 'b': true, 'c': true, 'd': true, 'e': true, 'f': true, 'g': true, 'h': true, 'i': true, 'j': true,
-	'k': true, 'l': true, 'm': true, 'n': true, 'o': true, 'p': true, 'q': true, 'r': true, 's': true, 't': true,
-	'u': true, 'v': true, 'w': true, 'x': true, 'y': true, 'z': true,
-	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
-	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
-	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
+	// isAscii      returns true for given byte `b` if b < utf8.RuneSelf
+	isAscii [256]bool
 
-	'_': true, '*': true,
+	// isUpperAscii returns true for given byte `b` if 'A' <= b && b <= 'Z'
+	isUpperAscii [256]bool
+
+	// isTextToken  returns true for given byte `b` if that byte should be parsed by tokenizer (for more information refer to initIsTextToken).
+	//
+	// 128 bytes is enough for them, but we use 256 to skip bound checks when we use isTextToken[byte(i)].
+	isTextToken [256]bool
+)
+
+func init() {
+	initUpperToLowerMap()
+	initIsAscii()
+	initIsUpperAscii()
+	initIsTextToken()
 }
 
-var upperCaseMap = [256]bool{
-	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
-	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
-	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
+func initUpperToLowerMap() {
+	for i := 0; i < 256; i++ {
+		toLowerMap[i] = byte(i)
+
+		if 'A' <= i && i <= 'Z' {
+			toLowerMap[i] += 'a' - 'A'
+		}
+	}
+}
+
+func initIsAscii() {
+	for i := 0; i < utf8.RuneSelf; i++ {
+		isAscii[i] = true
+	}
+}
+
+func initIsUpperAscii() {
+	for i := 'A'; i <= 'Z'; i++ {
+		isUpperAscii[i] = true
+	}
+}
+
+func initIsTextToken() {
+	for i := 0; i < 256; i++ {
+		// letters and digits
+		if 'a' <= i && i <= 'z' || 'A' <= i && i <= 'Z' || '0' <= i && i <= '9' {
+			isTextToken[i] = true
+		}
+
+		// other characters
+		if i == '_' || i == '*' {
+			isTextToken[i] = true
+		}
+	}
 }

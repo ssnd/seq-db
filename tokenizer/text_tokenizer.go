@@ -57,11 +57,11 @@ func (t *TextTokenizer) Tokenize(tokens []frac.MetaToken, name, value []byte, ma
 		var runeLength int
 		if c < utf8.RuneSelf {
 			runeLength = 1
-			// Fast path: c is ASCII, check it directly using allTextTokenChars.
+			// Fast path: c is ASCII, check it directly using isTextToken.
 
 			// Save information about uppercase letters to skip ToLower stage.
-			hasUpper = hasUpper || upperCaseMap[c]
-			if allTextTokenChars[c] {
+			hasUpper = hasUpper || isUpperAscii[c]
+			if isTextToken[c] {
 				i++
 				continue
 			}

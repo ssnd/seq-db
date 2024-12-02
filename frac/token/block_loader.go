@@ -138,7 +138,7 @@ func (l *BlockLoader) Load(entry *TableEntry) *Block {
 
 func (l *BlockLoader) readBinary(stats StatsCollector, blockIndex uint32) []byte {
 	t := time.Now()
-	data, n, err := l.reader.ReadIndexBlock(l.blocksReader, blockIndex)
+	data, n, err := l.reader.ReadIndexBlock(l.blocksReader, blockIndex, nil)
 	if util.IsRecoveredPanicError(err) {
 		logger.Panic("todo: handle read err", zap.Error(err))
 	}

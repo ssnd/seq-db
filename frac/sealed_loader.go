@@ -18,6 +18,7 @@ type Loader struct {
 	reader       *disk.Reader
 	blocksReader *disk.BlocksReader
 	blockIndex   uint32
+	blockBuf     []byte
 }
 
 func (l *Loader) Load(frac *Sealed) {
@@ -57,7 +58,8 @@ func (l *Loader) Load(frac *Sealed) {
 }
 
 func (l *Loader) nextIndexBlock() ([]byte, error) {
-	data, _, err := l.reader.ReadIndexBlock(l.blocksReader, l.blockIndex)
+	data, _, err := l.reader.ReadIndexBlock(l.blocksReader, l.blockIndex, l.blockBuf)
+	l.blockBuf = data
 	l.blockIndex++
 	return data, err
 }

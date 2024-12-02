@@ -200,7 +200,7 @@ func (si *SealedIDs) paramsBlockIndex(index uint32) uint32 {
 
 func (si *SealedIDs) loadMIDBlock(searchSB *SearchCell, index uint32) []byte {
 	t := time.Now()
-	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.midBlockIndex(index))
+	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.midBlockIndex(index), nil)
 	searchSB.AddReadIDTimeNS(time.Since(t))
 
 	if util.IsRecoveredPanicError(err) {
@@ -223,7 +223,7 @@ func (si *SealedIDs) loadMIDBlock(searchSB *SearchCell, index uint32) []byte {
 
 func (si *SealedIDs) loadRIDBlock(searchCell *SearchCell, index uint32) []byte {
 	t := time.Now()
-	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.ridBlockIndex(index))
+	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.ridBlockIndex(index), nil)
 	searchCell.AddReadIDTimeNS(time.Since(t))
 
 	if util.IsRecoveredPanicError(err) {
@@ -234,7 +234,7 @@ func (si *SealedIDs) loadRIDBlock(searchCell *SearchCell, index uint32) []byte {
 }
 
 func (si *SealedIDs) loadParamsBlock(index uint32) []uint64 {
-	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.paramsBlockIndex(index))
+	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.paramsBlockIndex(index), nil)
 
 	if util.IsRecoveredPanicError(err) {
 		logger.Panic("todo: handle read err", zap.Error(err))

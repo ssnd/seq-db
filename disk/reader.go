@@ -8,6 +8,7 @@ import (
 
 	"github.com/ozontech/seq-db/bytespool"
 	"github.com/ozontech/seq-db/conf"
+	"github.com/ozontech/seq-db/util"
 )
 
 type readTask struct {
@@ -108,7 +109,7 @@ func (r *Reader) GetDocBlockLen(f *os.File, offset int64) (uint64, error) {
 	return DocBlock(task.Buf).FullLen(), nil
 }
 
-func (r *Reader) ReadIndexBlock(blocksReader *BlocksReader, blockIndex uint32) (_ []byte, _ uint64, err error) {
+func (r *Reader) ReadIndexBlock(blocksReader *BlocksReader, blockIndex uint32, dst []byte) (_ []byte, _ uint64, err error) {
 	header, err := blocksReader.TryGetBlockHeader(blockIndex)
 	if err != nil {
 		return nil, 0, err
@@ -136,7 +137,7 @@ func (r *Reader) ReadIndexBlock(blocksReader *BlocksReader, blockIndex uint32) (
 		return nil, task.N, task.Err
 	}
 
-	dst := make([]byte, header.RawLen())
+	dst = util.EnsureSliceSize(dst, int(header.RawLen()))
 	dst, err = header.Codec().decompressBlock(int(header.RawLen()), task.Buf, dst)
 
 	return dst, task.N, err

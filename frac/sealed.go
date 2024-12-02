@@ -308,7 +308,7 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 }
 
 func (f *Sealed) readHeader() *Info {
-	block, _, err := f.reader.ReadIndexBlock(f.blocksReader, 0)
+	block, _, err := f.reader.ReadIndexBlock(f.blocksReader, 0, nil)
 	if err != nil {
 		logger.Panic("todo")
 	}

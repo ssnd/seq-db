@@ -36,7 +36,7 @@ func toLowerTryInplace(s []byte) []byte {
 }
 
 func toLowerUnicode(s []byte) []byte {
-	// nolint
+	// nolint:gocritic // suggested change to use bytes.ToLower is ignored because ToLower logic is rewritten
 	return bytes.Map(unicode.ToLower, s)
 }
 

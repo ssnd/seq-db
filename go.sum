@@ -229,8 +229,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/oklog/ulid/v2 v2.1.0 h1:+9lhoxAP56we25tyYETBBY1YLA2SaoLvUFgrP2miPJU=
 github.com/oklog/ulid/v2 v2.1.0/go.mod h1:rcEKHmBBKfef9DhnvX7y1HZBYxjXb0cP5ExxNsTT1QQ=
-github.com/ozontech/insane-json v0.1.6-0.20241015080158-969fb1803c66 h1:S+0GdJldCRVBWNKgNawxJuiK1x2T2FOPNk3KhrN1xhQ=
-github.com/ozontech/insane-json v0.1.6-0.20241015080158-969fb1803c66/go.mod h1:xZLf3tVLOqaT13rn1sv4fYaZfupAXNL9naLz4QRoMfY=
+github.com/ozontech/insane-json v0.1.9 h1:JG5cEsmuSDwmU7KTJTHfTJ40XMgvtPdsUQbXdbPv+bY=
+github.com/ozontech/insane-json v0.1.9/go.mod h1:xZLf3tVLOqaT13rn1sv4fYaZfupAXNL9naLz4QRoMfY=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
 github.com/pierrec/lz4/v4 v4.1.21 h1:yOVMLb6qSIDP67pl/5F7RepeKYu/VmTyEXvuMI5d9mQ=
 github.com/pierrec/lz4/v4 v4.1.21/go.mod h1:gZWDp/Ze/IJXGXf23ltt2EXimqmTUXEy0GFuRQyBid4=

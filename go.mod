@@ -18,7 +18,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/stretchr/testify v1.10.0
 	github.com/valyala/fastrand v1.1.0
-	go.opencensus.io v0.23.0
+	go.opencensus.io v0.24.0
 	go.uber.org/atomic v1.8.0
 	go.uber.org/automaxprocs v1.5.3
 	go.uber.org/multierr v1.6.0

@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
@@ -56,6 +57,7 @@ func (g *grpcV1) Fetch(req *seqproxyapi.FetchRequest, stream seqproxyapi.SeqProx
 		err := stream.Send(&seqproxyapi.Document{
 			Id:   doc.ID.String(),
 			Data: doc.Data,
+			Time: timestamppb.New(doc.ID.MID.Time()),
 		})
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to send fetched document: %v", err)

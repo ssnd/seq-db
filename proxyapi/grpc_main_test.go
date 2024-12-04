@@ -204,7 +204,11 @@ func makeSearchRespData(size int) *testSearchResp {
 		data := []byte("doc" + strconv.Itoa(i))
 		docs = append(docs, data)
 		respDocs = append(respDocs,
-			&seqproxyapi.Document{Id: id.String(), Data: data},
+			&seqproxyapi.Document{
+				Id:   id.String(),
+				Data: data,
+				Time: timestamppb.New(id.MID.Time()),
+			},
 		)
 	}
 	return &testSearchResp{
@@ -310,6 +314,7 @@ func makeExportRespData(size int) *testExportResp {
 			Doc: &seqproxyapi.Document{
 				Id:   id.String(),
 				Data: data,
+				Time: timestamppb.New(id.MID.Time()),
 			},
 		}
 	}

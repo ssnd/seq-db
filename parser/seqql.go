@@ -57,6 +57,10 @@ func ParseSeqQL(q string, mapping seq.Mapping) (SeqQLQuery, error) {
 	}, nil
 }
 
+// wildcardRune is unicode symbol from Private Use Area to represent wildcard.
+// It uses in parser to distinguish wildcard from asterisk.
+const wildcardRune = '\uE000'
+
 type lexer struct {
 	// q is query tail.
 	q string
@@ -65,8 +69,8 @@ type lexer struct {
 	Token string
 	// SpaceSkipped is true if space was skipped before current token.
 	SpaceSkipped bool
-	// tokenQuoted is true if current token is quoted.
-	tokenQuoted bool
+	// TokenQuoted is true if current token is quoted.
+	TokenQuoted bool
 	// rawString is true if current token is raw string (string quoted with `).
 	rawString bool
 }
@@ -75,7 +79,7 @@ func newLexer(q string) lexer {
 	return lexer{
 		q:            q,
 		Token:        "",
-		tokenQuoted:  false,
+		TokenQuoted:  false,
 		SpaceSkipped: false,
 		rawString:    false,
 	}
@@ -83,7 +87,7 @@ func newLexer(q string) lexer {
 
 // IsKeyword returns true if current token is keyword.
 func (lex *lexer) IsKeyword(token string) bool {
-	if lex.tokenQuoted {
+	if lex.TokenQuoted {
 		return false
 	}
 	return strings.EqualFold(lex.Token, token)
@@ -91,7 +95,7 @@ func (lex *lexer) IsKeyword(token string) bool {
 
 // IsKeywords returns true if current token is in tokens list.
 func (lex *lexer) IsKeywords(tokens ...string) bool {
-	if lex.tokenQuoted {
+	if lex.TokenQuoted {
 		return false
 	}
 	for _, t := range tokens {
@@ -104,7 +108,7 @@ func (lex *lexer) IsKeywords(tokens ...string) bool {
 
 // IsKeywordSet returns true if current token is in tokens set.
 func (lex *lexer) IsKeywordSet(tokens map[string]struct{}) bool {
-	if lex.tokenQuoted {
+	if lex.TokenQuoted {
 		return false
 	}
 	token := strings.ToLower(lex.Token)
@@ -113,17 +117,27 @@ func (lex *lexer) IsKeywordSet(tokens map[string]struct{}) bool {
 }
 
 func (lex *lexer) IsEnd() bool {
-	return lex.q == "" && lex.Token == "" && !lex.tokenQuoted
+	return lex.q == "" && lex.Token == "" && !lex.TokenQuoted
 }
 
 // IsRawString returns true if current token is raw string (string quoted with `).
 func (lex *lexer) IsRawString() bool {
-	return lex.rawString && lex.tokenQuoted
+	return lex.rawString && lex.TokenQuoted
 }
 
+// Next moves lexer to next token.
+// It skips spaces and comments (lines that starts with #).
+//
+// Token is sequence of letters, numbers, '_' and '.', other symbols are different tokens if it is not quoted.
+// Token can be empty in case of quoted token or end of query.
+//
+// TokenQuoted is true if current token is quoted with ', " or `.
+// Field rawString is true if current token is quoted with `. Escape sequences in raw strings are ignored.
+//
+// SpaceSkipped is true if space was skipped before current token.
 func (lex *lexer) Next() {
 	lex.Token = ""
-	lex.tokenQuoted = false
+	lex.TokenQuoted = false
 	lex.SpaceSkipped = false
 	lex.rawString = false
 
@@ -164,6 +178,12 @@ again:
 		return
 	}
 
+	if r == '*' {
+		lex.Token = string(wildcardRune)
+		lex.q = lex.q[size:]
+		return
+	}
+
 	switch r {
 	case '\'', '"':
 		out, rem, err := unquotePrefix(lex.q)
@@ -173,7 +193,7 @@ again:
 		}
 		lex.Token = out
 		lex.q = rem
-		lex.tokenQuoted = true
+		lex.TokenQuoted = true
 		return
 	case '`':
 		quotedPrefix, err := strconv.QuotedPrefix(lex.q)
@@ -184,7 +204,7 @@ again:
 		token := quotedPrefix[1 : len(quotedPrefix)-1]
 		lex.Token = token
 		lex.q = lex.q[len(quotedPrefix):]
-		lex.tokenQuoted = true
+		lex.TokenQuoted = true
 		lex.rawString = true
 		return
 	default:
@@ -216,7 +236,7 @@ func unquotePrefix(q string) (out, rem string, _ error) {
 	}
 	end++
 
-	if strings.IndexByte(q[1:end], '\\') == -1 && strings.IndexByte(q[1:end], '\n') == -1 {
+	if !needUnquote(q[1:end]) {
 		// No need to escape special characters.
 		return q[1:end], q[end+1:], nil
 	}
@@ -226,7 +246,7 @@ func unquotePrefix(q string) (out, rem string, _ error) {
 	b := make([]byte, 0, len(prefix))
 	remIdx := 1
 	for prefix != "" && prefix[0] != quote {
-		ch, _, newTail, err := strconv.UnquoteChar(prefix, quote)
+		ch, newTail, err := unquoteChar(prefix, quote)
 		if err != nil {
 			// Skip invalid escaped characters.
 			b = append(b, '\\')
@@ -248,6 +268,29 @@ func unquotePrefix(q string) (out, rem string, _ error) {
 	return string(b), q[remIdx:], nil
 }
 
+// needUnquote returns true if q contains special characters that need to be unquoted.
+// For example,
+//
+//	"payment-api" -> false
+//	"pay*ment-api" -> true
+//	"pay\\*ment-api" -> true
+//	"\t" -> true
+func needUnquote(q string) bool {
+	return strings.IndexByte(q, '\\') != -1 || strings.IndexByte(q, '*') != -1
+}
+
+// unquoteChar is like strconv.UnquoteChar but also supports wildcard character.
+func unquoteChar(s string, quote byte) (value rune, tail string, err error) {
+	if strings.HasPrefix(s, `\*`) {
+		return '*', s[2:], nil
+	}
+	if strings.HasPrefix(s, "*") {
+		return wildcardRune, s[1:], nil
+	}
+	ch, _, newTail, err := strconv.UnquoteChar(s, quote)
+	return ch, newTail, err
+}
+
 func (lex *lexer) nextToken(size int) {
 	lex.Token = lex.q[:size]
 	lex.q = lex.q[size:]
@@ -255,11 +298,13 @@ func (lex *lexer) nextToken(size int) {
 
 // parseSeqQLFilter parses SeqQL full text search filters like `service:payment-api and level:"info"` and returns AST node.
 func parseSeqQLFilter(lex *lexer, mapping seq.Mapping, depth int) (*ASTNode, error) {
-	leftHigh, err := parseSeqQLSubexpr(lex, mapping, depth) // left operand of AND, of high priority
+	var res *ASTNode
+
+	cur, err := parseSeqQLSubexpr(lex, mapping, depth)
 	if err != nil {
 		return nil, err
 	}
-	var leftLow *ASTNode // left operand of OR, of low priority
+
 	for {
 		var opKind logicalKind
 		switch {
@@ -269,35 +314,33 @@ func parseSeqQLFilter(lex *lexer, mapping seq.Mapping, depth int) (*ASTNode, err
 			opKind = LogicalOr
 		default:
 			if lex.IsEnd() || lex.IsKeyword(")") && depth > 0 || lex.IsKeyword("|") {
-				if leftLow != nil && leftHigh != nil {
-					return newLogicalNode(LogicalOr, leftLow, leftHigh), nil
-				}
-				return leftHigh, nil
+				return joinOr(res, cur), nil
 			}
 			return nil, fmt.Errorf("expected 'and', 'or', 'not', got: %q", lex.Token)
 		}
+
 		lex.Next()
-		right, err := parseSeqQLSubexpr(lex, mapping, depth)
+		next, err := parseSeqQLSubexpr(lex, mapping, depth)
 		if err != nil {
 			return nil, err
 		}
+
 		if opKind == LogicalAnd {
-			// leftLow OR leftHigh AND right = leftLow OR (leftHigh AND right)
-			// no need to touch leftLow
-			leftHigh = newLogicalNode(LogicalAnd, leftHigh, right)
-		} else {
-			if leftLow == nil {
-				// leftHigh can no longer be amended with `AND`
-				leftLow = leftHigh
-			} else {
-				// leftLow OR leftHigh OR right = (leftLow OR leftHigh) OR right
-				// just fold
-				leftLow = newLogicalNode(LogicalOr, leftLow, leftHigh)
-			}
-			// it can always be followed by `AND`
-			leftHigh = right
+			cur = newLogicalNode(LogicalAnd, cur, next)
+			continue
 		}
+
+		res = joinOr(res, cur)
+		cur = next
 	}
+
+}
+
+func joinOr(left, right *ASTNode) *ASTNode {
+	if left == nil {
+		return right
+	}
+	return newLogicalNode(LogicalOr, left, right)
 }
 
 func parseSeqQLSubexpr(lex *lexer, mapping seq.Mapping, depth int) (*ASTNode, error) {
@@ -305,7 +348,7 @@ func parseSeqQLSubexpr(lex *lexer, mapping seq.Mapping, depth int) (*ASTNode, er
 		return nil, fmt.Errorf("unexpected end of query")
 	}
 
-	if lex.IsKeyword("*") && depth == 0 {
+	if lex.IsKeyword(string(wildcardRune)) && depth == 0 {
 		lex.Next()
 		// Query is `*`.
 		return &ASTNode{

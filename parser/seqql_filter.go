@@ -12,20 +12,15 @@ import (
 	"github.com/ozontech/seq-db/seq"
 )
 
-var filterStopTokens = uniqueTokens([]string{"'", `"`, ":", "{", "}", "|", "*", "and", "or"})
-
 func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
-	if lex.IsKeywordSet(filterStopTokens) || lex.IsKeywordSet(rangeStopTokens) {
-		return nil, fmt.Errorf("expected field name, got %q", lex.Token)
-	}
-
-	fieldName, err := parseCompositeToken(lex, false)
+	fieldName, err := parseCompositeTokenReplaceWildcards(lex)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing field name: %s", err)
 	}
 	if fieldName == "" {
 		return nil, fmt.Errorf("empty field name")
 	}
+
 	t := indexType(mapping, fieldName)
 	if t == seq.TokenizerTypeNoop {
 		return nil, fmt.Errorf("field %q is not indexed", fieldName)
@@ -54,14 +49,10 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 		return []Token{r}, nil
 	}
 
-	if lex.IsKeywordSet(termStopTokens) {
-		return nil, fmt.Errorf("expected filter value for field %q, got %s", fieldName, lex.Token)
-	}
-
 	// Parse fulltext search filter.
-	value, err := parseCompositeToken(lex, true)
+	value, err := parseCompositeToken(lex)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing filter value for field %q: %s", fieldName, err)
 	}
 	switch t {
 	case seq.TokenizerTypeKeyword, seq.TokenizerTypePath:
@@ -87,16 +78,35 @@ var bytesBufferPool = sync.Pool{
 	},
 }
 
-var termStopTokens = uniqueTokens([]string{"", "[", "]", "(", ")", "'", `"`, ":", "{", "}", "|", "and", "or", ","})
-
-func parseCompositeToken(lex *lexer, quoteAsterisks bool) (string, error) {
-	if lex.IsKeywordSet(termStopTokens) {
-		return "", fmt.Errorf("unexpected token %q", lex.Token)
+// parseCompositeToken parses composite token.
+//
+// Composite token is a continuous sequence of letters, numbers, '_', '*', '-', and wildcards,
+// that continuous until the end of the query or next token is space.
+//
+// Token may be quoted, but the lexer returns unquoted tokens,
+// so query: "foo: 'foo bar'_'buz'" is correct. See lexer.Next for details.
+//
+// For example, list of composite tokens:
+//
+//	"foo", "foo-bar", "foo_bar", "foo_bar-and", "foo*bar", "`foo bar``buz`"
+//
+// List of non-composite tokens:
+//
+//	"foo bar", "$foo", "foo$", "f$$", "@gmail.com".
+func parseCompositeToken(lex *lexer) (string, error) {
+	if lex.IsKeyword("") {
+		return "", fmt.Errorf("unexpected end of query")
 	}
-	firstToken := quoteAsterisksIfNeeded(lex, quoteAsterisks)
+	if !isCompositeToken(lex) {
+		// Disallow unquoted tokens that starts with non-letter and non-number symbols.
+		return "", fmt.Errorf("unexpected symbol %q", lex.Token)
+	}
+
+	firstToken := lex.Token
 	lex.Next()
-	if lex.SpaceSkipped || lex.IsKeywordSet(termStopTokens) {
-		// Avoid allocations.
+	if lex.SpaceSkipped || !isCompositeToken(lex) {
+		// Token is single word and not composite.
+		// Return it as is.
 		return firstToken, nil
 	}
 
@@ -104,47 +114,62 @@ func parseCompositeToken(lex *lexer, quoteAsterisks bool) (string, error) {
 	defer bytesBufferPool.Put(b)
 	b.Reset()
 
+	// Join tokens to single composite token.
 	b.WriteString(firstToken)
-	for ; (!lex.SpaceSkipped) && !lex.IsKeywordSet(termStopTokens); lex.Next() {
-		token := quoteAsterisksIfNeeded(lex, quoteAsterisks)
-		b.WriteString(token)
+	for ; !lex.SpaceSkipped && isCompositeToken(lex); lex.Next() {
+		b.WriteString(lex.Token)
 	}
 	return b.String(), nil
 }
 
-func quoteAsterisksIfNeeded(lex *lexer, quoteAsterisks bool) string {
-	token := lex.Token
-	if quoteAsterisks && lex.IsRawString() {
-		// Quote asterisks in raw strings.
-		token = strings.ReplaceAll(token, `*`, `\*`)
+func isCompositeToken(lex *lexer) bool {
+	if lex.IsKeyword("") {
+		// End of query.
+		return false
 	}
-	return token
+	if lex.Token == "" {
+		// Empty token.
+		return true
+	}
+
+	r, size := utf8.DecodeRuneInString(lex.Token)
+
+	hasMoreSymbols := len(lex.Token[size:]) > 1
+	if hasMoreSymbols || lex.TokenQuoted {
+		// Quoted tokens and tokens with more than one character are part of composite token.
+		return true
+	}
+
+	return isTokenRune(r) || r == '-' || r == '*' || r == wildcardRune
+}
+
+func parseCompositeTokenReplaceWildcards(lex *lexer) (string, error) {
+	s, err := parseCompositeToken(lex)
+	if err != nil {
+		return "", err
+	}
+	return strings.ReplaceAll(s, string(wildcardRune), "*"), nil
 }
 
 func parseSeqQLKeyword(token string, caseSensitive bool) ([]Term, error) {
 	if token == "" {
 		return []Term{newTextTerm("")}, nil
 	}
-	var terms []Term
 
 	b := bytesBufferPool.Get().(*bytes.Buffer)
 	defer bytesBufferPool.Put(b)
 	b.Reset()
 
+	var terms []Term
 	for token != "" {
 		r, size := utf8.DecodeRuneInString(token)
-		if r == '*' {
+		if r == wildcardRune {
 			if data := b.String(); data != "" {
 				terms = append(terms, newCasedTextTerm(data, caseSensitive))
 			}
 			b.Reset()
 			terms = append(terms, newSymbolTerm('*'))
-			token = token[1:]
-			continue
-		}
-		if strings.HasPrefix(token, "\\*") {
-			b.WriteByte('*')
-			token = token[2:]
+			token = token[size:]
 			continue
 		}
 		b.WriteRune(r)
@@ -167,15 +192,9 @@ func parseSeqQLText(field, token string, sensitive bool) ([]Token, error) {
 	term := Term{Kind: TermText}
 	for token != "" {
 		r, size := utf8.DecodeRuneInString(token)
-		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' || r == '*' {
 			term.Data += string(r)
 			token = token[size:]
-			continue
-		}
-		// Unescape wildcard.
-		if strings.HasPrefix(token, "\\*") {
-			term.Data += "*"
-			token = token[2:]
 			continue
 		}
 
@@ -184,9 +203,10 @@ func parseSeqQLText(field, token string, sensitive bool) ([]Token, error) {
 			current.appendCasedTerm(term, sensitive)
 			term = Term{Kind: TermText}
 		}
-		if r == '*' {
+
+		if r == wildcardRune {
 			current.Terms = append(current.Terms, newSymbolTerm('*'))
-			token = token[1:]
+			token = token[size:]
 			continue
 		}
 
@@ -201,12 +221,10 @@ func parseSeqQLText(field, token string, sensitive bool) ([]Token, error) {
 	}
 	if term.Data != "" {
 		current.appendCasedTerm(term, sensitive)
-		term = Term{Kind: TermText}
 	}
 
 	if current != nil && len(current.Terms) > 0 {
 		tokens = append(tokens, current)
-		current = nil
 	}
 
 	if len(tokens) == 0 {

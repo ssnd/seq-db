@@ -7,6 +7,9 @@ keywords separated by spaces. The behavior depends on the index type; more detai
 the [index types](docs/index.md) documentation. When performing a full-text search, the system automatically selects
 results that match the specified text.
 
+Search queries is case-insensitive by default.
+To change this behavior, use the `--case-sensitive` flag, but it affects only new documents.
+
 ## Logical Operators
 
 SeqQL supports logical operators for more precise search filtering. The operators `and`, `or`, and `not` allow combining
@@ -172,7 +175,7 @@ the required number of records, saving resources.
 Example using `limit` to avoid processing all available data:
 
 ```plaintext
-source_type:access* | where status="200" | limit 100
+source_type:access* | where status:200 | limit 100
 ```
 
 This query returns only the first 100 records that meet the conditions, reducing query processing time.

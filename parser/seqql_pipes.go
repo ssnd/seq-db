@@ -68,10 +68,11 @@ func parsePipeFields(lex *lexer) (*PipeFields, error) {
 	lex.Next()
 	var fields []string
 	for !lex.IsKeywords("|", "") {
-		if lex.IsKeywordSet(filterStopTokens) {
-			return nil, fmt.Errorf("unexpected '%s'", lex.Token)
+		field, err := parseCompositeTokenReplaceWildcards(lex)
+		if err != nil {
+			return nil, err
 		}
-		fields = append(fields, lex.Token)
+		fields = append(fields, field)
 		lex.Next()
 		if lex.IsKeyword(",") {
 			lex.Next()
@@ -109,11 +110,11 @@ func parsePipeDelete(lex *lexer) (*PipeDelete, error) {
 	lex.Next()
 	var fields []string
 	for !lex.IsKeywords("|", "") {
-		if lex.IsKeywordSet(filterStopTokens) {
-			return nil, fmt.Errorf("unexpected '%s'", lex.Token)
+		field, err := parseCompositeTokenReplaceWildcards(lex)
+		if err != nil {
+			return nil, err
 		}
-		fields = append(fields, lex.Token)
-		lex.Next()
+		fields = append(fields, field)
 		if lex.IsKeyword(",") {
 			lex.Next()
 		}
@@ -154,7 +155,14 @@ func quoteTokenIfNeeded(token string) string {
 	if !needQuoteToken(token) {
 		return token
 	}
-	return strconv.Quote(token)
+	return quote(token)
+}
+
+// quote returns string with escaped special characters.
+func quote(s string) string {
+	s = strconv.Quote(s)
+	s = strings.ReplaceAll(s, "*", `\*`)
+	return s
 }
 
 var reservedKeywords = uniqueTokens([]string{
@@ -172,7 +180,7 @@ var reservedKeywords = uniqueTokens([]string{
 	"and",
 	"not",
 
-	// Wildcards.
+	// Wildcard.
 	"*",
 
 	// Field delimiter.
@@ -187,7 +195,7 @@ func needQuoteToken(s string) bool {
 		return true
 	}
 	for _, r := range s {
-		if !isTokenRune(r) {
+		if !isTokenRune(r) && r != '-' {
 			return true
 		}
 	}

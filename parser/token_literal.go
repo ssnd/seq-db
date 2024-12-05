@@ -87,14 +87,6 @@ func (t Term) DumpSeqQL(b *strings.Builder) {
 		b.WriteString("*")
 		return
 	}
-	// todo: handle one character symbols.
-	if t.Kind == TermText && t.Data == "-" {
-		b.WriteString("-")
-		return
-	}
-	if t.Kind == TermText {
-		t.Data = strings.ReplaceAll(t.Data, "*", "\\*")
-	}
 	b.WriteString(quoteTokenIfNeeded(t.Data))
 }
 

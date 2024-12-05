@@ -39,17 +39,17 @@ func (n *Range) DumpSeqQL(b *strings.Builder) {
 	} else {
 		b.WriteByte('(')
 	}
+
 	n.From.DumpSeqQL(b)
 	b.WriteString(", ")
 	n.To.DumpSeqQL(b)
+
 	if n.IncludeTo {
 		b.WriteByte(']')
 	} else {
 		b.WriteByte(')')
 	}
 }
-
-var rangeStopTokens = uniqueTokens([]string{"[", "]", "(", ")", "'", `"`, ":", "{", "}", "|", "and", "or", `\`})
 
 func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, error) {
 	r := &Range{Field: field}
@@ -60,9 +60,6 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 	r.IncludeFrom = lex.Token == "["
 
 	lex.Next()
-	if lex.IsKeywordSet(rangeStopTokens) {
-		return r, fmt.Errorf("unexpected token %q", lex.Token)
-	}
 	if err := parseRangeTerm(&r.From, lex, sensitive); err != nil {
 		return r, err
 	}
@@ -72,9 +69,6 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 	}
 
 	lex.Next()
-	if lex.IsKeywordSet(rangeStopTokens) {
-		return r, fmt.Errorf("unexpected token %q", lex.Token)
-	}
 	if err := parseRangeTerm(&r.To, lex, sensitive); err != nil {
 		return r, err
 	}
@@ -89,7 +83,7 @@ func parseSeqQLTokenRange(field string, lex *lexer, sensitive bool) (*Range, err
 
 func parseRangeTerm(term *Term, lex *lexer, sensitive bool) error {
 	term.Kind = TermText
-	value, err := parseCompositeToken(lex, true)
+	value, err := parseCompositeToken(lex)
 	if err != nil {
 		return err
 	}

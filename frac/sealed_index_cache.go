@@ -7,12 +7,13 @@ import (
 )
 
 type SealedIndexCache struct {
-	Registry *cache.Cache[[]byte]
-	MIDs     *cache.Cache[[]byte]
-	RIDs     *cache.Cache[[]byte]
-	Params   *cache.Cache[[]uint64]
-	Tokens   *cache.Cache[*token.CacheEntry]
-	LIDs     *cache.Cache[*lids.Chunks]
+	Registry   *cache.Cache[[]byte]
+	MIDs       *cache.Cache[[]byte]
+	RIDs       *cache.Cache[[]byte]
+	Params     *cache.Cache[[]uint64]
+	Tokens     *cache.Cache[*token.CacheEntry]
+	TokenTable *cache.Cache[token.Table]
+	LIDs       *cache.Cache[*lids.Chunks]
 }
 
 func (s *SealedIndexCache) Release() {
@@ -22,4 +23,5 @@ func (s *SealedIndexCache) Release() {
 	s.Params.Release()
 	s.Registry.Release()
 	s.Tokens.Release()
+	s.TokenTable.Release()
 }

@@ -9,7 +9,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/mock v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.2
-	github.com/klauspost/compress v1.17.10
+	github.com/klauspost/compress v1.17.11
 	github.com/mailru/easyjson v0.7.7
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/ozontech/insane-json v0.1.9

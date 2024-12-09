@@ -13,6 +13,8 @@ type Stats struct {
 	tokenCount int
 	tokenSize  int
 
+	uniqTokenValuesCount int
+
 	uniqTokenCountSum int
 	uniqTokenSizeSum  int
 
@@ -25,6 +27,7 @@ type Stats struct {
 
 func newStats(
 	tokensUniq map[string]map[string]int,
+	tokensValuesUniq map[string]int,
 	tokens [][]byte,
 	docsCount, lidsUniqCount, lidsTotalCount int,
 ) Stats {
@@ -54,6 +57,8 @@ func newStats(
 		tokenCount: len(tokens),
 		tokenSize:  tokenSize,
 
+		uniqTokenValuesCount: len(tokensValuesUniq),
+
 		uniqTokenCountSum: uniqTokenCount,
 		uniqTokenSizeSum:  uniqTokenSize,
 
@@ -74,8 +79,8 @@ func printTokensStat(stats []Stats) {
 	tokensCountSum := 0
 
 	fmt.Printf(
-		"%2s,%7s,%9s,%7s,%16s,%16s,%16s,%16s,%16s,%17s\n",
-		"N", "docs", "docsSum", "fields", "tokens", "tokensSum", "uniqTokensSum", "tokenSize", "tokenSizeSum", "uniqTokenSizeSum",
+		"%2s,%7s,%9s,%7s,%16s,%16s,%16s,%16s,%16s,%17s,%17s\n",
+		"N", "docs", "docsSum", "fields", "tokens", "tokensSum", "uniqTokensSum", "tokenSize", "tokenSizeSum", "uniqTokenSizeSum", "uniqTokenValues",
 	)
 
 	for i, s := range stats {
@@ -83,7 +88,7 @@ func printTokensStat(stats []Stats) {
 		tokensSizeSum += s.tokenSize
 		tokensCountSum += s.tokenCount
 
-		fmt.Printf("%2d,%7d,%9d,%7d,%16d,%16d,%16d,%16d,%16d,%17d\n",
+		fmt.Printf("%2d,%7d,%9d,%7d,%16d,%16d,%16d,%16d,%16d,%17d,%17d\n",
 			i+1,
 
 			s.docsCount,
@@ -98,6 +103,7 @@ func printTokensStat(stats []Stats) {
 			s.tokenSize,
 			tokensSizeSum,
 			s.uniqTokenSizeSum,
+			s.uniqTokenValuesCount,
 		)
 	}
 }

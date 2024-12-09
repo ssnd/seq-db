@@ -33,11 +33,12 @@ func main() {
 	defer reader.Stop()
 
 	mergedTokensUniq := map[string]map[string]int{}
+	mergedTokensValuesUniq := map[string]int{}
 
 	stats := []Stats{}
 	for _, path := range os.Args[1:] {
 		fmt.Println(path)
-		stats = append(stats, analyzeIndex(path, cm, reader, mergedTokensUniq))
+		stats = append(stats, analyzeIndex(path, cm, reader, mergedTokensUniq, mergedTokensValuesUniq))
 	}
 
 	fmt.Println("\nUniq Tokens Stats")
@@ -68,6 +69,7 @@ func analyzeIndex(
 	cm *fracmanager.CacheMaintainer,
 	reader *disk.Reader,
 	mergedTokensUniq map[string]map[string]int,
+	allTokensValuesUniq map[string]int,
 ) Stats {
 	var blockIndex uint32
 	cache := cm.CreateSealedIndexCache()
@@ -151,8 +153,8 @@ func analyzeIndex(
 		lidsUniqCnt += l
 	}
 
-	mergeAllTokens(mergedTokensUniq, tokenTable, tokens, lidsLens)
-	return newStats(mergedTokensUniq, tokens, docsCount, lidsUniqCnt, lidsTotal)
+	mergeAllTokens(mergedTokensUniq, allTokensValuesUniq, tokenTable, tokens, lidsLens)
+	return newStats(mergedTokensUniq, allTokensValuesUniq, tokens, docsCount, lidsUniqCnt, lidsTotal)
 }
 
 func getLIDsHash(lids []uint32) [16]byte {
@@ -167,7 +169,7 @@ func getLIDsHash(lids []uint32) [16]byte {
 	return res
 }
 
-func mergeAllTokens(allTokensUniq map[string]map[string]int, tokensTable token.Table, tokens [][]byte, lidsLens []int) {
+func mergeAllTokens(allTokensUniq map[string]map[string]int, allTokensValuesUniq map[string]int, tokensTable token.Table, tokens [][]byte, lidsLens []int) {
 	for k, v := range tokensTable {
 		fieldsTokens, ok := allTokensUniq[k]
 		if !ok {
@@ -177,6 +179,7 @@ func mergeAllTokens(allTokensUniq map[string]map[string]int, tokensTable token.T
 		for _, e := range v.Entries {
 			for tid := e.StartTID; tid < e.StartTID+e.ValCount; tid++ {
 				fieldsTokens[string(tokens[tid-1])] += lidsLens[tid-1]
+				allTokensValuesUniq[string(tokens[tid-1])]++
 			}
 		}
 	}

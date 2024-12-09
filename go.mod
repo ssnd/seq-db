@@ -21,7 +21,7 @@ require (
 	go.opencensus.io v0.24.0
 	go.uber.org/atomic v1.8.0
 	go.uber.org/automaxprocs v1.5.3
-	go.uber.org/multierr v1.6.0
+	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.18.1
 	google.golang.org/genproto/googleapis/api v0.0.0-20240624140628-dc46fd24d27d
 	google.golang.org/grpc v1.64.0

@@ -220,20 +220,14 @@ func (w *IndexWorkers) appendWorker(index int) {
 
 func (w *IndexWorkers) sendTokensToMergeWorkers(frac *Active, tokens []*TokenLIDs) {
 	for _, tl := range tokens {
-		status := false
-
 		task := MergeTask{
 			frac:      frac,
 			tokenLIDs: tl,
 		}
-
 		select {
 		case w.chMerge <- &task:
-			status = true
 		default: // skip background merge if workers are busy
 		}
-
-		logger.Debug("send LIDs merge task", zap.Bool("ok", status), zap.String("token", tl.token))
 	}
 }
 

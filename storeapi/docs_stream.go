@@ -84,13 +84,11 @@ func (d *docsStream) batchLoader() {
 }
 
 func (d *docsStream) send(b streamDocsBatch) bool {
-	for {
-		select {
-		case <-d.ctx.Done():
-			return false
-		case d.out <- b:
-			return true
-		}
+	select {
+	case <-d.ctx.Done():
+		return false
+	case d.out <- b:
+		return true
 	}
 }
 

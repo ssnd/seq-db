@@ -27,9 +27,6 @@ type TokenLIDs struct {
 
 	queueMu sync.Mutex
 	queue   []uint32
-
-	tid   uint32
-	token string
 }
 
 func (tl *TokenLIDs) GetLIDs(mids, rids *UInt64s) []uint32 {

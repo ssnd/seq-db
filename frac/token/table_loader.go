@@ -8,6 +8,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const CacheKeyTable = 1
+
 type TableLoader struct {
 	fracName string
 	cache    *cache.Cache[Table]
@@ -27,7 +29,7 @@ func NewTableLoader(fracName string, reader *disk.Reader, br *disk.BlocksReader,
 }
 
 func (l *TableLoader) Load() Table {
-	table, err := l.cache.GetWithError(1, l.load)
+	table, err := l.cache.GetWithError(CacheKeyTable, l.load)
 	if err != nil {
 		logger.Fatal("load token table error",
 			zap.String("frac", l.fracName),
@@ -61,7 +63,7 @@ func (l *TableLoader) load() (Table, int, error) {
 	tokenTable := make(map[string]*FieldData)
 	for block, err := l.readBlock(); len(block) > 0; block, err = l.readBlock() {
 		if err != nil {
-			return tokenTable, 0, err
+			return nil, 0, err
 		}
 
 		unpacker := packer.NewBytesUnpacker(block)

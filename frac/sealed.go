@@ -284,8 +284,11 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 			BaseFileName:  active.BaseFileName,
 		},
 	}
+
 	// put the token table built during sealing into the cache of the sealed faction
-	sealedIndexCache.TokenTable.Get(1, func() (token.Table, int) { return active.tokenTable, active.tokenTable.Size() })
+	sealedIndexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
+		return active.tokenTable, active.tokenTable.Size()
+	})
 
 	f.ids.Reader = reader
 	f.ids.BlocksReader = blocksReader

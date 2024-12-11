@@ -8,9 +8,7 @@ import (
 
 	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/frac/lids"
-	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/logger"
-	"github.com/ozontech/seq-db/packer"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
 )
@@ -32,13 +30,9 @@ func (l *Loader) Load(frac *Sealed) {
 	l.blocksReader = l.frac.blocksReader
 	l.blockIndex = 1 // skipping info block that's already read
 
-	tokenTable, err := l.loadTokenList()
-	if err != nil {
-		logger.Fatal("load token list error", zap.Error(err))
-	}
-	frac.tokenTable = tokenTable
+	l.skipTokens()
 
-	err = l.loadIDs()
+	err := l.loadIDs()
 	if err != nil {
 		logger.Fatal("load ids error", zap.Error(err))
 	}
@@ -127,44 +121,22 @@ func (l *Loader) loadIDs() error {
 	return nil
 }
 
-func (l *Loader) loadTokenList() (token.Table, error) {
+func (l *Loader) skipTokens() {
 	for {
-		// skip actual token blocks, go for token table
+		// skip actual token blocks
 		header := l.skipBlock()
 		if header.Len() == 0 {
 			break
 		}
 	}
 
-	tokenTable := make(token.Table)
-	for task := l.processReadTask(); len(task.Buf) > 0; task = l.processReadTask() {
-		if task.Err != nil {
-			return nil, task.Err
-		}
-
-		unpacker := packer.NewBytesUnpacker(task.Buf)
-		for unpacker.Len() > 0 {
-			fieldName := string(unpacker.GetBinary())
-			field := token.FieldData{Entries: make([]*token.TableEntry, unpacker.GetUint32())}
-			entries := make([]token.TableEntry, len(field.Entries))
-			for i := range field.Entries {
-				e := &entries[i]
-				e.StartTID = unpacker.GetUint32()
-				e.ValCount = unpacker.GetUint32()
-				e.StartIndex = unpacker.GetUint32() // todo: it seems we can calculate this field using valCount but not store startIndex on disk
-				e.BlockIndex = unpacker.GetUint32()
-				minVal := unpacker.GetBinary()
-				if i == 0 {
-					field.MinVal = string(minVal)
-				}
-				e.MaxVal = string(unpacker.GetBinary())
-				field.Entries[i] = e
-			}
-			tokenTable[fieldName] = &field
+	for {
+		// skip token table
+		header := l.skipBlock()
+		if header.Len() == 0 {
+			break
 		}
 	}
-
-	return tokenTable, nil
 }
 
 func (l *Loader) loadLIDsBlocksTable() (*lids.Table, error) {

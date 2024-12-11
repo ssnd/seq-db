@@ -83,9 +83,11 @@ func (p *SealedIDsProvider) LessOrEqual(lid seq.LID, id seq.ID) bool {
 
 type SealedDataProvider struct {
 	*Sealed
-	sc          *SearchCell
-	tracer      *tracer.Tracer
-	fracVersion BinaryDataVersion
+	sc               *SearchCell
+	tracer           *tracer.Tracer
+	fracVersion      BinaryDataVersion
+	tokenBlockLoader *token.BlockLoader
+	tokenTableLoader *token.TableLoader
 }
 
 func (dp *SealedDataProvider) Tracer() *tracer.Tracer {
@@ -102,8 +104,63 @@ func (dp *SealedDataProvider) IDsProvider(midCache, ridCache *UnpackCache) IDsPr
 	}
 }
 
+func (dp *SealedDataProvider) GetValByTID(tid uint32) []byte {
+	tokenTable := dp.tokenTableLoader.Load()
+	if entry := tokenTable.GetEntryByTID(tid); entry != nil {
+		return dp.tokenBlockLoader.Load(entry).GetValByTID(tid)
+	}
+	return nil
+}
+
 func (dp *SealedDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) ([]uint32, error) {
-	return dp.Sealed.GetTIDsByTokenExpr(dp.sc, t, tids, dp.tracer)
+	field := parser.GetField(t)
+	searchStr := parser.GetHint(t)
+
+	tokenTable := dp.tokenTableLoader.Load()
+	entries := tokenTable.SelectEntries(field, searchStr)
+	if len(entries) == 0 {
+		return tids, nil
+	}
+
+	fetcher := token.NewFetcher(dp.tokenBlockLoader, entries)
+	searcher := pattern.NewSearcher(t, fetcher, fetcher.GetTokensCount())
+
+	begin := searcher.Begin()
+	end := searcher.End()
+	if begin > end {
+		return tids, nil
+	}
+
+	blockIndex := fetcher.GetBlockIndex(begin)
+	lastTID := fetcher.GetTIDFromIndex(end)
+
+	entry := entries[blockIndex]
+	tokensBlock := dp.tokenBlockLoader.Load(entry)
+	entryLastTID := entry.GetLastTID()
+
+	for tid := fetcher.GetTIDFromIndex(begin); tid <= lastTID; tid++ {
+		if tid > entryLastTID {
+			if dp.sc.Exit.Load() {
+				return nil, consts.ErrUnexpectedInterruption
+			}
+			if dp.sc.IsCancelled() {
+				err := fmt.Errorf("search cancelled when matching tokens: reason=%s field=%s, query=%s", dp.sc.Context.Err(), field, searchStr)
+				dp.sc.Cancel(err)
+				return nil, err
+			}
+			blockIndex++
+			entry = entries[blockIndex]
+			tokensBlock = dp.tokenBlockLoader.Load(entry)
+			entryLastTID = entry.GetLastTID()
+		}
+
+		val := tokensBlock.GetValByTID(tid)
+		if searcher.Check(val) {
+			tids = append(tids, tid)
+		}
+	}
+
+	return tids, nil
 }
 
 func (dp *SealedDataProvider) GetLIDsFromTIDs(tids []uint32, stats lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node {
@@ -151,9 +208,8 @@ type Sealed struct {
 
 	blocksReader *disk.BlocksReader
 
-	tokenTable token.Table
-	lidsTable  *lids.Table
-	ids        *SealedIDs
+	lidsTable *lids.Table
+	ids       *SealedIDs
 
 	lastFetchTime atomic.Int64
 
@@ -214,7 +270,6 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 		// the data of these three fields will actually be read from disk again in the future on the first
 		// attempt to search in fraction (see method Sealed.loadAndRLock())
 		// TODO: we need to either remove this data preparation in active fraction sealing or avoid re-reading the data from disk
-		tokenTable:   active.tokenTable,
 		lidsTable:    active.lidsTable,
 		ids:          active.sealedIDs,
 		blocksReader: blocksReader,
@@ -229,6 +284,11 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 			BaseFileName:  active.BaseFileName,
 		},
 	}
+
+	// put the token table built during sealing into the cache of the sealed faction
+	sealedIndexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
+		return active.tokenTable, active.tokenTable.Size()
+	})
 
 	f.ids.Reader = reader
 	f.ids.BlocksReader = blocksReader
@@ -285,90 +345,22 @@ func (f *Sealed) Type() string {
 }
 
 func (f *Sealed) loadAndRLock() {
-	// todo: replace this shitty algorithm
-	for {
-		f.loadMu.RLock()
-		if f.isLoaded {
-			return
-		}
+	f.loadMu.RLock()
+	if !f.isLoaded {
 		f.loadMu.RUnlock()
-
-		func() {
-			f.loadMu.Lock()
-			defer f.loadMu.Unlock()
-			if !f.isLoaded {
-				(&Loader{}).Load(f)
-				f.isLoaded = true
-			}
-		}()
+		f.load()
+		f.loadMu.RLock()
 	}
 }
 
-func (f *Sealed) loadRUnlock() {
-	f.loadMu.RUnlock()
-}
+func (f *Sealed) load() {
+	f.loadMu.Lock()
+	defer f.loadMu.Unlock()
 
-func (f *Sealed) GetTokenBlockLoader(stats *SearchCell) *token.BlockLoader {
-	return token.NewBlockLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.Tokens, stats)
-}
-
-func (f *Sealed) GetValByTID(tid uint32) []byte {
-	if entry := f.tokenTable.GetEntryByTID(tid); entry != nil {
-		loader := f.GetTokenBlockLoader(nil)
-		return loader.Load(entry).GetValByTID(tid)
+	if !f.isLoaded {
+		(&Loader{}).Load(f)
+		f.isLoaded = true
 	}
-	return nil
-}
-
-func (f *Sealed) GetTIDsByTokenExpr(searchSB *SearchCell, t parser.Token, tids []uint32, _ *tracer.Tracer) ([]uint32, error) {
-	field := parser.GetField(t)
-	searchStr := parser.GetHint(t)
-
-	entries := f.tokenTable.SelectEntries(field, searchStr)
-	if len(entries) == 0 {
-		return tids, nil
-	}
-
-	loader := f.GetTokenBlockLoader(searchSB)
-	fetcher := token.NewFetcher(loader, entries)
-	searcher := pattern.NewSearcher(t, fetcher, fetcher.GetTokensCount())
-
-	begin := searcher.Begin()
-	end := searcher.End()
-	if begin > end {
-		return tids, nil
-	}
-
-	blockIndex := fetcher.GetBlockIndex(begin)
-	lastTID := fetcher.GetTIDFromIndex(end)
-
-	entry := entries[blockIndex]
-	tokensBlock := loader.Load(entry)
-	entryLastTID := entry.GetLastTID()
-
-	for tid := fetcher.GetTIDFromIndex(begin); tid <= lastTID; tid++ {
-		if tid > entryLastTID {
-			if searchSB.Exit.Load() {
-				return nil, consts.ErrUnexpectedInterruption
-			}
-			if searchSB.IsCancelled() {
-				err := fmt.Errorf("search cancelled when matching tokens: reason=%s field=%s, query=%s", searchSB.Context.Err(), field, searchStr)
-				searchSB.Cancel(err)
-				return nil, err
-			}
-			blockIndex++
-			entry = entries[blockIndex]
-			tokensBlock = loader.Load(entry)
-			entryLastTID = entry.GetLastTID()
-		}
-
-		val := tokensBlock.GetValByTID(tid)
-		if searcher.Check(val) {
-			tids = append(tids, tid)
-		}
-	}
-
-	return tids, nil
 }
 
 func (f *Sealed) GetLIDsFromTIDs(sc *SearchCell, tids []uint32, counter lids.Counter, minLID, maxLID uint32, tr *tracer.Tracer, order seq.DocsOrder) []node.Node {
@@ -536,15 +528,18 @@ func (f *Sealed) DataProvider(ctx context.Context) (DataProvider, func(), bool) 
 
 	f.loadAndRLock()
 
+	sc := NewSearchCell(ctx)
 	dp := SealedDataProvider{
-		Sealed:      f,
-		sc:          NewSearchCell(ctx),
-		tracer:      tracer.New(),
-		fracVersion: f.info.BinaryDataVer,
+		Sealed:           f,
+		sc:               sc,
+		tracer:           tracer.New(),
+		fracVersion:      f.info.BinaryDataVer,
+		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.Tokens, sc),
+		tokenTableLoader: token.NewTableLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.TokenTable),
 	}
 
 	return &dp, func() {
-		f.loadRUnlock()
+		f.loadMu.RUnlock()
 		f.useLock.RUnlock()
 	}, true
 }

@@ -441,9 +441,8 @@ func (f *Active) Type() string {
 
 func (f *Active) Release(sealed Fraction) {
 	f.useLock.Lock()
-	defer f.useLock.Unlock()
-
 	f.sealed = sealed
+	f.useLock.Unlock()
 
 	f.TokenList.Stop()
 
@@ -526,11 +525,10 @@ func (f *Active) BuildInfoDistribution(ids []seq.ID) {
 	f.statsMu.Unlock()
 }
 
-func (f *Active) Suicide() {
+func (f *Active) Suicide() { // it seams we never call this method (of Active fraction)
 	f.useLock.Lock()
-	defer f.useLock.Unlock()
-
 	f.suicided = true
+	f.useLock.Unlock()
 
 	if !f.isSealed {
 		f.close(true, "suicide")
@@ -578,28 +576,33 @@ func (f *Active) String() string {
 
 func (f *Active) DataProvider(ctx context.Context) (DataProvider, func(), bool) {
 	f.useLock.RLock()
-	if f.sealed != nil {
-		defer f.useLock.RUnlock()
+
+	if f.sealed == nil && !f.suicided && f.MIDs.Len() > 0 { // it is ordinary active fraction state
+		dp := ActiveDataProvider{
+			Active: f,
+			sc:     NewSearchCell(ctx),
+			tracer: tracer.New(),
+		}
+
+		return &dp, func() {
+			if dp.inverser != nil {
+				dp.inverser.Release()
+			}
+			f.useLock.RUnlock()
+		}, true
+	}
+
+	defer f.useLock.RUnlock()
+
+	if f.sealed != nil { // move on to the daughter sealed faction
 		dp, releaseSealed, ok := f.sealed.DataProvider(ctx)
 		metric.CountersTotal.WithLabelValues("use_sealed_from_active").Inc()
 		return dp, releaseSealed, ok
 	}
 
-	if f.MIDs.Len() == 0 {
-		f.useLock.RUnlock()
-		return nil, nil, false
+	if f.suicided {
+		metric.CountersTotal.WithLabelValues("fraction_suicided").Inc()
 	}
 
-	dp := ActiveDataProvider{
-		Active: f,
-		sc:     NewSearchCell(ctx),
-		tracer: tracer.New(),
-	}
-
-	return &dp, func() {
-		if dp.inverser != nil {
-			dp.inverser.Release()
-		}
-		f.useLock.RUnlock()
-	}, true
+	return nil, nil, false
 }

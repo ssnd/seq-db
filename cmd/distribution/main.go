@@ -80,7 +80,10 @@ func buildDist(dist *seq.MIDsDistribution, path string, _ *frac.Info) {
 	// skip tokens
 	blockIndex := uint32(1)
 	for {
-		header := blocksReader.GetBlockHeader(blockIndex)
+		header, err := blocksReader.GetBlockHeader(blockIndex)
+		if err != nil {
+			logger.Panic("error reading block header", zap.Error(err))
+		}
 		blockIndex++
 		if header.Len() == 0 {
 			break
@@ -89,7 +92,10 @@ func buildDist(dist *seq.MIDsDistribution, path string, _ *frac.Info) {
 
 	// skip tokenTable
 	for {
-		header := blocksReader.GetBlockHeader(blockIndex)
+		header, err := blocksReader.GetBlockHeader(blockIndex)
+		if err != nil {
+			logger.Panic("error reading block header", zap.Error(err))
+		}
 		blockIndex++
 		if header.Len() == 0 {
 			break

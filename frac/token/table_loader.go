@@ -39,7 +39,10 @@ func (l *TableLoader) Load() Table {
 }
 
 func (l *TableLoader) readHeader() disk.BlocksRegistryEntry {
-	h := l.br.GetBlockHeader(l.i)
+	h, e := l.br.GetBlockHeader(l.i)
+	if e != nil {
+		logger.Panic("error reading block header", zap.Error(e))
+	}
 	l.i++
 	return h
 }

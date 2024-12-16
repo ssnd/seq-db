@@ -15,10 +15,11 @@ import (
 )
 
 type BlocksReader struct {
-	file       *os.File
+	fileMu sync.RWMutex
+	file   *os.File
+
 	cache      *cache.Cache[[]byte]
 	fileName   string
-	fileMu     sync.Mutex
 	readMetric prometheus.Counter
 }
 
@@ -36,10 +37,10 @@ func (r *BlocksReader) GetFileName() string {
 
 // GetFileStat only used during loading
 func (r *BlocksReader) GetFileStat() (os.FileInfo, error) {
-	return r.file.Stat()
+	return r.openedFile().Stat()
 }
 
-func (r *BlocksReader) TryGetBlockHeader(index uint32) (BlocksRegistryEntry, error) {
+func (r *BlocksReader) GetBlockHeader(index uint32) (BlocksRegistryEntry, error) {
 	data := r.getRegistry()
 
 	if (uint64(index)+1)*BlocksRegistryEntrySize > uint64(len(data)) {
@@ -55,14 +56,6 @@ func (r *BlocksReader) TryGetBlockHeader(index uint32) (BlocksRegistryEntry, err
 	return data[pos : pos+BlocksRegistryEntrySize], nil
 }
 
-func (r *BlocksReader) GetBlockHeader(index uint32) BlocksRegistryEntry {
-	block, err := r.TryGetBlockHeader(index)
-	if err != nil {
-		logger.Panic("error reading block header", zap.Error(err))
-	}
-	return block
-}
-
 func (r *BlocksReader) getRegistry() []byte {
 	data, err := r.cache.GetWithError(1, func() ([]byte, int, error) {
 		data, err := r.readRegistry()
@@ -75,27 +68,44 @@ func (r *BlocksReader) getRegistry() []byte {
 	return data
 }
 
-func (r *BlocksReader) tryOpenFile() *os.File {
+func (r *BlocksReader) getFile() *os.File {
+	r.fileMu.RLock()
+	defer r.fileMu.RUnlock()
+
+	return r.file
+}
+
+func (r *BlocksReader) openFile() (*os.File, error) {
 	r.fileMu.Lock()
 	defer r.fileMu.Unlock()
 
 	if r.file != nil {
-		return r.file
+		return r.file, nil
 	}
 
 	file, err := os.Open(r.fileName)
 	if err != nil {
-		// give hdd a second chance
-		file, err = os.Open(r.fileName)
-		if err != nil {
-			logger.Panic("can't open file by blocks reader",
-				zap.String("file", r.fileName),
-				zap.Error(err),
-			)
-		}
+		return nil, err
 	}
 
 	r.file = file
+	return file, nil
+}
+
+func (r *BlocksReader) openedFile() *os.File {
+	if file := r.getFile(); file != nil {
+		return file
+	}
+
+	file, err := r.openFile()
+
+	if err != nil {
+		logger.Panic("can't open file by blocks reader",
+			zap.String("file", r.fileName),
+			zap.Error(err),
+		)
+	}
+
 	return file
 }
 
@@ -106,7 +116,7 @@ func (r *BlocksReader) reportReadBytes(n int) {
 }
 
 func (r *BlocksReader) readRegistry() ([]byte, error) {
-	file := r.tryOpenFile()
+	file := r.openedFile()
 
 	numBuf := make([]byte, 16)
 	n, err := file.ReadAt(numBuf, 0)

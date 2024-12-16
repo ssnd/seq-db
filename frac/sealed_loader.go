@@ -65,7 +65,10 @@ func (l *Loader) nextIndexBlock() ([]byte, error) {
 }
 
 func (l *Loader) skipBlock() disk.BlocksRegistryEntry {
-	header := l.blocksReader.GetBlockHeader(l.blockIndex)
+	header, err := l.blocksReader.GetBlockHeader(l.blockIndex)
+	if err != nil {
+		logger.Panic("error reading block header", zap.Error(err))
+	}
 	l.blockIndex++
 	return header
 }

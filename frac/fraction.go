@@ -35,7 +35,7 @@ type DataProvider interface {
 	GetValByTID(tid uint32) []byte
 	GetTIDsByTokenExpr(token parser.Token, tids []uint32) ([]uint32, error)
 	GetLIDsFromTIDs(tids []uint32, stats lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node
-	Fetch(id seq.ID, docsBuf []byte, midCache, ridCache *UnpackCache) ([]byte, []byte, error)
+	Fetch(id seq.ID, midCache, ridCache *UnpackCache) ([]byte, error)
 }
 
 type Fraction interface {

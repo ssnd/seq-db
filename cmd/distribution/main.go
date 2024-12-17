@@ -48,11 +48,11 @@ func getReader(path string) *disk.BlocksReader {
 }
 
 func readBlock(blocksReader *disk.BlocksReader, blockIndex uint32) []byte {
-	readTask := reader.ReadIndexBlock(blocksReader, blockIndex, nil)
-	if readTask.Err != nil {
-		logger.Fatal("error reading block", zap.String("file", blocksReader.GetFileName()), zap.Error(readTask.Err))
+	data, _, err := reader.ReadIndexBlock(blocksReader, blockIndex, nil)
+	if err != nil {
+		logger.Fatal("error reading block", zap.String("file", blocksReader.GetFileName()), zap.Error(err))
 	}
-	return readTask.Buf
+	return data
 }
 
 func loadInfo(path string) *frac.Info {
@@ -80,7 +80,10 @@ func buildDist(dist *seq.MIDsDistribution, path string, _ *frac.Info) {
 	// skip tokens
 	blockIndex := uint32(1)
 	for {
-		header := blocksReader.GetBlockHeader(blockIndex)
+		header, err := blocksReader.GetBlockHeader(blockIndex)
+		if err != nil {
+			logger.Panic("error reading block header", zap.Error(err))
+		}
 		blockIndex++
 		if header.Len() == 0 {
 			break
@@ -89,7 +92,10 @@ func buildDist(dist *seq.MIDsDistribution, path string, _ *frac.Info) {
 
 	// skip tokenTable
 	for {
-		header := blocksReader.GetBlockHeader(blockIndex)
+		header, err := blocksReader.GetBlockHeader(blockIndex)
+		if err != nil {
+			logger.Panic("error reading block header", zap.Error(err))
+		}
 		blockIndex++
 		if header.Len() == 0 {
 			break

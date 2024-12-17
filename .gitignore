@@ -1,5 +1,4 @@
 /seq-db
-/analyzer
 /distribution
 /seqdb
 docker-compose.override.yaml

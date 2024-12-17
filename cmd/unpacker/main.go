@@ -51,26 +51,19 @@ func main() {
 	defer reader.Stop()
 
 	offset := int64(0)
-	var outBuf []byte
 
 	logger.Info("unpacking", zap.String("filename", unpackFileName))
 	docsBatch := make([]byte, 0)
 	for {
-		readTask := reader.ReadDocBlock(inFile, offset, 0, outBuf)
-		outBuf = readTask.Buf
-		if readTask.Err == io.EOF {
+		result, n, err := reader.ReadDocBlockPayload(inFile, offset)
+		if err == io.EOF {
 			logger.Info("unpack completed")
 			return
 		}
-		if readTask.Err == nil {
-			readTask.Decompress()
+		if err != nil {
+			logger.Fatal("error reading doc block", zap.Error(err))
 		}
-		if readTask.Err != nil {
-			logger.Fatal("error decompressing doc block", zap.Error(err))
-		}
-		offset += int64(readTask.N)
-
-		result := readTask.Buf
+		offset += int64(n)
 		docsBatch = docsBatch[:0]
 		for len(result) != 0 {
 			docsLen := binary.LittleEndian.Uint32(result[:4])

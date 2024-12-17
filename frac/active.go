@@ -93,8 +93,8 @@ func (dp *ActiveDataProvider) GetLIDsFromTIDs(tids []uint32, stats lids.Counter,
 	return dp.Active.GetLIDsFromTIDs(tids, dp.getInverser(), stats, minLID, maxLID, dp.tracer, order)
 }
 
-func (dp *ActiveDataProvider) Fetch(id seq.ID, docsBuf []byte, _, _ *UnpackCache) ([]byte, []byte, error) {
-	return dp.Active.Fetch(id, docsBuf)
+func (dp *ActiveDataProvider) Fetch(id seq.ID, _, _ *UnpackCache) ([]byte, error) {
+	return dp.Active.Fetch(id)
 }
 
 type Active struct {
@@ -223,32 +223,29 @@ func (f *Active) ReplayBlocks(ctx context.Context) error {
 	metaPos := uint64(0)
 	step := targetSize / 10
 	next := step
-	var outBuf []byte
 out:
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			readTask := reader.ReadDocBlock(f.metasFile, int64(metaPos), 0, outBuf)
-			outBuf = readTask.Buf
-			if readTask.Err == io.EOF {
-				if readTask.N != 0 {
+			result, n, err := reader.ReadDocBlock(f.metasFile, int64(metaPos))
+			if err == io.EOF {
+				if n != 0 {
 					logger.Warn("last meta block is partially written, skipping it")
 				}
 				break out
 			}
-			if readTask.Err != nil && readTask.Err != io.EOF {
-				return readTask.Err
+			if err != nil && err != io.EOF {
+				return err
 			}
-			result := append([]byte{}, readTask.Buf...)
 
 			if metaPos > next {
 				next += step
 				progress := float64(metaPos) / float64(targetSize) * 100
 				logger.Info("replaying batch, meta",
 					zap.Uint64("from", metaPos),
-					zap.Uint64("to", metaPos+readTask.N),
+					zap.Uint64("to", metaPos+n),
 					zap.Uint64("target", targetSize),
 					util.ZapFloat64WithPrec("progress_percentage", progress, 2),
 				)
@@ -256,7 +253,7 @@ out:
 
 			docBlockLen := disk.DocBlock(result).GetExt1()
 			docsPos += docBlockLen
-			metaPos += readTask.N
+			metaPos += n
 
 			if err := f.Replay(docBlockLen, result); err != nil {
 				return err
@@ -353,11 +350,11 @@ func (f *Active) Seal(params SealParams) error {
 	return nil
 }
 
-func (f *Active) Fetch(id seq.ID, docsBuf []byte) ([]byte, []byte, error) {
+func (f *Active) Fetch(id seq.ID) ([]byte, error) {
 	docPos := f.DocsPositions.GetSync(id)
 
 	if docPos == DocPosNotFound {
-		return nil, docsBuf, nil
+		return nil, nil
 	}
 
 	docBlockIndex, docOffset := docPos.Unpack()
@@ -365,7 +362,8 @@ func (f *Active) Fetch(id seq.ID, docsBuf []byte) ([]byte, []byte, error) {
 	vals := f.DocBlocks.GetVals()
 	pos := vals[docBlockIndex]
 
-	return f.readDoc(pos, 0, docOffset, docsBuf)
+	docs, err := f.readDocs(pos, []uint64{docOffset})
+	return docs[0], err
 }
 
 func (f *Active) GetAllDocuments() []uint32 {

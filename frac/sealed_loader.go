@@ -18,7 +18,7 @@ type Loader struct {
 	reader       *disk.Reader
 	blocksReader *disk.BlocksReader
 	blockIndex   uint32
-	outBuf       []byte
+	blockBuf     []byte
 }
 
 func (l *Loader) Load(frac *Sealed) {
@@ -57,15 +57,18 @@ func (l *Loader) Load(frac *Sealed) {
 	)
 }
 
-func (l *Loader) processReadTask() *disk.ReadIndexTask {
-	task := l.reader.ReadIndexBlock(l.blocksReader, l.blockIndex, l.outBuf)
-	l.outBuf = task.Buf
+func (l *Loader) nextIndexBlock() ([]byte, error) {
+	data, _, err := l.reader.ReadIndexBlock(l.blocksReader, l.blockIndex, l.blockBuf)
+	l.blockBuf = data
 	l.blockIndex++
-	return task
+	return data, err
 }
 
 func (l *Loader) skipBlock() disk.BlocksRegistryEntry {
-	header := l.blocksReader.GetBlockHeader(l.blockIndex)
+	header, err := l.blocksReader.GetBlockHeader(l.blockIndex)
+	if err != nil {
+		logger.Panic("error reading block header", zap.Error(err))
+	}
 	l.blockIndex++
 	return header
 }
@@ -75,12 +78,11 @@ func (l *Loader) loadIDs() error {
 	ids := frac.ids
 
 	// read positions block
-	task := l.processReadTask()
-	if util.IsRecoveredPanicError(task.Err) {
-		logger.Panic("todo: handle read err", zap.Error(task.Err))
+	result, err := l.nextIndexBlock()
+	if util.IsRecoveredPanicError(err) {
+		logger.Panic("todo: handle read err", zap.Error(err))
 	}
 
-	result := task.Buf
 	ids.IDBlocksTotal = binary.LittleEndian.Uint32(result)
 	result = result[4:]
 

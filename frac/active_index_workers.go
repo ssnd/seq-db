@@ -131,20 +131,18 @@ func (w *IndexWorkers) appendWorker(index int) {
 	defer insaneJSON.Release(metaRoot)
 
 	// just a reusable buffer for unpacking
-	unpackBuffer := make([]byte, 0)
+	var metasPayload []byte
 
 	// collector of bulk meta data
 	collector := newMetaDataCollector()
 
 	for task := range w.ch {
-		var metasPayload []byte
 		var err error
 
 		tr := tracer.New()
 		total := tr.Start("total_indexing")
 
-		unpackBuffer, metasPayload, err = disk.DecompressDocBlock(task.Metas, unpackBuffer)
-		if err != nil {
+		if metasPayload, err = disk.DocBlock(task.Metas).DecompressTo(metasPayload); err != nil {
 			logger.Panic("error decompressing meta", zap.Error(err)) // TODO: error handling
 		}
 

@@ -39,29 +39,41 @@ func (f *frac) Contains(id seq.MID) bool {
 	return f.IsIntersecting(id, id)
 }
 
-func (f *frac) readDoc(blockPos, blockLen, docPos uint64, outBuf []byte) ([]byte, []byte, error) {
-	f.tryOpenDocsFile()
-
+func (f *frac) readDocs(blockPos uint64, docPos []uint64) ([][]byte, error) {
 	block, err := f.docBlockCache.GetWithError(uint32(blockPos), func() ([]byte, int, error) {
-		readTask := f.reader.ReadDocBlock(f.docsFile, int64(blockPos), blockLen, outBuf)
-		outBuf = readTask.Buf
-		if readTask.Err == nil {
-			readTask.Decompress()
+		f.tryOpenDocsFile()
+		block, _, err := f.reader.ReadDocBlockPayload(f.docsFile, int64(blockPos))
+		if err != nil {
+			return nil, 0, fmt.Errorf("can't fetch doc at pos %d: %w", blockPos, err)
 		}
-		if readTask.Err != nil {
-			return nil, 0, fmt.Errorf("can't fetch doc at pos %d: %s", blockPos, readTask.Err.Error())
-		}
-		return readTask.Buf, cap(readTask.Buf), nil
+		return block, cap(block), nil
 	})
 
 	if err != nil {
-		return nil, outBuf, err
+		return nil, err
 	}
 
-	docSize := binary.LittleEndian.Uint32(block[docPos:])
-	doc := block[4+docPos : 4+docPos+uint64(docSize)]
+	return extractDocsFromBlock(block, docPos), nil
+}
 
-	return doc, outBuf, nil
+func extractDocsFromBlock(block []byte, docPos []uint64) [][]byte {
+	var totalDocsSize uint32
+	docSizes := make([]uint32, len(docPos))
+	for i, pos := range docPos {
+		size := binary.LittleEndian.Uint32(block[pos:])
+		docSizes[i] = size
+		totalDocsSize += size
+	}
+
+	buf := make([]byte, 0, totalDocsSize)
+	res := make([][]byte, len(docPos))
+	for i, pos := range docPos {
+		bufPos := len(buf)
+		buf = append(buf, block[4+pos:4+pos+uint64(docSizes[i])]...)
+		res[i] = buf[bufPos:]
+	}
+
+	return res
 }
 
 func (f *frac) IsIntersecting(from, to seq.MID) bool {

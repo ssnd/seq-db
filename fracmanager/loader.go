@@ -209,8 +209,8 @@ func (t *loader) noValidDoc(info *fracInfo) (invalid bool) {
 			invalid = true
 		}
 	}()
-	readTask := t.reader.ReadDocBlock(docFile, 0, 0, nil)
-	return readTask.Err != nil
+	_, _, err = t.reader.ReadDocBlock(docFile, 0)
+	return err != nil
 }
 
 func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {

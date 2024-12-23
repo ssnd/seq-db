@@ -200,45 +200,46 @@ func (si *SealedIDs) paramsBlockIndex(index uint32) uint32 {
 
 func (si *SealedIDs) loadMIDBlock(searchSB *SearchCell, index uint32) []byte {
 	t := time.Now()
-	readTask := si.Reader.ReadIndexBlock(si.BlocksReader, si.midBlockIndex(index), nil)
+	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.midBlockIndex(index), nil)
 	searchSB.AddReadIDTimeNS(time.Since(t))
 
-	if util.IsRecoveredPanicError(readTask.Err) {
-		logger.Panic("todo: handle read err", zap.Error(readTask.Err))
+	if util.IsRecoveredPanicError(err) {
+		logger.Panic("todo: handle read err", zap.Error(err))
 	}
 
-	if len(readTask.Buf) == 0 {
+	if len(data) == 0 {
 		logger.Panic("wrong mid block",
 			zap.String("file", si.BlocksReader.GetFileName()),
 			zap.Uint32("index", index),
 			zap.Uint32("disk_index", si.midBlockIndex(index)),
 			zap.Uint32("blocks_total", si.IDBlocksTotal),
-			zap.Error(readTask.Err),
+			zap.Error(err),
 			zap.Any("min_block_ids", si.MinBlockIDs),
 		)
 	}
 
-	return readTask.Buf
+	return data
 }
 
 func (si *SealedIDs) loadRIDBlock(searchCell *SearchCell, index uint32) []byte {
 	t := time.Now()
-	readTask := si.Reader.ReadIndexBlock(si.BlocksReader, si.ridBlockIndex(index), nil)
+	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.ridBlockIndex(index), nil)
 	searchCell.AddReadIDTimeNS(time.Since(t))
 
-	if util.IsRecoveredPanicError(readTask.Err) {
-		logger.Panic("todo: handle read err", zap.Error(readTask.Err))
+	if util.IsRecoveredPanicError(err) {
+		logger.Panic("todo: handle read err", zap.Error(err))
 	}
 
-	return readTask.Buf
+	return data
 }
 
 func (si *SealedIDs) loadParamsBlock(index uint32) []uint64 {
-	readTask := si.Reader.ReadIndexBlock(si.BlocksReader, si.paramsBlockIndex(index), nil)
-	if util.IsRecoveredPanicError(readTask.Err) {
-		logger.Panic("todo: handle read err", zap.Error(readTask.Err))
+	data, _, err := si.Reader.ReadIndexBlock(si.BlocksReader, si.paramsBlockIndex(index), nil)
+
+	if util.IsRecoveredPanicError(err) {
+		logger.Panic("todo: handle read err", zap.Error(err))
 	}
-	return unpackRawIDsVarint(readTask.Buf, make([]uint64, 0, consts.IDsPerBlock))
+	return unpackRawIDsVarint(data, make([]uint64, 0, consts.IDsPerBlock))
 }
 
 func (si *SealedIDs) getIDBlockIndexByLID(lid seq.LID) int64 {

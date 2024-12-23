@@ -1,6 +1,7 @@
 package tokenizer
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ func TestTokenizeSimple(t *testing.T) {
 
 func TestTokenizeSimple2(t *testing.T) {
 	tokenizer := NewTextTokenizer(1000, false, true, 1024)
-	tokens := tokenizer.Tokenize(nil, []byte("message"), longDocument, maxTokenSizeDummy)
+	tokens := tokenizer.Tokenize(nil, []byte("message"), bytes.Clone(longDocument), maxTokenSizeDummy)
 
 	assert.Equal(t, newFracToken("message", "t1"), tokens[0])
 	assert.Equal(t, newFracToken("message", "t2_t3"), tokens[1])
@@ -93,7 +94,7 @@ func TestTokenizePartialSkip(t *testing.T) {
 
 func TestTokenizeDefaultMaxTokenSize(t *testing.T) {
 	tokenizer := NewTextTokenizer(6, false, true, 1024)
-	tokens := tokenizer.Tokenize(nil, []byte("message"), longDocument, maxTokenSizeDummy)
+	tokens := tokenizer.Tokenize(nil, []byte("message"), bytes.Clone(longDocument), maxTokenSizeDummy)
 
 	assert.Equal(t, newFracToken("message", "t1"), tokens[0])
 	assert.Equal(t, newFracToken("message", "t2_t3"), tokens[1])
@@ -107,7 +108,7 @@ func TestTokenizeDefaultMaxTokenSize(t *testing.T) {
 func TestTokenizeCaseSensitive(t *testing.T) {
 	tokenizer := NewTextTokenizer(1000, true, true, 1024)
 
-	tokens := tokenizer.Tokenize(nil, []byte("message"), longDocument, maxTokenSizeDummy)
+	tokens := tokenizer.Tokenize(nil, []byte("message"), bytes.Clone(longDocument), maxTokenSizeDummy)
 
 	assert.Equal(t, newFracToken("message", "T1"), tokens[0])
 	assert.Equal(t, newFracToken("message", "T2_T3"), tokens[1])
@@ -122,7 +123,7 @@ func TestTokenizeCaseSensitive(t *testing.T) {
 func TestTokenizeCaseSensitiveAndMaxTokenSize(t *testing.T) {
 	tokenizer := NewTextTokenizer(6, true, true, 1024)
 
-	tokens := tokenizer.Tokenize(nil, []byte("message"), longDocument, maxTokenSizeDummy)
+	tokens := tokenizer.Tokenize(nil, []byte("message"), bytes.Clone(longDocument), maxTokenSizeDummy)
 
 	assert.Equal(t, newFracToken("message", "T1"), tokens[0])
 	assert.Equal(t, newFracToken("message", "T2_T3"), tokens[1])

@@ -83,9 +83,11 @@ func (p *SealedIDsProvider) LessOrEqual(lid seq.LID, id seq.ID) bool {
 
 type SealedDataProvider struct {
 	*Sealed
-	sc          *SearchCell
-	tracer      *tracer.Tracer
-	fracVersion BinaryDataVersion
+	sc               *SearchCell
+	tracer           *tracer.Tracer
+	fracVersion      BinaryDataVersion
+	tokenBlockLoader *token.BlockLoader
+	tokenTableLoader *token.TableLoader
 }
 
 func (dp *SealedDataProvider) Tracer() *tracer.Tracer {
@@ -102,15 +104,70 @@ func (dp *SealedDataProvider) IDsProvider(midCache, ridCache *UnpackCache) IDsPr
 	}
 }
 
+func (dp *SealedDataProvider) GetValByTID(tid uint32) []byte {
+	tokenTable := dp.tokenTableLoader.Load()
+	if entry := tokenTable.GetEntryByTID(tid); entry != nil {
+		return dp.tokenBlockLoader.Load(entry).GetValByTID(tid)
+	}
+	return nil
+}
+
 func (dp *SealedDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) ([]uint32, error) {
-	return dp.Sealed.GetTIDsByTokenExpr(dp.sc, t, tids, dp.tracer)
+	field := parser.GetField(t)
+	searchStr := parser.GetHint(t)
+
+	tokenTable := dp.tokenTableLoader.Load()
+	entries := tokenTable.SelectEntries(field, searchStr)
+	if len(entries) == 0 {
+		return tids, nil
+	}
+
+	fetcher := token.NewFetcher(dp.tokenBlockLoader, entries)
+	searcher := pattern.NewSearcher(t, fetcher, fetcher.GetTokensCount())
+
+	begin := searcher.Begin()
+	end := searcher.End()
+	if begin > end {
+		return tids, nil
+	}
+
+	blockIndex := fetcher.GetBlockIndex(begin)
+	lastTID := fetcher.GetTIDFromIndex(end)
+
+	entry := entries[blockIndex]
+	tokensBlock := dp.tokenBlockLoader.Load(entry)
+	entryLastTID := entry.GetLastTID()
+
+	for tid := fetcher.GetTIDFromIndex(begin); tid <= lastTID; tid++ {
+		if tid > entryLastTID {
+			if dp.sc.Exit.Load() {
+				return nil, consts.ErrUnexpectedInterruption
+			}
+			if dp.sc.IsCancelled() {
+				err := fmt.Errorf("search cancelled when matching tokens: reason=%s field=%s, query=%s", dp.sc.Context.Err(), field, searchStr)
+				dp.sc.Cancel(err)
+				return nil, err
+			}
+			blockIndex++
+			entry = entries[blockIndex]
+			tokensBlock = dp.tokenBlockLoader.Load(entry)
+			entryLastTID = entry.GetLastTID()
+		}
+
+		val := tokensBlock.GetValByTID(tid)
+		if searcher.Check(val) {
+			tids = append(tids, tid)
+		}
+	}
+
+	return tids, nil
 }
 
 func (dp *SealedDataProvider) GetLIDsFromTIDs(tids []uint32, stats lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node {
 	return dp.Sealed.GetLIDsFromTIDs(dp.sc, tids, stats, minLID, maxLID, dp.tracer, order)
 }
 
-func (dp *SealedDataProvider) Fetch(id seq.ID, docsBuf []byte, midCache, ridCache *UnpackCache) ([]byte, []byte, error) {
+func (dp *SealedDataProvider) Fetch(id seq.ID, midCache, ridCache *UnpackCache) ([]byte, error) {
 	defer dp.tracer.UpdateMetric(metric.FetchSealedStagesSeconds)
 
 	midCache.Start()
@@ -126,7 +183,7 @@ func (dp *SealedDataProvider) Fetch(id seq.ID, docsBuf []byte, midCache, ridCach
 	lid := seq.LID(util.BinSearchInRange(1, ids.Len()-1, f))
 	if id.MID != ids.GetMID(lid) || id.RID != ids.GetRID(lid) {
 		m.Stop()
-		return nil, docsBuf, nil
+		return nil, nil
 	}
 	m.Stop()
 
@@ -140,10 +197,10 @@ func (dp *SealedDataProvider) Fetch(id seq.ID, docsBuf []byte, midCache, ridCach
 
 	m = dp.tracer.Start("read_doc")
 	dp.lastFetchTime.Store(time.Now().UnixNano())
-	doc, outBuf, err := dp.readDoc(blockPos, 0, docOffset, docsBuf)
+	docs, err := dp.readDocs(blockPos, []uint64{docOffset})
 	m.Stop()
 
-	return doc, outBuf, err
+	return docs[0], err
 }
 
 type Sealed struct {
@@ -151,9 +208,8 @@ type Sealed struct {
 
 	blocksReader *disk.BlocksReader
 
-	tokenTable token.Table
-	lidsTable  *lids.Table
-	ids        *SealedIDs
+	lidsTable *lids.Table
+	ids       *SealedIDs
 
 	lastFetchTime atomic.Int64
 
@@ -199,8 +255,7 @@ func NewSealed(baseFile string, reader *disk.Reader, sealedIndexCache *SealedInd
 		return f
 	}
 
-	f.frac.info = &Info{Path: baseFile}
-	f.loadHeader()
+	f.info = f.loadHeader()
 
 	return f
 }
@@ -214,7 +269,6 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 		// the data of these three fields will actually be read from disk again in the future on the first
 		// attempt to search in fraction (see method Sealed.loadAndRLock())
 		// TODO: we need to either remove this data preparation in active fraction sealing or avoid re-reading the data from disk
-		tokenTable:   active.tokenTable,
 		lidsTable:    active.lidsTable,
 		ids:          active.sealedIDs,
 		blocksReader: blocksReader,
@@ -229,6 +283,11 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 			BaseFileName:  active.BaseFileName,
 		},
 	}
+
+	// put the token table built during sealing into the cache of the sealed faction
+	sealedIndexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
+		return active.tokenTable, active.tokenTable.Size()
+	})
 
 	f.ids.Reader = reader
 	f.ids.BlocksReader = blocksReader
@@ -248,36 +307,36 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 	return f
 }
 
-func (f *Sealed) loadHeader() {
-	readTask := f.reader.ReadIndexBlock(f.blocksReader, 0, nil)
-
-	if readTask.Err != nil {
+func (f *Sealed) readHeader() *Info {
+	block, _, err := f.reader.ReadIndexBlock(f.blocksReader, 0, nil)
+	if err != nil {
 		logger.Panic("todo")
 	}
-	result := readTask.Buf
-	if len(result) < 4 || string(result[:4]) != seqDBMagic {
-		logger.Fatal("seq-db index file header corrupted",
+	if len(block) < 4 || string(block[:4]) != seqDBMagic {
+		logger.Fatal("seq-db index file header corrupted", zap.String("file", f.blocksReader.GetFileName()))
+	}
+	info := &Info{}
+	info.Load(block[4:])
+	return info
+}
+
+func (f *Sealed) loadHeader() *Info {
+	info := f.readHeader()
+	info.Path = f.BaseFileName
+	info.MetaOnDisk = 0
+	info.IndexOnDisk = f.getIndexSize()
+	return info
+}
+
+func (f *Sealed) getIndexSize() uint64 {
+	stat, err := f.blocksReader.GetFileStat()
+	if err != nil {
+		logger.Fatal("can't stat index file",
 			zap.String("file", f.blocksReader.GetFileName()),
+			zap.Error(err),
 		)
 	}
-
-	result = result[4:]
-	func() {
-		f.statsMu.Lock()
-		defer f.statsMu.Unlock()
-
-		f.info.Load(result)
-		f.info.MetaOnDisk = 0
-		stat, err := f.blocksReader.GetFileStat()
-		if err != nil {
-			logger.Fatal("can't stat index file",
-				zap.String("file", f.blocksReader.GetFileName()),
-				zap.Error(err),
-			)
-			panic("_")
-		}
-		f.info.IndexOnDisk = uint64(stat.Size())
-	}()
+	return uint64(stat.Size())
 }
 
 func (f *Sealed) Type() string {
@@ -285,90 +344,22 @@ func (f *Sealed) Type() string {
 }
 
 func (f *Sealed) loadAndRLock() {
-	// todo: replace this shitty algorithm
-	for {
-		f.loadMu.RLock()
-		if f.isLoaded {
-			return
-		}
+	f.loadMu.RLock()
+	if !f.isLoaded {
 		f.loadMu.RUnlock()
-
-		func() {
-			f.loadMu.Lock()
-			defer f.loadMu.Unlock()
-			if !f.isLoaded {
-				(&Loader{}).Load(f)
-				f.isLoaded = true
-			}
-		}()
+		f.load()
+		f.loadMu.RLock()
 	}
 }
 
-func (f *Sealed) loadRUnlock() {
-	f.loadMu.RUnlock()
-}
+func (f *Sealed) load() {
+	f.loadMu.Lock()
+	defer f.loadMu.Unlock()
 
-func (f *Sealed) GetTokenBlockLoader(stats *SearchCell) *token.BlockLoader {
-	return token.NewBlockLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.Tokens, stats)
-}
-
-func (f *Sealed) GetValByTID(tid uint32) []byte {
-	if entry := f.tokenTable.GetEntryByTID(tid); entry != nil {
-		loader := f.GetTokenBlockLoader(nil)
-		return loader.Load(entry).GetValByTID(tid)
+	if !f.isLoaded {
+		(&Loader{}).Load(f)
+		f.isLoaded = true
 	}
-	return nil
-}
-
-func (f *Sealed) GetTIDsByTokenExpr(searchSB *SearchCell, t parser.Token, tids []uint32, _ *tracer.Tracer) ([]uint32, error) {
-	field := parser.GetField(t)
-	searchStr := parser.GetHint(t)
-
-	entries := f.tokenTable.SelectEntries(field, searchStr)
-	if len(entries) == 0 {
-		return tids, nil
-	}
-
-	loader := f.GetTokenBlockLoader(searchSB)
-	fetcher := token.NewFetcher(loader, entries)
-	searcher := pattern.NewSearcher(t, fetcher, fetcher.GetTokensCount())
-
-	begin := searcher.Begin()
-	end := searcher.End()
-	if begin > end {
-		return tids, nil
-	}
-
-	blockIndex := fetcher.GetBlockIndex(begin)
-	lastTID := fetcher.GetTIDFromIndex(end)
-
-	entry := entries[blockIndex]
-	tokensBlock := loader.Load(entry)
-	entryLastTID := entry.GetLastTID()
-
-	for tid := fetcher.GetTIDFromIndex(begin); tid <= lastTID; tid++ {
-		if tid > entryLastTID {
-			if searchSB.Exit.Load() {
-				return nil, consts.ErrUnexpectedInterruption
-			}
-			if searchSB.IsCancelled() {
-				err := fmt.Errorf("search cancelled when matching tokens: reason=%s field=%s, query=%s", searchSB.Context.Err(), field, searchStr)
-				searchSB.Cancel(err)
-				return nil, err
-			}
-			blockIndex++
-			entry = entries[blockIndex]
-			tokensBlock = loader.Load(entry)
-			entryLastTID = entry.GetLastTID()
-		}
-
-		val := tokensBlock.GetValByTID(tid)
-		if searcher.Check(val) {
-			tids = append(tids, tid)
-		}
-	}
-
-	return tids, nil
 }
 
 func (f *Sealed) GetLIDsFromTIDs(sc *SearchCell, tids []uint32, counter lids.Counter, minLID, maxLID uint32, tr *tracer.Tracer, order seq.DocsOrder) []node.Node {
@@ -536,15 +527,18 @@ func (f *Sealed) DataProvider(ctx context.Context) (DataProvider, func(), bool) 
 
 	f.loadAndRLock()
 
+	sc := NewSearchCell(ctx)
 	dp := SealedDataProvider{
-		Sealed:      f,
-		sc:          NewSearchCell(ctx),
-		tracer:      tracer.New(),
-		fracVersion: f.info.BinaryDataVer,
+		Sealed:           f,
+		sc:               sc,
+		tracer:           tracer.New(),
+		fracVersion:      f.info.BinaryDataVer,
+		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.Tokens, sc),
+		tokenTableLoader: token.NewTableLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.TokenTable),
 	}
 
 	return &dp, func() {
-		f.loadRUnlock()
+		f.loadMu.RUnlock()
 		f.useLock.RUnlock()
 	}, true
 }

@@ -17,13 +17,14 @@ import (
 )
 
 const (
-	docsName   = "docblock"
-	midsName   = "mids"
-	tokensName = "tokens"
-	lidsName   = "lids"
-	paramsName = "params"
-	ridsName   = "rids"
-	indexName  = "index"
+	midsName       = "mids"
+	lidsName       = "lids"
+	paramsName     = "params"
+	ridsName       = "rids"
+	indexName      = "index"
+	tokensName     = "tokens"
+	tokenTableName = "token_table"
+	docsName       = "docblock"
 )
 
 type cleanerConf struct {
@@ -39,15 +40,19 @@ var config = []cleanerConf{
 	},
 	{
 		layers: []string{midsName, ridsName, paramsName},
-		weight: 9,
+		weight: 8,
 	},
 	{
-		layers: []string{lidsName},
-		weight: 40,
+		layers: []string{tokenTableName},
+		weight: 8,
 	},
 	{
 		layers: []string{tokensName},
-		weight: 40,
+		weight: 36,
+	},
+	{
+		layers: []string{lidsName},
+		weight: 37,
 	},
 	{
 		layers: []string{docsName},
@@ -127,12 +132,13 @@ func (cm *CacheMaintainer) CreateDocBlockCache() *cache.Cache[[]byte] {
 
 func (cm *CacheMaintainer) CreateSealedIndexCache() *frac.SealedIndexCache {
 	return &frac.SealedIndexCache{
-		MIDs:     newCache[[]byte](cm, midsName),
-		RIDs:     newCache[[]byte](cm, ridsName),
-		Params:   newCache[[]uint64](cm, paramsName),
-		LIDs:     newCache[*lids.Chunks](cm, lidsName),
-		Tokens:   newCache[*token.CacheEntry](cm, tokensName),
-		Registry: newCache[[]byte](cm, indexName),
+		MIDs:       newCache[[]byte](cm, midsName),
+		RIDs:       newCache[[]byte](cm, ridsName),
+		Params:     newCache[[]uint64](cm, paramsName),
+		LIDs:       newCache[*lids.Chunks](cm, lidsName),
+		Tokens:     newCache[*token.CacheEntry](cm, tokensName),
+		TokenTable: newCache[token.Table](cm, tokenTableName),
+		Registry:   newCache[[]byte](cm, indexName),
 	}
 }
 
@@ -250,6 +256,9 @@ func (m *CacheMaintainerMetrics) GetLayerMetrics(layerName string) *cache.Metric
 }
 
 func (m *CacheMaintainerMetrics) GetCleanerMetrics(cleanerLabel string) *cache.CleanerMetrics {
+	if m == nil {
+		return nil
+	}
 	return &cache.CleanerMetrics{
 		Oldest:            m.Oldest.WithLabelValues(cleanerLabel),
 		AddBuckets:        m.AddBuckets.WithLabelValues(cleanerLabel),

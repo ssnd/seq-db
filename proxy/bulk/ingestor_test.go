@@ -422,7 +422,7 @@ func TestProcessDocuments(t *testing.T) {
 			r.Equal(len(payload.InDocs), total)
 			r.Equal(len(payload.InDocs), c.total)
 
-			_, binaryDocs, err := disk.DecompressDocBlock(c.docs, nil)
+			binaryDocs, err := disk.DocBlock(c.docs).DecompressTo(nil)
 			require.NoError(t, err)
 
 			docsUnpacker := packer.NewBytesUnpacker(binaryDocs)
@@ -431,7 +431,7 @@ func TestProcessDocuments(t *testing.T) {
 				gotDocs = append(gotDocs, docsUnpacker.GetBinary())
 			}
 
-			_, binaryMetas, err := disk.DecompressDocBlock(c.metas, nil)
+			binaryMetas, err := disk.DocBlock(c.metas).DecompressTo(nil)
 			require.NoError(t, err)
 			metasUnpacker := packer.NewBytesUnpacker(binaryMetas)
 			var gotMetas []frac.MetaData

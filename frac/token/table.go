@@ -2,13 +2,18 @@ package token
 
 import (
 	"sort"
+	"unsafe"
 
 	"go.uber.org/zap"
 
 	"github.com/ozontech/seq-db/logger"
 )
 
-// Table is part of frac.Sealed, never changes
+const (
+	TableEntrySize = unsafe.Sizeof(TableEntry{}) + unsafe.Sizeof(&TableEntry{})
+	FieldDataSize  = unsafe.Sizeof(FieldData{}) + unsafe.Sizeof(&FieldData{})
+)
+
 type Table map[string]*FieldData
 
 type FieldData struct {
@@ -16,7 +21,6 @@ type FieldData struct {
 	Entries []*TableEntry
 }
 
-// TODO duplicate, probably should move to some library
 func cut(s string, l int) string {
 	if len(s) > l {
 		return s[:l]
@@ -67,4 +71,16 @@ func (t Table) GetEntryByTID(tid uint32) *TableEntry {
 
 	logger.Panic("can't find tid", zap.Uint32("tid", tid))
 	return nil
+}
+
+// Size calculates a very approximate amount of memory occupied
+func (t Table) Size() int {
+	size := int(FieldDataSize) * len(t)
+	for fieldName, fieldData := range t {
+		size += len(fieldName) + len(fieldData.MinVal) + int(TableEntrySize)*len(fieldData.Entries)
+		for _, e := range fieldData.Entries {
+			size += len(e.MaxVal) + len(e.MinVal)
+		}
+	}
+	return size
 }

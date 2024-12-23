@@ -12,16 +12,16 @@ require (
 	github.com/klauspost/compress v1.17.10
 	github.com/mailru/easyjson v0.7.7
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/ozontech/insane-json v0.1.6-0.20241015080158-969fb1803c66
-	github.com/pierrec/lz4/v4 v4.1.21
+	github.com/ozontech/insane-json v0.1.9
+	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/planetscale/vtprotobuf v0.6.0
 	github.com/prometheus/client_golang v1.20.5
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/valyala/fastrand v1.1.0
-	go.opencensus.io v0.23.0
+	go.opencensus.io v0.24.0
 	go.uber.org/atomic v1.8.0
-	go.uber.org/automaxprocs v1.5.3
-	go.uber.org/multierr v1.6.0
+	go.uber.org/automaxprocs v1.6.0
+	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.18.1
 	google.golang.org/genproto/googleapis/api v0.0.0-20240624140628-dc46fd24d27d
 	google.golang.org/grpc v1.64.0

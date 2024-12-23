@@ -12,6 +12,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	"go.opencensus.io/trace"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
@@ -49,7 +50,11 @@ func prepareFetchTestData(cData fetchTestCaseData) fetchTestData {
 			doc := []byte("doc" + strconv.Itoa(cData.startID+i))
 			docs = append(docs, doc)
 			apiDocs = append(apiDocs,
-				&seqproxyapi.Document{Id: id.String(), Data: doc},
+				&seqproxyapi.Document{
+					Id:   id.String(),
+					Data: doc,
+					Time: timestamppb.New(id.MID.Time()),
+				},
 			)
 		}
 	}

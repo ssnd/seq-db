@@ -89,6 +89,7 @@ func makeProtoDocs(qpr *seq.QPR, docs search.DocsIterator) []*seqproxyapi.Docume
 	for i, id := range qpr.IDs {
 		doc := &docsBuf[i]
 		doc.Id = id.ID.String()
+		doc.Time = timestamppb.New(id.ID.MID.Time())
 		d, _ := docs.Next()
 		doc.Data = d.Data
 		respDocs[i] = doc

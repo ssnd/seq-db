@@ -17,6 +17,7 @@ type tokenData struct {
 	tokenLIDs *TokenLIDs
 	field     string
 	value     []byte
+	tid       uint32
 }
 
 type tokenTask struct {
@@ -86,10 +87,11 @@ func (tl *TokenList) tokenLIDsWorker(ch chan tokenTask, tokenToLIDs map[string]*
 		newTokensData := make([]tokenData, len(nonExistent))
 
 		for i, j := range nonExistent {
+			var token string
 			td := &newTokensData[i]
 			td.tokenLIDs = &newTokenLIDs[i]
-			td.tokenLIDs.token, td.field, td.value, buf = copyAndSplit(task.tokens[j], task.fieldsLengths[j], buf)
-			tokenToLIDs[td.tokenLIDs.token] = td.tokenLIDs
+			token, td.field, td.value, buf = copyAndSplit(task.tokens[j], task.fieldsLengths[j], buf)
+			tokenToLIDs[token] = td.tokenLIDs
 			task.tlids[j] = td.tokenLIDs
 		}
 		task.res <- newTokensData
@@ -225,8 +227,8 @@ func (tl *TokenList) Append(tokens [][]byte, fieldsLengths []int, tokenLIDsPlace
 
 func (tl *TokenList) createTIDs(newTokensData []tokenData) {
 	tl.tidMu.Lock()
-	for _, token := range newTokensData {
-		token.tokenLIDs.tid = uint32(len(tl.tidToVal))
+	for i, token := range newTokensData {
+		newTokensData[i].tid = uint32(len(tl.tidToVal))
 		tl.tidToVal = append(tl.tidToVal, token.value)
 		tl.tidToLIDs = append(tl.tidToLIDs, token.tokenLIDs)
 	}
@@ -237,7 +239,7 @@ func (tl *TokenList) fillFieldTIDs(newTokensData []tokenData) {
 	tl.fieldsMu.Lock()
 	for _, token := range newTokensData {
 		field := token.field
-		tl.FieldTIDs[field] = append(tl.FieldTIDs[field], token.tokenLIDs.tid)
+		tl.FieldTIDs[field] = append(tl.FieldTIDs[field], token.tid)
 	}
 	tl.fieldsMu.Unlock()
 }

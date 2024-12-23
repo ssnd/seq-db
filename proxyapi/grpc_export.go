@@ -6,6 +6,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/metric"
@@ -60,6 +61,7 @@ func (g *grpcV1) Export(req *seqproxyapi.ExportRequest, stream seqproxyapi.SeqPr
 			Doc: &seqproxyapi.Document{
 				Id:   doc.ID.String(),
 				Data: doc.Data,
+				Time: timestamppb.New(doc.ID.MID.Time()),
 			},
 		}
 		if err = wrapped.Send(eResp); err != nil {

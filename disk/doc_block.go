@@ -3,6 +3,7 @@ package disk
 import (
 	"encoding/binary"
 
+	"github.com/ozontech/seq-db/util"
 	"github.com/ozontech/seq-db/zstd"
 )
 
@@ -75,21 +76,6 @@ func (b DocBlock) Payload() []byte {
 	return b[DocBlockHeaderLen:]
 }
 
-// DecompressDocBlock for the second return value can
-// * return part of DocBlock
-// * reuse 'out' parameter
-// * allocate new buffer
-// should be used with caution
-func DecompressDocBlock(b DocBlock, out []byte) ([]byte, []byte, error) {
-	if b.Codec() == CodecNo {
-		return out, b.Payload(), nil
-	}
-
-	out, err := b.Codec().decompressBlock(int(b.RawLen()), b.Payload(), out)
-
-	return out, out, err
-}
-
 func CompressDocBlock(src []byte, dst DocBlock, zstdLevel int) DocBlock {
 	dst = append(dst[:0], make([]byte, DocBlockHeaderLen)...) // fill header with zeros for cleanup
 	dst = zstd.CompressLevel(src, dst, zstdLevel)
@@ -110,4 +96,18 @@ func PackDocBlock(payload []byte, dst DocBlock) DocBlock {
 	dst.SetCodec(CodecNo)
 
 	return dst
+}
+
+// DecompressTo always put the result in `dst` regardless of whether unpacking is required
+// or part of the DocBlock can be enough.
+//
+// So DocBlock does not share the same data with `dst` and can be used safely
+func (b DocBlock) DecompressTo(dst []byte) ([]byte, error) {
+	payload := b.Payload()
+	if b.Codec() == CodecNo {
+		dst = util.EnsureSliceSize(dst, len(payload))
+		copy(dst, payload)
+		return dst, nil
+	}
+	return b.Codec().decompressBlock(int(b.RawLen()), payload, dst)
 }

@@ -16,18 +16,29 @@ type TestDoc Document
 type stringDocument struct {
 	*TestDoc
 	Data json.RawMessage `json:"data"`
+	Time json.RawMessage `json:"time"`
 }
 
 // MarshalJSON replaces struct { "data" []byte } with struct { "data" json.RawMessage }.
 func (d *Document) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&stringDocument{TestDoc: (*TestDoc)(d), Data: d.Data})
+	return json.Marshal(&stringDocument{TestDoc: (*TestDoc)(d), Data: d.Data, Time: marshalTime(d.Time)})
 }
 
 // UnmarshalJSON replaces struct { "data" json.RawMessage } with struct { "data" []byte }.
 func (d *Document) UnmarshalJSON(data []byte) error {
 	strDoc := &stringDocument{TestDoc: (*TestDoc)(d)}
-	err := json.Unmarshal(data, strDoc)
+
+	if err := json.Unmarshal(data, strDoc); err != nil {
+		return err
+	}
 	d.Data = strDoc.Data
+
+	t, err := unmarshalTime(strDoc.Time)
+	if err != nil {
+		return err
+	}
+	d.Time = t
+
 	return err
 }
 

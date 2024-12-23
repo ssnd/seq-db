@@ -39,7 +39,7 @@ func (n *Literal) String() string {
 	return builder.String()
 }
 
-func (n *Literal) appendCasedTerm(term Term, sensitive bool) {
+func (n *Literal) appendTerm(term Term, sensitive bool) {
 	if !sensitive {
 		term.Data = strings.ToLower(term.Data)
 	}

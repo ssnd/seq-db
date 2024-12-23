@@ -14,7 +14,7 @@ func newTextTerm(text string) Term {
 	}
 }
 
-func newCasedTextTerm(text string, caseSensitive bool) Term {
+func newTextTermCaseSensitive(text string, caseSensitive bool) Term {
 	if !caseSensitive {
 		text = strings.ToLower(text)
 	}

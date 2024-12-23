@@ -165,7 +165,7 @@ func parseSeqQLKeyword(token string, caseSensitive bool) ([]Term, error) {
 		r, size := utf8.DecodeRuneInString(token)
 		if r == wildcardRune {
 			if data := b.String(); data != "" {
-				terms = append(terms, newCasedTextTerm(data, caseSensitive))
+				terms = append(terms, newTextTermCaseSensitive(data, caseSensitive))
 			}
 			b.Reset()
 			terms = append(terms, newSymbolTerm('*'))
@@ -176,7 +176,7 @@ func parseSeqQLKeyword(token string, caseSensitive bool) ([]Term, error) {
 		token = token[size:]
 	}
 	if data := b.String(); data != "" {
-		terms = append(terms, newCasedTextTerm(data, caseSensitive))
+		terms = append(terms, newTextTermCaseSensitive(data, caseSensitive))
 	}
 
 	return terms, nil
@@ -200,7 +200,7 @@ func parseSeqQLText(field, token string, sensitive bool) ([]Token, error) {
 
 		// Term is done.
 		if term.Data != "" {
-			current.appendCasedTerm(term, sensitive)
+			current.appendTerm(term, sensitive)
 			term = Term{Kind: TermText}
 		}
 
@@ -220,7 +220,7 @@ func parseSeqQLText(field, token string, sensitive bool) ([]Token, error) {
 		token = token[size:]
 	}
 	if term.Data != "" {
-		current.appendCasedTerm(term, sensitive)
+		current.appendTerm(term, sensitive)
 	}
 
 	if current != nil && len(current.Terms) > 0 {

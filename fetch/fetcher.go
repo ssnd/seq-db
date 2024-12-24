@@ -18,35 +18,41 @@ import (
 )
 
 type Fetcher struct {
-	sem util.Semaphore
+	sem chan struct{}
 }
 
 func New(maxWorkersNum int) *Fetcher {
 	return &Fetcher{
-		sem: util.NewSemaphore(maxWorkersNum),
+		sem: make(chan struct{}, maxWorkersNum),
 	}
 }
 
 func (f *Fetcher) fetchDocsAsync(ctx context.Context, fracs fracmanager.FracsList, idsByFrac [][]seq.ID) ([][][]byte, []error) {
+	wg := sync.WaitGroup{}
 	errsByFracs := make([]error, len(fracs))
 	docsByFracs := make([][][]byte, len(fracs))
 
-	wg := sync.WaitGroup{}
-	wg.Add(len(fracs))
-
+loop:
 	for i, fraction := range fracs {
-		f.sem.Acquire()
-		go func() {
-			docsByFracs[i], errsByFracs[i] = fetchMultiWithRecover(ctx, fraction, idsByFrac[i])
-			f.sem.Release()
-			wg.Done()
-		}()
+		select {
+		case <-ctx.Done():
+			for n := i; n < len(fracs); n++ {
+				errsByFracs[n] = ctx.Err()
+			}
+			break loop
+		case f.sem <- struct{}{}: // acquire semaphore
+			wg.Add(1)
+			go func() {
+				docsByFracs[i], errsByFracs[i] = fetchMultiWithRecover(ctx, fraction, idsByFrac[i])
+				<-f.sem // release semaphore
+				wg.Done()
+			}()
+		}
 	}
 
 	wg.Wait()
 
 	return docsByFracs, errsByFracs
-
 }
 
 func (f *Fetcher) FetchDocs(ctx context.Context, fracs fracmanager.FracsList, ids []seq.IDSource) ([][]byte, error) {

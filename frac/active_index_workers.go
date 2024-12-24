@@ -187,14 +187,6 @@ func (w *IndexWorkers) appendWorker(index int) {
 		lids := active.AppendIDs(collector.IDs)
 		m.Stop()
 
-		// update stats before appending, because otherwise we could
-		// 1. append
-		// 2. search in active frac
-		// 3. find the docs
-		// 4. fetch them <--- and here [from, to] interval will be wrong
-		// 5. update stats (update [from, to])
-		active.UpdateStats(collector.MinMID, collector.MaxMID, collector.DocsCounter, collector.SizeCounter)
-
 		m = tr.Start("token_list_append")
 		tokenLIDsPlaces := collector.PrepareTokenLIDsPlaces()
 		active.TokenList.Append(collector.TokensValues, collector.FieldsLengths, tokenLIDsPlaces)
@@ -208,6 +200,8 @@ func (w *IndexWorkers) appendWorker(index int) {
 		tokensToMerge := addLIDsToTokens(tokenLIDsPlaces, groups)
 		w.sendTokensToMergeWorkers(active, tokensToMerge)
 		m.Stop()
+
+		active.UpdateStats(collector.MinMID, collector.MaxMID, collector.DocsCounter, collector.SizeCounter)
 
 		task.AppendQueue.Dec()
 

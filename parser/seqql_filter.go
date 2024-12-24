@@ -12,7 +12,7 @@ import (
 	"github.com/ozontech/seq-db/seq"
 )
 
-func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
+func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) (*ASTNode, error) {
 	fieldName, err := parseCompositeTokenReplaceWildcards(lex)
 	if err != nil {
 		return nil, fmt.Errorf("parsing field name: %s", err)
@@ -46,10 +46,26 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing range for field %q: %s", fieldName, err)
 		}
-		return []Token{r}, nil
+		return &ASTNode{Value: r}, nil
 	}
 
-	// Parse fulltext search filter.
+	if lex.IsKeyword("in") {
+		lex.Next()
+		ast, err := parseFilterIn(lex, fieldName, t, caseSensitive)
+		if err != nil {
+			return nil, fmt.Errorf("parsing 'in' filter: %s", err)
+		}
+		return ast, nil
+	}
+
+	ast, err := parseFulltextSearchFilter(lex, fieldName, t, caseSensitive)
+	if err != nil {
+		return nil, err
+	}
+	return ast, nil
+}
+
+func parseFulltextSearchFilter(lex *lexer, fieldName string, t seq.TokenizerType, caseSensitive bool) (*ASTNode, error) {
 	value, err := parseCompositeToken(lex)
 	if err != nil {
 		return nil, fmt.Errorf("parsing filter value for field %q: %s", fieldName, err)
@@ -60,16 +76,55 @@ func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing keyword for field %q: %s", fieldName, err)
 		}
-		return []Token{&Literal{Field: fieldName, Terms: terms}}, nil
+		return &ASTNode{Value: &Literal{Field: fieldName, Terms: terms}}, nil
 	case seq.TokenizerTypeText:
 		tokens, err := parseSeqQLText(fieldName, value, caseSensitive)
 		if err != nil {
 			return nil, fmt.Errorf("parsing text for field %q: %s", fieldName, err)
 		}
-		return tokens, nil
+		return buildAndTree(tokens), nil
 	default:
 		panic(fmt.Errorf("BUG: unexpected index type: %d", t))
 	}
+}
+
+// parseFilterIn parses 'in' filter.
+// Filter 'in' is a logical OR of multiple Literal.
+// It supports all forms of seq-ql string literals.
+// Example queries:
+//
+//	service:in(auth-api, api-gateway, clickhouse-shard-*)
+//	phone:in(`+7 999 ** **`, '+995'*)
+func parseFilterIn(lex *lexer, fieldName string, t seq.TokenizerType, caseSensitive bool) (*ASTNode, error) {
+	if !lex.IsKeyword("(") {
+		return nil, fmt.Errorf("expect '(', got %q", lex.Token)
+	}
+	lex.Next()
+
+	if lex.IsKeyword(")") {
+		return nil, fmt.Errorf("empty 'in' filter")
+	}
+
+	textFilter, err := parseFulltextSearchFilter(lex, fieldName, t, caseSensitive)
+	if err != nil {
+		return nil, err
+	}
+	root := textFilter
+	for lex.IsKeyword(",") {
+		lex.Next()
+		textFilter, err := parseFulltextSearchFilter(lex, fieldName, t, caseSensitive)
+		if err != nil {
+			return nil, err
+		}
+		root = newLogicalNode(LogicalOr, root, textFilter)
+	}
+
+	if !lex.IsKeyword(")") {
+		return nil, fmt.Errorf("expect ')', got %q", lex.Token)
+	}
+
+	lex.Next()
+	return root, nil
 }
 
 var bytesBufferPool = sync.Pool{

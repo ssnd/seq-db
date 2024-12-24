@@ -381,11 +381,11 @@ func parseSeqQLSubexpr(lex *lexer, mapping seq.Mapping, depth int) (*ASTNode, er
 		return newNotNode(child), nil
 	}
 
-	tokens, err := parseSeqQLFieldFilter(lex, mapping)
+	ast, err := parseSeqQLFieldFilter(lex, mapping)
 	if err != nil {
 		return nil, err
 	}
-	return buildAndTree(tokens), nil
+	return ast, nil
 }
 
 func uniqueTokens(s []string) map[string]struct{} {

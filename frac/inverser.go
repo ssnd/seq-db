@@ -69,14 +69,13 @@ func (is *inverser) Revert(i uint32) uint32 {
 
 func (is *inverser) Release() {
 	bytespool.Release(is.buf)
+	is.buf = nil
 }
 
 func getSlice(size int) (*bytespool.Buffer, []int) {
 	const sizeOfInt = unsafe.Sizeof(int(0))
 	buf := bytespool.Acquire(size * int(sizeOfInt))
 	s := unsafe.Slice((*int)(unsafe.Pointer(unsafe.SliceData(buf.B))), size)
-	for i := range s {
-		s[i] = 0
-	}
+	clear(s)
 	return buf, s
 }

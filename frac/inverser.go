@@ -80,6 +80,7 @@ func (is *inverser) Revert(i uint32) uint32 {
 func (is *inverser) Release() {
 	bytespool.Release(is.buf)
 	is.buf = nil
+	is.inversion = nil
 }
 
 func getSlice(size int) (*bytespool.Buffer, []int) {

@@ -68,16 +68,11 @@ type ActiveDataProvider struct {
 // Creation of inverser for ActiveIDsProvider is expensive operation
 func (dp *ActiveDataProvider) getIDsProvider() *ActiveIDsProvider {
 	if dp.idsProvider == nil {
-
 		m := dp.tracer.Start("get_all_documents")
 		mapping := dp.GetAllDocuments() // creation order is matter
 		mids := dp.MIDs.GetVals()       // mids and rids should be created after mapping to ensure that
 		rids := dp.RIDs.GetVals()       // they contain all the ids that mapping contains.
 		m.Stop()
-
-		if len(mapping) == 0 {
-			panic("can't search on empty fraction")
-		}
 
 		m = dp.tracer.Start("inverse")
 		info := dp.Info()

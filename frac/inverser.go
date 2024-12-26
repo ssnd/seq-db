@@ -1,7 +1,6 @@
 package frac
 
 import (
-	"slices"
 	"unsafe"
 
 	"github.com/ozontech/seq-db/bytespool"
@@ -15,22 +14,33 @@ type inverser struct {
 }
 
 func newInverser(values []uint32, minMID, maxMID seq.MID, mids []uint64) *inverser {
-	buf, inversion := getSlice(int(slices.Max(values)) + 1)
-
+	// skip greater than maxMID
 	l := 0
-	for l < len(values) && mids[values[l]] > uint64(maxMID) { // skip greater than maxMID
+	for l < len(values) && mids[values[l]] > uint64(maxMID) {
 		l++
 	}
 
-	r := l
-	for r < len(values) && mids[values[r]] >= uint64(minMID) { // process only greater than minMID
-		inversion[values[r]] = r - l + 1
-		r++
+	// skip less than minMID
+	r := len(values) - 1
+	for r >= 0 && mids[values[r]] < uint64(minMID) {
+		r--
+	}
+
+	if r < l {
+		// we should never end up here
+		panic("can't search on empty fraction")
+	}
+
+	// build inverse map
+	values = values[l : r+1]
+	buf, inversion := getSlice(len(mids))
+	for i, v := range values {
+		inversion[v] = i + 1
 	}
 
 	return &inverser{
 		buf:       buf,
-		values:    values[l:r],
+		values:    values,
 		inversion: inversion,
 	}
 }

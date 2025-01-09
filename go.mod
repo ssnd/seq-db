@@ -8,7 +8,7 @@ require (
 	github.com/cep21/circuit/v3 v3.2.2
 	github.com/golang/mock v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.2
-	github.com/klauspost/compress v1.17.10
+	github.com/klauspost/compress v1.17.11
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/ozontech/insane-json v0.1.9
 	github.com/pierrec/lz4/v4 v4.1.22

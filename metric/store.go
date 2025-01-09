@@ -292,13 +292,6 @@ var (
 		Help:      "",
 		Buckets:   prometheus.ExponentialBuckets(256, 4, 32),
 	})
-	SubmitFetchStagesSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "fetch",
-		Name:      "submit_stages_seconds",
-		Help:      "",
-		Buckets:   SecondsBuckets,
-	}, []string{"stage"})
 	FetchSealedStagesSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "seq_db_store",
 		Subsystem: "fetch",
@@ -306,46 +299,6 @@ var (
 		Help:      "",
 		Buckets:   SecondsBuckets,
 	}, []string{"stage"})
-	FetchWorkerStagesSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "fetch",
-		Name:      "worker_stages_seconds",
-		Help:      "",
-		Buckets:   SecondsBuckets,
-	}, []string{"stage"})
-	FetchWithHints = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "fetch",
-		Name:      "requests_with_hints",
-		Help:      "",
-	})
-	FetchWithoutHint = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "fetch",
-		Name:      "requests_without_hints",
-		Help:      "",
-	})
-	FetchHintMisses = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "fetch",
-		Name:      "hint_misses",
-		Help:      "",
-	})
-	FetchWorkerFracsPerTask = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "fetch",
-		Name:      "fracs_per_task",
-		Help:      "",
-		Buckets:   prometheus.ExponentialBuckets(1, 2, 16),
-	})
-	FetchWorkerIDsPerTask = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "fetch",
-		Name:      "ids_per_task",
-		Help:      "",
-		Buckets:   prometheus.ExponentialBuckets(1, 2, 16),
-	})
-
 	MaintenanceTruncateTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "seq_db_store",
 		Subsystem: "maintanance",

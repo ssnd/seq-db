@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/ozontech/seq-db/consts"
@@ -93,14 +94,11 @@ func (g *GrpcV1) doSearch(ctx context.Context, req *storeapi.SearchRequest) (*st
 	}
 
 	t := time.Now()
-	if req.Query == "" {
-		req.Query = seq.TokenAll + ":*"
-	}
-	ast, err := parser.ParseQuery(req.Query, g.mapping)
-	searchCell.AddParseTime(time.Since(t))
+	ast, err := g.parseQuery(ctx, req.Query)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "can't parse query %q: %v", req.Query, err)
+		return nil, err
 	}
+	searchCell.AddParseTime(time.Since(t))
 
 	if searchCell.IsCancelled() {
 		return nil, fmt.Errorf("search cancelled before evaluating: reason=%w", searchCell.Context.Err())
@@ -186,6 +184,33 @@ func (g *GrpcV1) doSearch(ctx context.Context, req *storeapi.SearchRequest) (*st
 	}
 
 	return buildSearchResponse(qpr, searchCell), nil
+}
+
+func (g *GrpcV1) parseQuery(ctx context.Context, query string) (*parser.ASTNode, error) {
+	if query == "" {
+		query = seq.TokenAll + ":*"
+	}
+	var ast *parser.ASTNode
+	if hasHeaderUseSeqQL(ctx) {
+		seqql, err := parser.ParseSeqQL(query, g.mapping)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "can't parse query %q: %v", query, err)
+		}
+		ast = seqql.Root
+	} else {
+		var err error
+		ast, err = parser.ParseQuery(query, g.mapping)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "can't parse query %q: %v", query, err)
+		}
+	}
+	return ast, nil
+}
+
+func hasHeaderUseSeqQL(ctx context.Context) bool {
+	md, _ := metadata.FromIncomingContext(ctx)
+	useSeqQLValues := md.Get("use-seq-ql")
+	return slices.Contains(useSeqQLValues, "true")
 }
 
 func (g *GrpcV1) searchIteratively(searchCell *frac.SearchCell, params search.Params, n int) (*seq.QPR, []*search.Stats, time.Duration, error) {

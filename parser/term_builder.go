@@ -2,11 +2,22 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
 func newTextTerm(text string) Term {
+	return Term{
+		Kind: TermText,
+		Data: text,
+	}
+}
+
+func newTextTermCaseSensitive(text string, caseSensitive bool) Term {
+	if !caseSensitive {
+		text = strings.ToLower(text)
+	}
 	return Term{
 		Kind: TermText,
 		Data: text,

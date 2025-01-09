@@ -45,6 +45,12 @@ var (
 		Help:      "",
 		Buckets:   metric.SecondsBuckets,
 	})
+	largeDocumentsSkipped = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "seq_db_ingestor",
+		Subsystem: "bulk",
+		Name:      "large_documents_skipped_total",
+		Help:      "",
+	})
 )
 
 type DocumentsProcessor interface {
@@ -195,6 +201,7 @@ func (r *esBulkDocReader) ReadDoc() ([]byte, error) {
 			break
 		}
 		// Document size is too large, skip it.
+		largeDocumentsSkipped.Inc()
 	}
 
 	if len(doc) == 0 {

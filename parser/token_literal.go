@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/ozontech/seq-db/seq"
 )
 
 type Literal struct {
@@ -19,10 +21,29 @@ func (n *Literal) Dump(builder *strings.Builder) {
 	}
 }
 
+func (n *Literal) DumpSeqQL(o *strings.Builder) {
+	if n.Field == seq.TokenAll && len(n.Terms) == 1 && n.Terms[0].IsWildcard() {
+		o.WriteString("*")
+		return
+	}
+	o.WriteString(quoteTokenIfNeeded(n.Field))
+	o.WriteString(`:`)
+	for _, term := range n.Terms {
+		term.DumpSeqQL(o)
+	}
+}
+
 func (n *Literal) String() string {
 	builder := &strings.Builder{}
 	n.Dump(builder)
 	return builder.String()
+}
+
+func (n *Literal) appendTerm(term Term, sensitive bool) {
+	if !sensitive {
+		term.Data = strings.ToLower(term.Data)
+	}
+	n.Terms = append(n.Terms, term)
 }
 
 type TermKind int
@@ -55,6 +76,18 @@ func (t Term) Dump(builder *strings.Builder) {
 	default:
 		panic("unknown term kind")
 	}
+}
+
+func (t Term) IsWildcard() bool {
+	return t.Kind == TermSymbol && t.Data == "*"
+}
+
+func (t Term) DumpSeqQL(b *strings.Builder) {
+	if t.IsWildcard() {
+		b.WriteString("*")
+		return
+	}
+	b.WriteString(quoteTokenIfNeeded(t.Data))
 }
 
 var specialSymbol = map[rune]bool{

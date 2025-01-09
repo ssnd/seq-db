@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -120,5 +121,44 @@ func (e *ASTNode) Dump(builder *strings.Builder) {
 func (e *ASTNode) String() string {
 	builder := &strings.Builder{}
 	e.Dump(builder)
+	return builder.String()
+}
+
+func (e *ASTNode) DumpSeqQL(b *strings.Builder) {
+	switch t := e.Value.(type) {
+	case *Logical:
+		b.WriteByte('(')
+		switch t.Operator {
+		case LogicalNot:
+			b.WriteString("not ")
+			e.Children[0].DumpSeqQL(b)
+		case LogicalNAnd:
+			b.WriteString("not ")
+			fallthrough
+		case LogicalOr, LogicalAnd:
+			e.Children[0].DumpSeqQL(b)
+			if t.Operator == LogicalOr {
+				b.WriteString(" or ")
+			} else {
+				b.WriteString(" and ")
+			}
+			e.Children[1].DumpSeqQL(b)
+		default:
+			panic("unknown operator")
+		}
+		b.WriteByte(')')
+	case *Literal:
+		t.DumpSeqQL(b)
+	case *Range:
+		t.DumpSeqQL(b)
+	default:
+		panic(fmt.Errorf("unknown token implementation: %T", e.Value))
+	}
+}
+
+// SeqQLString it is like String, but for SeqQL.
+func (e *ASTNode) SeqQLString() string {
+	builder := &strings.Builder{}
+	e.DumpSeqQL(builder)
 	return builder.String()
 }

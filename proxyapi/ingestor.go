@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ozontech/seq-db/network/grpcutil"
 	"github.com/ozontech/seq-db/seq"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -92,6 +93,7 @@ func appendClients(ctx context.Context, clients map[string]storeapi.StoreApiClie
 						MaxDelay:   2 * time.Second,
 					},
 				}),
+				grpc.WithUnaryInterceptor(grpcutil.PassMetadataUnaryClientInterceptor()),
 			)
 			if err != nil {
 				return err

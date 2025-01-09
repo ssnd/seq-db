@@ -1,0 +1,238 @@
+package parser
+
+import (
+	"bytes"
+	"fmt"
+	"strings"
+	"sync"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/ozontech/seq-db/conf"
+	"github.com/ozontech/seq-db/seq"
+)
+
+func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) ([]Token, error) {
+	fieldName, err := parseCompositeTokenReplaceWildcards(lex)
+	if err != nil {
+		return nil, fmt.Errorf("parsing field name: %s", err)
+	}
+	if fieldName == "" {
+		return nil, fmt.Errorf("empty field name")
+	}
+
+	t := indexType(mapping, fieldName)
+	if t == seq.TokenizerTypeNoop {
+		return nil, fmt.Errorf("field %q is not indexed", fieldName)
+	}
+
+	if !lex.IsKeyword(":") {
+		return nil, fmt.Errorf("missing ':' after %q", fieldName)
+	}
+
+	lex.Next()
+	if lex.IsKeyword("") {
+		return nil, fmt.Errorf("missing filter value for field %q", fieldName)
+	}
+
+	caseSensitive := conf.CaseSensitive
+	if fieldName == seq.TokenExists {
+		caseSensitive = true
+	}
+
+	// Parse range filter.
+	if lex.IsKeywords("[", "(") {
+		r, err := parseSeqQLTokenRange(fieldName, lex, caseSensitive)
+		if err != nil {
+			return nil, fmt.Errorf("parsing range for field %q: %s", fieldName, err)
+		}
+		return []Token{r}, nil
+	}
+
+	// Parse fulltext search filter.
+	value, err := parseCompositeToken(lex)
+	if err != nil {
+		return nil, fmt.Errorf("parsing filter value for field %q: %s", fieldName, err)
+	}
+	switch t {
+	case seq.TokenizerTypeKeyword, seq.TokenizerTypePath:
+		terms, err := parseSeqQLKeyword(value, caseSensitive)
+		if err != nil {
+			return nil, fmt.Errorf("parsing keyword for field %q: %s", fieldName, err)
+		}
+		return []Token{&Literal{Field: fieldName, Terms: terms}}, nil
+	case seq.TokenizerTypeText:
+		tokens, err := parseSeqQLText(fieldName, value, caseSensitive)
+		if err != nil {
+			return nil, fmt.Errorf("parsing text for field %q: %s", fieldName, err)
+		}
+		return tokens, nil
+	default:
+		panic(fmt.Errorf("BUG: unexpected index type: %d", t))
+	}
+}
+
+var bytesBufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
+
+// parseCompositeToken parses composite token.
+//
+// Composite token is a continuous sequence of letters, numbers, '_', '*', '-', and wildcards,
+// that continuous until the end of the query or next token is space.
+//
+// Token may be quoted, but the lexer returns unquoted tokens,
+// so query: "foo: 'foo bar'_'buz'" is correct. See lexer.Next for details.
+//
+// For example, list of composite tokens:
+//
+//	"foo", "foo-bar", "foo_bar", "foo_bar-and", "foo*bar", "`foo bar``buz`"
+//
+// List of non-composite tokens:
+//
+//	"foo bar", "$foo", "foo$", "f$$", "@gmail.com".
+func parseCompositeToken(lex *lexer) (string, error) {
+	if lex.IsKeyword("") {
+		return "", fmt.Errorf("unexpected end of query")
+	}
+	if !isCompositeToken(lex) {
+		// Disallow unquoted tokens that starts with non-letter and non-number symbols.
+		return "", fmt.Errorf("unexpected symbol %q", lex.Token)
+	}
+
+	firstToken := lex.Token
+	lex.Next()
+	if lex.SpaceSkipped || !isCompositeToken(lex) {
+		// Token is single word and not composite.
+		// Return it as is.
+		return firstToken, nil
+	}
+
+	b := bytesBufferPool.Get().(*bytes.Buffer)
+	defer bytesBufferPool.Put(b)
+	b.Reset()
+
+	// Join tokens to single composite token.
+	b.WriteString(firstToken)
+	for ; !lex.SpaceSkipped && isCompositeToken(lex); lex.Next() {
+		b.WriteString(lex.Token)
+	}
+	return b.String(), nil
+}
+
+func isCompositeToken(lex *lexer) bool {
+	if lex.IsKeyword("") {
+		// End of query.
+		return false
+	}
+	if lex.Token == "" {
+		// Empty token.
+		return true
+	}
+
+	r, size := utf8.DecodeRuneInString(lex.Token)
+
+	hasMoreSymbols := len(lex.Token[size:]) > 1
+	if hasMoreSymbols || lex.TokenQuoted {
+		// Quoted tokens and tokens with more than one character are part of composite token.
+		return true
+	}
+
+	return isTokenRune(r) || r == '-' || r == '*' || r == wildcardRune
+}
+
+func parseCompositeTokenReplaceWildcards(lex *lexer) (string, error) {
+	s, err := parseCompositeToken(lex)
+	if err != nil {
+		return "", err
+	}
+	return strings.ReplaceAll(s, string(wildcardRune), "*"), nil
+}
+
+func parseSeqQLKeyword(token string, caseSensitive bool) ([]Term, error) {
+	if token == "" {
+		return []Term{newTextTerm("")}, nil
+	}
+
+	b := bytesBufferPool.Get().(*bytes.Buffer)
+	defer bytesBufferPool.Put(b)
+	b.Reset()
+
+	var terms []Term
+	for token != "" {
+		r, size := utf8.DecodeRuneInString(token)
+		if r == wildcardRune {
+			if data := b.String(); data != "" {
+				terms = append(terms, newTextTermCaseSensitive(data, caseSensitive))
+			}
+			b.Reset()
+			terms = append(terms, newSymbolTerm('*'))
+			token = token[size:]
+			continue
+		}
+		b.WriteRune(r)
+		token = token[size:]
+	}
+	if data := b.String(); data != "" {
+		terms = append(terms, newTextTermCaseSensitive(data, caseSensitive))
+	}
+
+	return terms, nil
+}
+
+func parseSeqQLText(field, token string, sensitive bool) ([]Token, error) {
+	if token == "" {
+		return []Token{&Literal{Field: field, Terms: []Term{newTextTerm("")}}}, nil
+	}
+	var tokens []Token
+	current := &Literal{Field: field}
+
+	term := Term{Kind: TermText}
+	for token != "" {
+		r, size := utf8.DecodeRuneInString(token)
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' || r == '*' {
+			term.Data += string(r)
+			token = token[size:]
+			continue
+		}
+
+		// Term is done.
+		if term.Data != "" {
+			current.appendTerm(term, sensitive)
+			term = Term{Kind: TermText}
+		}
+
+		if r == wildcardRune {
+			current.Terms = append(current.Terms, newSymbolTerm('*'))
+			token = token[size:]
+			continue
+		}
+
+		// This is separator character like ':', '&', ' ', emoji, etc.
+		// So create new literal.
+
+		if len(current.Terms) != 0 {
+			tokens = append(tokens, current)
+			current = &Literal{Field: field}
+		}
+		token = token[size:]
+	}
+	if term.Data != "" {
+		current.appendTerm(term, sensitive)
+	}
+
+	if current != nil && len(current.Terms) > 0 {
+		tokens = append(tokens, current)
+	}
+
+	if len(tokens) == 0 {
+		// There are no tokens to search, return an empty filter.
+		tokens = append(tokens, &Literal{
+			Field: field,
+			Terms: []Term{{Kind: TermText, Data: ""}},
+		})
+	}
+	return tokens, nil
+}

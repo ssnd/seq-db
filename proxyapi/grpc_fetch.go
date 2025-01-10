@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ozontech/seq-db/proxy/search"
 	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -49,7 +50,13 @@ func (g *grpcV1) Fetch(req *seqproxyapi.FetchRequest, stream seqproxyapi.SeqProx
 		errMsg := fmt.Sprintf("too many documents are requested: count=%d", len(ids))
 		return status.Error(codes.InvalidArgument, errMsg)
 	}
-	docsStream, err := g.searchIngestor.Documents(ctx, ids)
+	docsStream, err := g.searchIngestor.Documents(ctx, search.FetchRequest{
+		IDs: ids,
+		FieldsFilter: search.FetchFieldsFilter{
+			Fields:    req.GetFieldsFilter().GetFields(),
+			BlockList: req.GetFieldsFilter().GetBlockList(),
+		},
+	})
 	if err != nil {
 		return status.Errorf(codes.Internal, "can't fetch: %v", err)
 	}

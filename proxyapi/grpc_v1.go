@@ -25,7 +25,7 @@ import (
 
 type SearchIngestor interface {
 	Search(ctx context.Context, sr *search.SearchRequest) (*seq.QPR, search.DocsIterator, time.Duration, error)
-	Documents(ctx context.Context, ids []seq.ID) (search.DocsIterator, error)
+	Documents(ctx context.Context, r search.FetchRequest) (search.DocsIterator, error)
 	Status(ctx context.Context) *search.IngestorStatus
 }
 

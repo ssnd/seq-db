@@ -110,9 +110,15 @@ message IdWithHint {
 }
 
 message FetchRequest {
+  message FieldsFilter {
+    repeated string fields = 1;
+    // todo: invert block_list logic to not filter fields by default
+    bool block_list = 2;
+  }
   repeated string ids = 1;
   bool explain = 3;
   repeated IdWithHint ids_with_hints = 4;
+  FieldsFilter fields_filter = 5;
 }
 
 message StatusRequest {}

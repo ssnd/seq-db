@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/c2h5oh/datasize"
+	insaneJSON "github.com/ozontech/insane-json"
 	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 
@@ -65,6 +68,9 @@ func (g *GrpcV1) doFetch(ctx context.Context, req *storeapi.FetchRequest, stream
 	var buf []byte
 	docsStream := g.docsStream(ctx, ids, initChunkSize)
 
+	dp := acquireDocFieldsFilter(req.FieldsFilter)
+	defer releaseDocFieldsFilter(dp)
+
 	sent := 0
 	for _, id := range ids {
 		workTime := time.Now()
@@ -72,6 +78,7 @@ func (g *GrpcV1) doFetch(ctx context.Context, req *storeapi.FetchRequest, stream
 		if err != nil {
 			return err
 		}
+		doc = dp.FilterDocFields(doc)
 		workDuration += time.Since(workTime)
 
 		if doc == nil {
@@ -132,6 +139,83 @@ func (g *GrpcV1) doFetch(ctx context.Context, req *storeapi.FetchRequest, stream
 	}
 
 	return nil
+}
+
+type docFieldsFilter struct {
+	filter *storeapi.FetchRequest_FieldsFilter
+
+	decoder    *insaneJSON.Root
+	decoderBuf []byte
+}
+
+var docFieldsFilterPool = sync.Pool{
+	New: func() any {
+		return &docFieldsFilter{}
+	},
+}
+
+func acquireDocFieldsFilter(filter *storeapi.FetchRequest_FieldsFilter) *docFieldsFilter {
+	dp := docFieldsFilterPool.Get().(*docFieldsFilter)
+	if dp.decoder == nil {
+		dp.decoder = insaneJSON.Spawn()
+	}
+	dp.filter = filter
+	return dp
+}
+
+func releaseDocFieldsFilter(dp *docFieldsFilter) {
+	dp.filter = nil
+	docFieldsFilterPool.Put(dp)
+}
+
+// FilterDocFields filters document with dp.filter.
+// This function doesn't mutate the given doc slice.
+func (dp *docFieldsFilter) FilterDocFields(doc []byte) disk.DocBlock {
+	doc = dp.filterFields(doc)
+	return doc
+}
+
+func (dp *docFieldsFilter) filterFields(doc []byte) []byte {
+	if dp.filter == nil || len(dp.filter.Fields) == 0 || len(doc) == 0 {
+		return doc
+	}
+	err := dp.decoder.DecodeBytes(doc)
+	if err != nil {
+		logger.Error("error decoding doc while fetch", zap.Error(err))
+		return doc
+	}
+
+	if !dp.decoder.IsObject() {
+		logger.Error("document is not an object", zap.String("doc", string(doc)))
+		return doc
+	}
+
+	if dp.filter.BlockList {
+		// Remove given fields.
+
+		for _, field := range dp.filter.Fields {
+			dp.decoder.Dig(field).Suicide()
+		}
+		dp.decoderBuf = dp.decoder.Encode(dp.decoderBuf[:0])
+		return dp.decoderBuf
+	}
+
+	// Keep only given fields.
+
+	// fieldsToRemove contains fields that should be removed.
+	// It is complex to do it in-place because decoder.Suicide makes decoder.AsFields() invalid.
+	var fieldsToRemove []*insaneJSON.Node
+	for _, field := range dp.decoder.AsFields() {
+		fieldName := field.AsString()
+		if !slices.Contains(dp.filter.Fields, fieldName) {
+			fieldsToRemove = append(fieldsToRemove, field.AsFieldValue())
+		}
+	}
+	for _, field := range fieldsToRemove {
+		field.Suicide()
+	}
+	dp.decoderBuf = dp.decoder.Encode(dp.decoderBuf[:0])
+	return dp.decoderBuf
 }
 
 func (g *GrpcV1) docsStream(ctx context.Context, ids []seq.IDSource, initChunkLen int) func() ([]byte, error) {

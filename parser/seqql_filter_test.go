@@ -344,6 +344,9 @@ func TestParseSeqQLError(t *testing.T) {
 
 	// Test pipes.
 	test(`message:--||`, `unknown pipe: |`)
+	test(`source_type:access* | fields message | where login:admin`, `pipe "where" cannot be after pipe "fields"`)
+	test(`source_type:access* | fields message | remove login:admin`, `parsing 'remove' pipe: unexpected symbol ":"`)
+	test(`source_type:access* | fields message | remove login`, `cannot mix 'fields' and 'remove' pipes`)
 }
 
 func TestSeqQLParserFuzz(t *testing.T) {

@@ -99,7 +99,7 @@ func (s *IntegrationTestSuite) TestSearchOne() {
 
 		if withTotal {
 			if assert.Greater(s.T(), int(qpr.Total), 0, "no docs found") {
-				tmpDoc := env.Ingestor().SearchIngestor.Document(context.Background(), qpr.IDs[0].ID)
+				tmpDoc := env.Ingestor().SearchIngestor.Document(context.Background(), qpr.IDs[0].ID, search.FetchFieldsFilter{})
 				assert.Equal(s.T(), origDocs[1], string(tmpDoc), "wrong doc content")
 			}
 		}
@@ -364,7 +364,7 @@ func (s *IntegrationTestSuite) TestFetchNotFound() {
 
 	env.WaitIdle()
 	env.SealAll()
-	doc := env.Ingestor().SearchIngestor.Document(context.Background(), seq.NewID(now, 0))
+	doc := env.Ingestor().SearchIngestor.Document(context.Background(), seq.NewID(now, 0), search.FetchFieldsFilter{})
 	assert.Empty(s.T(), doc)
 }
 
@@ -1411,7 +1411,7 @@ func (s *IntegrationTestSuite) TestDocuments() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		docsStream, err := env.Ingestor().SearchIngestor.Documents(ctx, qpr.IDs.IDs())
+		docsStream, err := env.Ingestor().SearchIngestor.Documents(ctx, search.FetchRequest{IDs: qpr.IDs.IDs()})
 		s.Assert().NoError(err)
 
 		actualDocs := []string{}

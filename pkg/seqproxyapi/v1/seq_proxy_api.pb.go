@@ -22,12 +22,13 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Custom error code, returned by seq-db proxy.
 type ErrorCode int32
 
 const (
-	ErrorCode_ERROR_CODE_UNSPECIFIED      ErrorCode = 0
-	ErrorCode_ERROR_CODE_NO               ErrorCode = 1
-	ErrorCode_ERROR_CODE_PARTIAL_RESPONSE ErrorCode = 2
+	ErrorCode_ERROR_CODE_UNSPECIFIED      ErrorCode = 0 // Unknown/undefined code.
+	ErrorCode_ERROR_CODE_NO               ErrorCode = 1 // No error code. Returned when there were no problems during the request handling.
+	ErrorCode_ERROR_CODE_PARTIAL_RESPONSE ErrorCode = 2 // Partial response code. Returned when some of the seq-stores returned an error.
 )
 
 // Enum value maps for ErrorCode.
@@ -71,16 +72,17 @@ func (ErrorCode) EnumDescriptor() ([]byte, []int) {
 	return file_seqproxyapi_v1_seq_proxy_api_proto_rawDescGZIP(), []int{0}
 }
 
+// Aggregation function used in request.
 type AggFunc int32
 
 const (
-	AggFunc_AGG_FUNC_COUNT    AggFunc = 0
-	AggFunc_AGG_FUNC_SUM      AggFunc = 1
-	AggFunc_AGG_FUNC_MIN      AggFunc = 2
-	AggFunc_AGG_FUNC_MAX      AggFunc = 3
-	AggFunc_AGG_FUNC_AVG      AggFunc = 4
-	AggFunc_AGG_FUNC_QUANTILE AggFunc = 5
-	AggFunc_AGG_FUNC_UNIQUE   AggFunc = 6
+	AggFunc_AGG_FUNC_COUNT    AggFunc = 0 // Returns how many times `field` was equal to particular value.
+	AggFunc_AGG_FUNC_SUM      AggFunc = 1 // Performs an addition operation on `field`, among documents with same `group_by` field.
+	AggFunc_AGG_FUNC_MIN      AggFunc = 2 // Finds minimum value for `field`, among documents with same `group_by` field.
+	AggFunc_AGG_FUNC_MAX      AggFunc = 3 // Finds maximum value for `field`, among documents with same `group_by` field.
+	AggFunc_AGG_FUNC_AVG      AggFunc = 4 // Finds average value for `field`, among documents with same `group_by` field.
+	AggFunc_AGG_FUNC_QUANTILE AggFunc = 5 // Finds quantiles for `field`, among documents with same `group_by` field.
+	AggFunc_AGG_FUNC_UNIQUE   AggFunc = 6 // Finds unique values for `group_by` field.
 )
 
 // Enum value maps for AggFunc.
@@ -132,11 +134,12 @@ func (AggFunc) EnumDescriptor() ([]byte, []int) {
 	return file_seqproxyapi_v1_seq_proxy_api_proto_rawDescGZIP(), []int{1}
 }
 
+// Order of document sorting.
 type Order int32
 
 const (
-	Order_ORDER_DESC Order = 0
-	Order_ORDER_ASC  Order = 1
+	Order_ORDER_DESC Order = 0 // Type for descending order.
+	Order_ORDER_ASC  Order = 1 // Type for ascending order.
 )
 
 // Enum value maps for Order.
@@ -178,13 +181,14 @@ func (Order) EnumDescriptor() ([]byte, []int) {
 	return file_seqproxyapi_v1_seq_proxy_api_proto_rawDescGZIP(), []int{2}
 }
 
+// Additional details provided if an error during request handling occurred.
 type Error struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Code    ErrorCode `protobuf:"varint,1,opt,name=code,proto3,enum=seqproxyapi.v1.ErrorCode" json:"code,omitempty"`
-	Message string    `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Code    ErrorCode `protobuf:"varint,1,opt,name=code,proto3,enum=seqproxyapi.v1.ErrorCode" json:"code,omitempty"` // Response error code.
+	Message string    `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`                          // Additional message.
 }
 
 func (x *Error) Reset() {
@@ -233,14 +237,15 @@ func (x *Error) GetMessage() string {
 	return ""
 }
 
+// Document returned by seq-db.
 type Document struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Id   string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Data []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	Time *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
+	Id   string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`     // seq-id of the document.
+	Data []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"` // content of the document in utf-8 format.
+	Time *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"` // timestamp from the document.
 }
 
 func (x *Document) Reset() {
@@ -296,13 +301,14 @@ func (x *Document) GetTime() *timestamppb.Timestamp {
 	return nil
 }
 
+// Aggregation response.
 type Aggregation struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Buckets   []*Aggregation_Bucket `protobuf:"bytes,1,rep,name=buckets,proto3" json:"buckets,omitempty"`
-	NotExists int64                 `protobuf:"varint,2,opt,name=not_exists,json=notExists,proto3" json:"not_exists,omitempty"`
+	Buckets   []*Aggregation_Bucket `protobuf:"bytes,1,rep,name=buckets,proto3" json:"buckets,omitempty"`                       // List of aggregations for given request.
+	NotExists int64                 `protobuf:"varint,2,opt,name=not_exists,json=notExists,proto3" json:"not_exists,omitempty"` // Number of documents in which such field does not exist
 }
 
 func (x *Aggregation) Reset() {
@@ -351,12 +357,13 @@ func (x *Aggregation) GetNotExists() int64 {
 	return 0
 }
 
+// Histogram response.
 type Histogram struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Buckets []*Histogram_Bucket `protobuf:"bytes,1,rep,name=buckets,proto3" json:"buckets,omitempty"`
+	Buckets []*Histogram_Bucket `protobuf:"bytes,1,rep,name=buckets,proto3" json:"buckets,omitempty"` // Buckets for given histogram request.
 }
 
 func (x *Histogram) Reset() {
@@ -398,15 +405,16 @@ func (x *Histogram) GetBuckets() []*Histogram_Bucket {
 	return nil
 }
 
+// General search query for requesting documents.
 type SearchQuery struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Query   string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	From    *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
-	To      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`
-	Explain bool                   `protobuf:"varint,4,opt,name=explain,proto3" json:"explain,omitempty"`
+	Query   string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`      // Search query.
+	From    *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`        // Lower bound for search (inclusive).
+	To      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`            // Upper bound for search (inclusive).
+	Explain bool                   `protobuf:"varint,4,opt,name=explain,proto3" json:"explain,omitempty"` // Should request be explained (tracing will be provided with the result).
 }
 
 func (x *SearchQuery) Reset() {
@@ -469,15 +477,16 @@ func (x *SearchQuery) GetExplain() bool {
 	return false
 }
 
+// Aggregation query. Generally uses `field` and `group_by`, for details, refer to AggFunc definition.
 type AggQuery struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Field     string    `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
-	GroupBy   string    `protobuf:"bytes,3,opt,name=group_by,json=groupBy,proto3" json:"group_by,omitempty"`
-	Func      AggFunc   `protobuf:"varint,4,opt,name=func,proto3,enum=seqproxyapi.v1.AggFunc" json:"func,omitempty"`
-	Quantiles []float64 `protobuf:"fixed64,5,rep,packed,name=quantiles,proto3" json:"quantiles,omitempty"`
+	Field     string    `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`                            // Field over which aggregation function is used on.
+	GroupBy   string    `protobuf:"bytes,3,opt,name=group_by,json=groupBy,proto3" json:"group_by,omitempty"`         // Field over which to create group for further aggregation.
+	Func      AggFunc   `protobuf:"varint,4,opt,name=func,proto3,enum=seqproxyapi.v1.AggFunc" json:"func,omitempty"` // Function to apply on aggregated field.
+	Quantiles []float64 `protobuf:"fixed64,5,rep,packed,name=quantiles,proto3" json:"quantiles,omitempty"`           // Field used only for `AGG_FUNC_QUANTILE`. Represents list of quantiles to calculate.
 }
 
 func (x *AggQuery) Reset() {
@@ -540,12 +549,13 @@ func (x *AggQuery) GetQuantiles() []float64 {
 	return nil
 }
 
+// Histogram query
 type HistQuery struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Interval string `protobuf:"bytes,1,opt,name=interval,proto3" json:"interval,omitempty"`
+	Interval string `protobuf:"bytes,1,opt,name=interval,proto3" json:"interval,omitempty"` // Interval in promql duration format like `1m`, `5s`. More details: https://prometheus.io/docs/prometheus/latest/querying/basics/#float-literals-and-time-durations
 }
 
 func (x *HistQuery) Reset() {
@@ -592,11 +602,11 @@ type SearchRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Query     *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Size      int64        `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
-	Offset    int64        `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
-	WithTotal bool         `protobuf:"varint,4,opt,name=with_total,json=withTotal,proto3" json:"with_total,omitempty"`
-	Order     Order        `protobuf:"varint,5,opt,name=order,proto3,enum=seqproxyapi.v1.Order" json:"order,omitempty"`
+	Query     *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`                            // Search query.
+	Size      int64        `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`                             // Maximum number of documents to return.
+	Offset    int64        `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`                         // Search offset.
+	WithTotal bool         `protobuf:"varint,4,opt,name=with_total,json=withTotal,proto3" json:"with_total,omitempty"`  // Should total number of documents be returned in response.
+	Order     Order        `protobuf:"varint,5,opt,name=order,proto3,enum=seqproxyapi.v1.Order" json:"order,omitempty"` // Document order ORDER_DESC/ORDER_ASC.
 }
 
 func (x *SearchRequest) Reset() {
@@ -671,13 +681,13 @@ type ComplexSearchRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Query     *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Aggs      []*AggQuery  `protobuf:"bytes,2,rep,name=aggs,proto3" json:"aggs,omitempty"`
-	Hist      *HistQuery   `protobuf:"bytes,3,opt,name=hist,proto3,oneof" json:"hist,omitempty"`
-	Size      int64        `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
-	Offset    int64        `protobuf:"varint,5,opt,name=offset,proto3" json:"offset,omitempty"`
-	WithTotal bool         `protobuf:"varint,6,opt,name=with_total,json=withTotal,proto3" json:"with_total,omitempty"`
-	Order     Order        `protobuf:"varint,7,opt,name=order,proto3,enum=seqproxyapi.v1.Order" json:"order,omitempty"`
+	Query     *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`                            // Search query.
+	Aggs      []*AggQuery  `protobuf:"bytes,2,rep,name=aggs,proto3" json:"aggs,omitempty"`                              // List of aggregation queries.
+	Hist      *HistQuery   `protobuf:"bytes,3,opt,name=hist,proto3,oneof" json:"hist,omitempty"`                        // Histogram query.
+	Size      int64        `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                             // Maximum number of documents to return.
+	Offset    int64        `protobuf:"varint,5,opt,name=offset,proto3" json:"offset,omitempty"`                         // Search offset.
+	WithTotal bool         `protobuf:"varint,6,opt,name=with_total,json=withTotal,proto3" json:"with_total,omitempty"`  // Should total number of documents be returned in response.
+	Order     Order        `protobuf:"varint,7,opt,name=order,proto3,enum=seqproxyapi.v1.Order" json:"order,omitempty"` // Document order ORDER_DESC/ORDER_ASC.
 }
 
 func (x *ComplexSearchRequest) Reset() {
@@ -767,10 +777,10 @@ type SearchResponse struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Deprecated: Marked as deprecated in seqproxyapi/v1/seq_proxy_api.proto.
-	PartialResponse bool        `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"`
-	Total           int64       `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	Docs            []*Document `protobuf:"bytes,3,rep,name=docs,proto3" json:"docs,omitempty"`
-	Error           *Error      `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	PartialResponse bool        `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"` // True if some stores returned an error. Deprecated, use `Error` instead.
+	Total           int64       `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`                                            // Total number of documents satisfying request. Returned if `with_total` field in request is `true`.
+	Docs            []*Document `protobuf:"bytes,3,rep,name=docs,proto3" json:"docs,omitempty"`                                               // Documents, satisfying the request.
+	Error           *Error      `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`                                             // Error if happened.
 }
 
 func (x *SearchResponse) Reset() {
@@ -840,12 +850,12 @@ type ComplexSearchResponse struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Deprecated: Marked as deprecated in seqproxyapi/v1/seq_proxy_api.proto.
-	PartialResponse bool           `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"`
-	Total           int64          `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	Docs            []*Document    `protobuf:"bytes,3,rep,name=docs,proto3" json:"docs,omitempty"`
-	Aggs            []*Aggregation `protobuf:"bytes,4,rep,name=aggs,proto3" json:"aggs,omitempty"`
-	Hist            *Histogram     `protobuf:"bytes,5,opt,name=hist,proto3,oneof" json:"hist,omitempty"`
-	Error           *Error         `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	PartialResponse bool           `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"` // True if some stores returned an error. Deprecated, use `Error` instead.
+	Total           int64          `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`                                            // Total number of documents satisfying request. Returned if `with_total` field in request is `true`.
+	Docs            []*Document    `protobuf:"bytes,3,rep,name=docs,proto3" json:"docs,omitempty"`                                               // Documents, satisfying the request.
+	Aggs            []*Aggregation `protobuf:"bytes,4,rep,name=aggs,proto3" json:"aggs,omitempty"`                                               // Aggregation results.
+	Hist            *Histogram     `protobuf:"bytes,5,opt,name=hist,proto3,oneof" json:"hist,omitempty"`                                         // Histogram results.
+	Error           *Error         `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`                                             // Error if happened.
 }
 
 func (x *ComplexSearchResponse) Reset() {
@@ -928,8 +938,8 @@ type GetAggregationRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Query *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Aggs  []*AggQuery  `protobuf:"bytes,2,rep,name=aggs,proto3" json:"aggs,omitempty"`
+	Query *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"` // Search query.
+	Aggs  []*AggQuery  `protobuf:"bytes,2,rep,name=aggs,proto3" json:"aggs,omitempty"`   // List of aggregation queries.
 }
 
 func (x *GetAggregationRequest) Reset() {
@@ -984,10 +994,10 @@ type GetAggregationResponse struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Deprecated: Marked as deprecated in seqproxyapi/v1/seq_proxy_api.proto.
-	PartialResponse bool           `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"`
-	Total           int64          `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	Aggs            []*Aggregation `protobuf:"bytes,3,rep,name=aggs,proto3" json:"aggs,omitempty"`
-	Error           *Error         `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	PartialResponse bool           `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"` // True if some stores returned an error. Deprecated, use `Error` instead.
+	Total           int64          `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`                                            // Total number of documents satisfying request. Returned if `with_total` field in request is `true`.
+	Aggs            []*Aggregation `protobuf:"bytes,3,rep,name=aggs,proto3" json:"aggs,omitempty"`                                               // Aggregation results.
+	Error           *Error         `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`                                             // Error if happened.
 }
 
 func (x *GetAggregationResponse) Reset() {
@@ -1056,8 +1066,8 @@ type GetHistogramRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Query *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Hist  *HistQuery   `protobuf:"bytes,2,opt,name=hist,proto3" json:"hist,omitempty"`
+	Query *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"` // Search query.
+	Hist  *HistQuery   `protobuf:"bytes,2,opt,name=hist,proto3" json:"hist,omitempty"`   // Histogram query.
 }
 
 func (x *GetHistogramRequest) Reset() {
@@ -1112,10 +1122,10 @@ type GetHistogramResponse struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Deprecated: Marked as deprecated in seqproxyapi/v1/seq_proxy_api.proto.
-	PartialResponse bool       `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"`
-	Total           int64      `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	Hist            *Histogram `protobuf:"bytes,3,opt,name=hist,proto3" json:"hist,omitempty"`
-	Error           *Error     `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	PartialResponse bool       `protobuf:"varint,1,opt,name=partial_response,json=partialResponse,proto3" json:"partial_response,omitempty"` // True if some stores returned an error. Deprecated, use `Error` instead.
+	Total           int64      `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`                                            // Total number of documents satisfying request. Returned if `with_total` field in request is `true`.
+	Hist            *Histogram `protobuf:"bytes,3,opt,name=hist,proto3" json:"hist,omitempty"`                                               // Histogram results.
+	Error           *Error     `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`                                             // Error if happened.
 }
 
 func (x *GetHistogramResponse) Reset() {
@@ -1184,7 +1194,7 @@ type FetchRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Ids []string `protobuf:"bytes,1,rep,name=ids,proto3" json:"ids,omitempty"`
+	Ids []string `protobuf:"bytes,1,rep,name=ids,proto3" json:"ids,omitempty"` // Document ids to fetch.
 }
 
 func (x *FetchRequest) Reset() {
@@ -1269,7 +1279,7 @@ type MappingResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Data []byte `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	Data []byte `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"` // utf-8 encoded mapping info.
 }
 
 func (x *MappingResponse) Reset() {
@@ -1354,9 +1364,9 @@ type StatusResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	NumberOfStores    int32                  `protobuf:"varint,1,opt,name=number_of_stores,json=numberOfStores,proto3" json:"number_of_stores,omitempty"`
-	OldestStorageTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=oldest_storage_time,json=oldestStorageTime,proto3,oneof" json:"oldest_storage_time,omitempty"`
-	Stores            []*StoreStatus         `protobuf:"bytes,4,rep,name=stores,proto3" json:"stores,omitempty"`
+	NumberOfStores    int32                  `protobuf:"varint,1,opt,name=number_of_stores,json=numberOfStores,proto3" json:"number_of_stores,omitempty"`               // Total number of stores.
+	OldestStorageTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=oldest_storage_time,json=oldestStorageTime,proto3,oneof" json:"oldest_storage_time,omitempty"` // Timestamp of the oldest stored document across all stores.
+	Stores            []*StoreStatus         `protobuf:"bytes,4,rep,name=stores,proto3" json:"stores,omitempty"`                                                        // Detailed information about each store.
 }
 
 func (x *StatusResponse) Reset() {
@@ -1417,9 +1427,9 @@ type StoreStatus struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Host   string             `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
-	Values *StoreStatusValues `protobuf:"bytes,2,opt,name=values,proto3,oneof" json:"values,omitempty"`
-	Error  *string            `protobuf:"bytes,3,opt,name=error,proto3,oneof" json:"error,omitempty"`
+	Host   string             `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`           // Store's IP-address.
+	Values *StoreStatusValues `protobuf:"bytes,2,opt,name=values,proto3,oneof" json:"values,omitempty"` // Store's status information.
+	Error  *string            `protobuf:"bytes,3,opt,name=error,proto3,oneof" json:"error,omitempty"`   // Error during the request.
 }
 
 func (x *StoreStatus) Reset() {
@@ -1480,7 +1490,7 @@ type StoreStatusValues struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	OldestTime *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=oldest_time,json=oldestTime,proto3" json:"oldest_time,omitempty"`
+	OldestTime *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=oldest_time,json=oldestTime,proto3" json:"oldest_time,omitempty"` // Timestamp of the oldest stored document.
 }
 
 func (x *StoreStatusValues) Reset() {
@@ -1527,9 +1537,9 @@ type ExportRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Query  *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Size   int64        `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
-	Offset int64        `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	Query  *SearchQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`    // Search query.
+	Size   int64        `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`     // Maximum number of documents to return.
+	Offset int64        `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"` // Search offset.
 }
 
 func (x *ExportRequest) Reset() {
@@ -1590,7 +1600,7 @@ type ExportResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Doc *Document `protobuf:"bytes,1,opt,name=doc,proto3" json:"doc,omitempty"`
+	Doc *Document `protobuf:"bytes,1,opt,name=doc,proto3" json:"doc,omitempty"` // Response document.
 }
 
 func (x *ExportResponse) Reset() {
@@ -1632,17 +1642,18 @@ func (x *ExportResponse) GetDoc() *Document {
 	return nil
 }
 
+// Key-value pair containing result of single aggregation.
 type Aggregation_Bucket struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	// Deprecated: Marked as deprecated in seqproxyapi/v1/seq_proxy_api.proto.
-	DocCount  uint64    `protobuf:"varint,1,opt,name=doc_count,json=docCount,proto3" json:"doc_count,omitempty"`
-	Key       string    `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Value     float64   `protobuf:"fixed64,3,opt,name=value,proto3" json:"value,omitempty"`
-	NotExists int64     `protobuf:"varint,4,opt,name=not_exists,json=notExists,proto3" json:"not_exists,omitempty"`
-	Quantiles []float64 `protobuf:"fixed64,5,rep,packed,name=quantiles,proto3" json:"quantiles,omitempty"`
+	DocCount  uint64    `protobuf:"varint,1,opt,name=doc_count,json=docCount,proto3" json:"doc_count,omitempty"`    // Number of documents satisfying request. Deprecated, use `value` field instead.
+	Key       string    `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`                               // Field name.
+	Value     float64   `protobuf:"fixed64,3,opt,name=value,proto3" json:"value,omitempty"`                         // Calculated aggregation value.
+	NotExists int64     `protobuf:"varint,4,opt,name=not_exists,json=notExists,proto3" json:"not_exists,omitempty"` // Number of documents without presence of that field.
+	Quantiles []float64 `protobuf:"fixed64,5,rep,packed,name=quantiles,proto3" json:"quantiles,omitempty"`          // Value of quantiles for given request. Returned when quantiles aggregation func used.
 }
 
 func (x *Aggregation_Bucket) Reset() {
@@ -1713,13 +1724,14 @@ func (x *Aggregation_Bucket) GetQuantiles() []float64 {
 	return nil
 }
 
+// Key-value pair with time as a key and number of documents in this bucket as a value.
 type Histogram_Bucket struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	DocCount uint64                 `protobuf:"varint,1,opt,name=doc_count,json=docCount,proto3" json:"doc_count,omitempty"`
-	Ts       *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=ts,proto3" json:"ts,omitempty"`
+	DocCount uint64                 `protobuf:"varint,1,opt,name=doc_count,json=docCount,proto3" json:"doc_count,omitempty"` // Number of documents in bucket.
+	Ts       *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=ts,proto3" json:"ts,omitempty"`                              // Left border of the bucket.
 }
 
 func (x *Histogram_Bucket) Reset() {

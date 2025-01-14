@@ -1429,13 +1429,21 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SeqProxyApiClient interface {
+	// Fetch documents for given SearchQuery.
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
+	// Fetch documents, aggregations and histograms for given queries correspondingly.
 	ComplexSearch(ctx context.Context, in *ComplexSearchRequest, opts ...grpc.CallOption) (*ComplexSearchResponse, error)
+	// Fetch aggregations for given SearchQuery and AggQueries.
 	GetAggregation(ctx context.Context, in *GetAggregationRequest, opts ...grpc.CallOption) (*GetAggregationResponse, error)
+	// Fetch histogram for given SearchQuery and HistQuery.
 	GetHistogram(ctx context.Context, in *GetHistogramRequest, opts ...grpc.CallOption) (*GetHistogramResponse, error)
+	// Fetch documents by the corresponding seq-ids.
 	Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (SeqProxyApi_FetchClient, error)
+	// Fetch current seq-db mapping.
 	Mapping(ctx context.Context, in *MappingRequest, opts ...grpc.CallOption) (*MappingResponse, error)
+	// Fetch seq-db store's availability information.
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	// Stream documents for given SearchQuery. Same as Search, but returns streaming response.
 	Export(ctx context.Context, in *ExportRequest, opts ...grpc.CallOption) (SeqProxyApi_ExportClient, error)
 }
 
@@ -1569,13 +1577,21 @@ func (x *seqProxyApiExportClient) Recv() (*ExportResponse, error) {
 // All implementations must embed UnimplementedSeqProxyApiServer
 // for forward compatibility
 type SeqProxyApiServer interface {
+	// Fetch documents for given SearchQuery.
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
+	// Fetch documents, aggregations and histograms for given queries correspondingly.
 	ComplexSearch(context.Context, *ComplexSearchRequest) (*ComplexSearchResponse, error)
+	// Fetch aggregations for given SearchQuery and AggQueries.
 	GetAggregation(context.Context, *GetAggregationRequest) (*GetAggregationResponse, error)
+	// Fetch histogram for given SearchQuery and HistQuery.
 	GetHistogram(context.Context, *GetHistogramRequest) (*GetHistogramResponse, error)
+	// Fetch documents by the corresponding seq-ids.
 	Fetch(*FetchRequest, SeqProxyApi_FetchServer) error
+	// Fetch current seq-db mapping.
 	Mapping(context.Context, *MappingRequest) (*MappingResponse, error)
+	// Fetch seq-db store's availability information.
 	Status(context.Context, *StatusRequest) (*StatusResponse, error)
+	// Stream documents for given SearchQuery. Same as Search, but returns streaming response.
 	Export(*ExportRequest, SeqProxyApi_ExportServer) error
 	mustEmbedUnimplementedSeqProxyApiServer()
 }

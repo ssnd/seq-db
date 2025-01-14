@@ -26,7 +26,7 @@ type Pipe interface {
 }
 
 func parsePipes(lex *lexer) ([]Pipe, error) {
-	// Count of 'fields' and 'remove' pipes.
+	// Counter of 'fields' and 'remove' pipes.
 	fieldFilters := 0
 	lastStage := PipeStageSearch
 	var pipes []Pipe

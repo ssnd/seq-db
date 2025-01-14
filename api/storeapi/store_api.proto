@@ -112,8 +112,8 @@ message IdWithHint {
 message FetchRequest {
   message FieldsFilter {
     repeated string fields = 1;
-    // todo: invert block_list logic to not filter fields by default
-    bool block_list = 2;
+    // see seqproxyapi.FetchRequest.FieldsFilter.allow_list for details.
+    bool allow_list = 2;
   }
   repeated string ids = 1;
   bool explain = 3;

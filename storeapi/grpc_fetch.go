@@ -190,8 +190,8 @@ func (dp *docFieldsFilter) filterFields(doc []byte) []byte {
 		return doc
 	}
 
-	if dp.filter.BlockList {
-		// Remove given fields.
+	if !dp.filter.AllowList {
+		// It is block list, so remove given fields from document.
 
 		for _, field := range dp.filter.Fields {
 			dp.decoder.Dig(field).Suicide()

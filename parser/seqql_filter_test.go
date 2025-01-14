@@ -347,6 +347,7 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`source_type:access* | fields message | where login:admin`, `pipe "where" cannot be after pipe "fields"`)
 	test(`source_type:access* | fields message | remove login:admin`, `parsing 'remove' pipe: unexpected symbol ":"`)
 	test(`source_type:access* | fields message | remove login`, `cannot mix 'fields' and 'remove' pipes`)
+	test(`* | fields event, `, `parsing 'fields' pipe: trailing comma not allowed`)
 }
 
 func TestSeqQLParserFuzz(t *testing.T) {

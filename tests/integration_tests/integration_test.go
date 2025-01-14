@@ -106,6 +106,68 @@ func (s *IntegrationTestSuite) TestSearchOne() {
 	}
 }
 
+func (s *IntegrationTestSuite) TestPipeFieldsAndRemove() {
+	docs := []string{
+		`{"level": "info","ts": "2000-01-13T17:36:10.593303253Z","logger": "fd.kubelet","message": "pipeline stats","stat": "interval=5s, active procs=0/4, events in use=0/256, out=0|0.0Mb, rate=0/s|0.0Mb/s, read ops=0/s, total=0|0.0Mb, avg size=0"}`,
+		`{"level": "info","ts": "2000-01-13T17:36:12.790469375Z","logger": "fd.k8s.input.k8s","message": "file plugin stats for last 5 seconds: offsets saves=104111, jobs done=28, jobs total=28"}`,
+		`{"level": "info","ts": "2000-01-13T17:36:14.715199225Z","logger": "fd.k8s.action.debug","message": "input event sample","offset": 40059539,"event": {"log": "{\"level\":\"info\",\"ts\":\"2025-01-13T17:36:08.729825704Z\",\"logger\":\"fd.dmesg\",\"message\":\"pipeline stats\",\"stat\":\"interval=5s, active procs=0/2, events in use=0/128, out=0|0.0Mb, rate=0/s|0.0Mb/s, read ops=0/s, total=100857|15.0Mb, avg size=1\"}\n","time": "2025-01-13T17:36:08.729920774Z","stream": "stderr","k8s_container_id": "52f2ab19fe0ba66f4f4e7910780da1e477be98015db58dc624a26c4a585e096b","app_label": "dmesg-reader-z504","pod_app": "dmesg-reader-z504-wjfh5@dmesg-reader-z504","k8s_pod": "dmesg-reader-z504-wjfh5","k8s_namespace": "logging","k8s_container": "dmesg-reader","k8s_node": "infrakuben87742z504","k8s_pod_label_app": "dmesg-reader-z504","k8s_node_label_topology.kubernetes.io/zone": "z504"}}`,
+	}
+
+	env := setup.NewTestingEnv(s.Config)
+	defer env.StopAll()
+
+	setup.Bulk(s.T(), env.IngestorBulkAddr(), docs)
+	env.WaitIdle()
+
+	r := require.New(s.T())
+	test := func(query string, expectedDocsRaw []byte) {
+		s.T().Helper()
+
+		resp := setup.SearchHTTP(s.T(), env.IngestorSearchAddr(), &seqproxyapi.SearchRequest{
+			Query: &seqproxyapi.SearchQuery{
+				Query:   query,
+				From:    timestamppb.New(time.Now().Add(-time.Hour * 720)),
+				To:      timestamppb.New(time.Now().Add(time.Hour * 720)),
+				Explain: false,
+			},
+			Size:      10,
+			Offset:    0,
+			WithTotal: false,
+		})
+
+		var actualDocs []map[string]any
+		for _, doc := range resp.Docs {
+			obj := make(map[string]any)
+			r.NoError(json.Unmarshal(doc.Data, &obj))
+			actualDocs = append(actualDocs, obj)
+		}
+
+		var expectedDocs []map[string]any
+		r.NoError(json.Unmarshal(expectedDocsRaw, &expectedDocs))
+
+		r.Equal(len(actualDocs), len(expectedDocs))
+		for _, doc := range expectedDocs {
+			r.Contains(actualDocs, doc)
+		}
+	}
+
+	test(`* | fields message`, []byte(`[
+		{"message":"pipeline stats"},
+		{"message":"file plugin stats for last 5 seconds: offsets saves=104111, jobs done=28, jobs total=28"},
+		{"message":"input event sample"}
+	]`))
+	test(`* | fields event`, []byte(`[
+	  {"event": {"log": "{\"level\":\"info\",\"ts\":\"2025-01-13T17:36:08.729825704Z\",\"logger\":\"fd.dmesg\",\"message\":\"pipeline stats\",\"stat\":\"interval=5s, active procs=0/2, events in use=0/128, out=0|0.0Mb, rate=0/s|0.0Mb/s, read ops=0/s, total=100857|15.0Mb, avg size=1\"}\n","time": "2025-01-13T17:36:08.729920774Z","stream": "stderr","k8s_container_id": "52f2ab19fe0ba66f4f4e7910780da1e477be98015db58dc624a26c4a585e096b","app_label": "dmesg-reader-z504","pod_app": "dmesg-reader-z504-wjfh5@dmesg-reader-z504","k8s_pod": "dmesg-reader-z504-wjfh5","k8s_namespace": "logging","k8s_container": "dmesg-reader","k8s_node": "infrakuben87742z504","k8s_pod_label_app": "dmesg-reader-z504","k8s_node_label_topology.kubernetes.io/zone": "z504"}},
+	  {},
+	  {}
+	]`))
+	test(`* | remove original_timestamp,ts, event`, []byte(`[
+		{"level":"info","logger":"fd.k8s.action.debug","message":"input event sample","offset":40059539},
+		{"level":"info","logger":"fd.kubelet","message":"pipeline stats","stat":"interval=5s, active procs=0/4, events in use=0/256, out=0|0.0Mb, rate=0/s|0.0Mb/s, read ops=0/s, total=0|0.0Mb, avg size=0"},
+		{"level":"info","message":"file plugin stats for last 5 seconds: offsets saves=104111, jobs done=28, jobs total=28","logger":"fd.k8s.input.k8s"}
+	]`))
+}
+
 func (s *IntegrationTestSuite) TestSearchOneHTTP() {
 	origDocs := []string{
 		`{"service":"a", "xxxx":"yyyy"}`,

@@ -300,7 +300,7 @@ func (m *FetchRequest_FieldsFilter) CloneVT() *FetchRequest_FieldsFilter {
 		return (*FetchRequest_FieldsFilter)(nil)
 	}
 	r := new(FetchRequest_FieldsFilter)
-	r.BlockList = m.BlockList
+	r.AllowList = m.AllowList
 	if rhs := m.Fields; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -776,7 +776,7 @@ func (this *FetchRequest_FieldsFilter) EqualVT(that *FetchRequest_FieldsFilter) 
 			return false
 		}
 	}
-	if this.BlockList != that.BlockList {
+	if this.AllowList != that.AllowList {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1786,9 +1786,9 @@ func (m *FetchRequest_FieldsFilter) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.BlockList {
+	if m.AllowList {
 		i--
-		if m.BlockList {
+		if m.AllowList {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
@@ -2644,9 +2644,9 @@ func (m *FetchRequest_FieldsFilter) MarshalToSizedBufferVTStrict(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.BlockList {
+	if m.AllowList {
 		i--
-		if m.BlockList {
+		if m.AllowList {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
@@ -3099,7 +3099,7 @@ func (m *FetchRequest_FieldsFilter) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if m.BlockList {
+	if m.AllowList {
 		n += 2
 	}
 	n += len(m.unknownFields)
@@ -5101,7 +5101,7 @@ func (m *FetchRequest_FieldsFilter) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BlockList", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field AllowList", wireType)
 			}
 			var v int
 			for shift := uint(0); ; shift += 7 {
@@ -5118,7 +5118,7 @@ func (m *FetchRequest_FieldsFilter) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.BlockList = bool(v != 0)
+			m.AllowList = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -7430,7 +7430,7 @@ func (m *FetchRequest_FieldsFilter) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BlockList", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field AllowList", wireType)
 			}
 			var v int
 			for shift := uint(0); ; shift += 7 {
@@ -7447,7 +7447,7 @@ func (m *FetchRequest_FieldsFilter) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-			m.BlockList = bool(v != 0)
+			m.AllowList = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

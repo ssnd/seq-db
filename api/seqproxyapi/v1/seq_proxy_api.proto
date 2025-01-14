@@ -198,8 +198,11 @@ message FetchRequest {
   message FieldsFilter {
     // list of fields to include or exclude depending on 'include' flag.
     repeated string fields = 1;
-    // block_list means how to process 'fields' list: true - include fields, false - exclude from a fetch result.
-    bool block_list = 2;
+    // allow_list means how to process 'fields' list:
+    // true - remove all fields except the fields from the list,
+    // false - remove given fields from documents.
+    // Currently it works only with top-level fields, not with nested.
+    bool allow_list = 2;
   }
   repeated string ids = 1;
   FieldsFilter fields_filter = 2;

@@ -54,7 +54,7 @@ func (g *grpcV1) Fetch(req *seqproxyapi.FetchRequest, stream seqproxyapi.SeqProx
 		IDs: ids,
 		FieldsFilter: search.FetchFieldsFilter{
 			Fields:    req.GetFieldsFilter().GetFields(),
-			BlockList: req.GetFieldsFilter().GetBlockList(),
+			AllowList: req.GetFieldsFilter().GetAllowList(),
 		},
 	})
 	if err != nil {

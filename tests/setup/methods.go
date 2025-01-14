@@ -3,7 +3,6 @@ package setup
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -61,28 +60,25 @@ func Bulk(t *testing.T, addr string, docs []string) {
 	BulkBuffer(t, addr, b)
 }
 
-func BulkBytes(t *testing.T, addr string, docs [][]byte) {
-	b := GenBufferBytes(docs)
-	BulkBuffer(t, addr, b)
-}
-
 func SearchHTTP(t *testing.T, addr string, request *seqproxyapi.SearchRequest) *seqproxyapi.SearchResponse {
-	req, err := protojson.Marshal(request)
+	payload, err := protojson.Marshal(request)
 	require.NoError(t, err)
 
-	r, err := http.Post(addr, "application/json", bytes.NewReader(req))
+	req, err := http.NewRequest(http.MethodPost, addr, bytes.NewReader(payload))
 	require.NoError(t, err, "should be no errors")
+	req.Header.Set("Grpc-Metadata-use-seq-ql", "true")
+
+	r, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
 	defer r.Body.Close()
 
 	body, err := io.ReadAll(r.Body)
 	require.NoError(t, err)
-
-	require.Equal(t, http.StatusOK, r.StatusCode)
-
+	if !assert.Equal(t, http.StatusOK, r.StatusCode, "wrong http status") {
+		t.Log(string(body))
+	}
 	searchResponse := &seqproxyapi.SearchResponse{}
-	fmt.Println(string(body))
 	require.NoError(t, json.Unmarshal(body, searchResponse))
-	require.Equal(t, http.StatusOK, r.StatusCode, "wrong http status")
 	return searchResponse
 }
 

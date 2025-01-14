@@ -175,12 +175,12 @@ func tryParseFieldsFilter(query string) FetchFieldsFilter {
 		case *parser.PipeRemove:
 			return FetchFieldsFilter{
 				Fields:    p.Fields,
-				BlockList: true,
+				AllowList: false,
 			}
 		case *parser.PipeFields:
 			return FetchFieldsFilter{
 				Fields:    p.Fields,
-				BlockList: false,
+				AllowList: true,
 			}
 		}
 	}
@@ -262,8 +262,9 @@ func lessFuncPosBased(ids []seq.IDSource) func(a, b seq.IDSource) bool {
 type FetchFieldsFilter struct {
 	// Fields list of fields to fetch. Empty list means to fetch all fields.
 	Fields []string
-	// BlockList truth if we need to exclude given Fields from a fetch result, false otherwise.
-	BlockList bool
+	// AllowList truth if we need to exclude all fields except the fields from the Fields list
+	// and false if we need to exclude given Fields from a fetch result.
+	AllowList bool
 }
 
 func (si *Ingestor) FetchDocsStream(ctx context.Context, ids []seq.IDSource, explain bool, ff FetchFieldsFilter) (DocsIterator, error) {
@@ -357,7 +358,7 @@ func (si *Ingestor) makeFetchReq(ids []seq.IDSource, explain bool, ff FetchField
 		IdsWithHints: idsWithHints,
 		FieldsFilter: &storeapi.FetchRequest_FieldsFilter{
 			Fields:    ff.Fields,
-			BlockList: ff.BlockList,
+			AllowList: ff.AllowList,
 		},
 	}
 }

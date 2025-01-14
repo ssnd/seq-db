@@ -105,8 +105,21 @@ func parsePipeFields(lex *lexer) (*PipeFields, error) {
 	}
 
 	lex.Next()
+	fields, err := parseFieldList(lex)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PipeFields{
+		Fields: fields,
+	}, nil
+}
+
+func parseFieldList(lex *lexer) ([]string, error) {
 	var fields []string
+	trailingComma := false
 	for !lex.IsKeywords("|", "") {
+		trailingComma = false
 		field, err := parseCompositeTokenReplaceWildcards(lex)
 		if err != nil {
 			return nil, err
@@ -114,16 +127,17 @@ func parsePipeFields(lex *lexer) (*PipeFields, error) {
 		fields = append(fields, field)
 		if lex.IsKeyword(",") {
 			lex.Next()
+			trailingComma = true
 		}
+	}
+	if trailingComma {
+		return nil, fmt.Errorf("trailing comma not allowed")
 	}
 
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("empty list")
 	}
-
-	return &PipeFields{
-		Fields: fields,
-	}, nil
+	return fields, nil
 }
 
 type PipeRemove struct {
@@ -146,24 +160,13 @@ func (p *PipeRemove) DumpSeqQL(o *strings.Builder) {
 
 func parsePipeRemove(lex *lexer) (*PipeRemove, error) {
 	if !lex.IsKeyword("remove") {
-		return nil, fmt.Errorf("missing 'fields' keyword, got %q", lex.Token)
+		return nil, fmt.Errorf("missing 'remove' keyword, got %q", lex.Token)
 	}
 
 	lex.Next()
-	var fields []string
-	for !lex.IsKeywords("|", "") {
-		field, err := parseCompositeTokenReplaceWildcards(lex)
-		if err != nil {
-			return nil, err
-		}
-		fields = append(fields, field)
-		if lex.IsKeyword(",") {
-			lex.Next()
-		}
-	}
-
-	if len(fields) == 0 {
-		return nil, fmt.Errorf("empty list")
+	fields, err := parseFieldList(lex)
+	if err != nil {
+		return nil, err
 	}
 
 	return &PipeRemove{

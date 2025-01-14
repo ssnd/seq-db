@@ -176,7 +176,7 @@ func (dp *docFieldsFilter) FilterDocFields(doc []byte) disk.DocBlock {
 }
 
 func (dp *docFieldsFilter) filterFields(doc []byte) []byte {
-	if dp.filter == nil || len(dp.filter.Fields) == 0 || len(doc) == 0 {
+	if dp.filter == nil || len(doc) == 0 {
 		return doc
 	}
 	err := dp.decoder.DecodeBytes(doc)

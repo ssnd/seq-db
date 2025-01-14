@@ -34,7 +34,6 @@ var TestMapping = Mapping{
 	"process.serviceName": NewSingleType(TokenizerTypeKeyword, "", 0),
 	"tags.sometag":        NewSingleType(TokenizerTypeKeyword, "", 0),
 	"request_duration":    NewSingleType(TokenizerTypeKeyword, "", 0),
-	"_exists_":            NewSingleType(TokenizerTypeKeyword, "", 0),
 
 	"m": NewSingleType(TokenizerTypeKeyword, "", 0),
 }

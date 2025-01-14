@@ -351,15 +351,6 @@ func (f *Sealed) Type() string {
 	return TypeSealed
 }
 
-func (f *Sealed) loadAndRLock() {
-	f.loadMu.RLock()
-	if !f.isLoaded {
-		f.loadMu.RUnlock()
-		f.load()
-		f.loadMu.RLock()
-	}
-}
-
 func (f *Sealed) load() {
 	f.loadMu.Lock()
 	defer f.loadMu.Unlock()
@@ -422,9 +413,8 @@ func (f *Sealed) extractPosition(docPos DocPos) (uint64, uint64) {
 
 func (f *Sealed) Suicide() {
 	f.useLock.Lock()
-	defer f.useLock.Unlock()
-
 	f.suicided = true
+	f.useLock.Unlock()
 
 	f.close("suicide")
 
@@ -520,6 +510,12 @@ func (f *Sealed) String() string {
 func (f *Sealed) DataProvider(ctx context.Context) (DataProvider, func(), bool) {
 	f.useLock.RLock()
 
+	if f.suicided {
+		metric.CountersTotal.WithLabelValues("fraction_suicided").Inc()
+		f.useLock.RUnlock()
+		return nil, nil, false
+	}
+
 	defer func() {
 		if panicData := recover(); panicData != nil {
 			f.useLock.RUnlock()
@@ -527,13 +523,7 @@ func (f *Sealed) DataProvider(ctx context.Context) (DataProvider, func(), bool) 
 		}
 	}()
 
-	if f.suicided {
-		metric.CountersTotal.WithLabelValues("request_suicided").Inc()
-		f.useLock.RUnlock()
-		return nil, nil, false
-	}
-
-	f.loadAndRLock()
+	f.load()
 
 	sc := NewSearchCell(ctx)
 	dp := SealedDataProvider{
@@ -550,8 +540,6 @@ func (f *Sealed) DataProvider(ctx context.Context) (DataProvider, func(), bool) 
 	return &dp, func() {
 		dp.midCache.Release()
 		dp.ridCache.Release()
-
-		f.loadMu.RUnlock()
 		f.useLock.RUnlock()
 	}, true
 }

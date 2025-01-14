@@ -217,7 +217,7 @@ message GetHistogramResponse {
 
 message FetchRequest {
   message FieldsFilter {
-    // list of fields to include or exclude depending on 'include' flag.
+    // list of fields to include or exclude, see allow_list flag for details.
     repeated string fields = 1;
     // allow_list means how to process 'fields' list:
     // true - remove all fields except the fields from the list,

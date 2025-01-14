@@ -45,6 +45,8 @@ type entry[V any] struct {
 	// size is written under Cache.mu lock
 	// can be read without lock if wg is nil or waited on
 	size uint64
+	// to check if entry was delete from cache between `getOrCreate` and `save`
+	deleted bool
 }
 
 func (e *entry[V]) updateGeneration(ng *Generation) {
@@ -114,6 +116,7 @@ func (c *Cache[V]) Cleanup() uint64 {
 			continue
 		}
 		delete(c.payload, k)
+		e.deleted = true
 		totalFreed += e.size
 	}
 
@@ -192,18 +195,22 @@ func (c *Cache[V]) save(e *entry[V], wg *sync.WaitGroup, value V, refMemSize int
 	size := c.entrySize + uint64(refMemSize)
 
 	c.mu.Lock()
+	if e.deleted { // we need to check it because entry can be deleted between `getOrCreate()` and `save()`
+		size = 0 // fix for correct statistics
+	}
 
+	// assign the value regardless of whether the entry is deleted or not,
+	// since there may be some cache readers waiting to receive that value right now
 	e.value = value
 	e.size = size
-	e.gen.size.Add(size)
+	gen := e.gen
 
-	// from now on entry is valid
-	e.wg = nil
+	e.wg = nil // from now on entry is valid
 	c.mu.Unlock()
 
-	// inform all waiters that the value is ready
-	wg.Done()
+	wg.Done() // inform all waiters that the value is ready
 
+	gen.size.Add(size)
 	c.metrics.reportMiss(size, latency)
 }
 

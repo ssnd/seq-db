@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/gogo/protobuf/sortkeys"
 	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -153,11 +152,12 @@ func (g *GrpcV1) doSearch(ctx context.Context, req *storeapi.SearchRequest) (*st
 		logger.Info(searchCell.ExplainSB.String())
 
 		if req.Interval > 0 {
-			keys := make(sortkeys.Uint64Slice, 0)
+			keys := make([]uint64, 0, len(qpr.Histogram))
 			for key := range qpr.Histogram {
 				keys = append(keys, uint64(key))
 			}
-			sort.Sort(keys)
+			slices.Sort(keys)
+
 			for _, key := range keys {
 				logger.Info("histogram",
 					zap.Int64("t", t.UnixNano()),

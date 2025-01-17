@@ -1243,11 +1243,11 @@ func (s *IntegrationTestSuite) TestSearchProxyTimeout() {
 		ShouldFetch: true,
 	}
 
-	_, _, _, err := env.Ingestor().SearchIngestor.Search(ctx, &sr)
+	_, _, _, err := env.Ingestor().SearchIngestor.Search(ctx, &sr, nil)
 	assert.Error(s.T(), err, "should be error")
 
 	sr.WithTotal = false
-	_, _, _, err = env.Ingestor().SearchIngestor.Search(ctx, &sr)
+	_, _, _, err = env.Ingestor().SearchIngestor.Search(ctx, &sr, nil)
 	assert.Error(s.T(), err, "should be error")
 }
 

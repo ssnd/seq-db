@@ -14,6 +14,7 @@ import (
 	"github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/proxy/search/mock"
 	"github.com/ozontech/seq-db/proxy/stores"
+	"github.com/ozontech/seq-db/querytracer"
 	"github.com/ozontech/seq-db/seq"
 )
 
@@ -158,4 +159,81 @@ func newErrorStoreMock(
 		Status(ctx, &storeapi.StatusRequest{}).
 		Return(nil, errors.New("some error")).Times(1)
 	return m
+}
+
+func TestSearchTracer(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+
+	store1Mock := mock.NewMockStoreApiClient(ctrl)
+	store1Mock.EXPECT().Search(gomock.Any(), gomock.Any(), gomock.Any()).Return(&storeapi.SearchResponse{
+		Explain: &storeapi.ExplainEntry{
+			Message: "store/Search 1",
+		},
+	}, nil).Times(1)
+
+	store2Mock := mock.NewMockStoreApiClient(ctrl)
+	store2Mock.EXPECT().Search(gomock.Any(), gomock.Any(), gomock.Any()).Return(&storeapi.SearchResponse{
+		Explain: &storeapi.ExplainEntry{
+			Message: "store/Search 2",
+		},
+	}, nil).Times(1)
+
+	store3Mock := mock.NewMockStoreApiClient(ctrl)
+	store3Mock.EXPECT().Search(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("some error")).Times(1)
+
+	searchIngestor := NewIngestor(
+		Config{
+			HotReadStores: &stores.Stores{Shards: [][]string{{"store1"}, {"store2"}, {"store3"}}},
+			ReadStores:    &stores.Stores{Shards: [][]string{}},
+			HotStores:     &stores.Stores{Shards: [][]string{}},
+			WriteStores:   &stores.Stores{Shards: [][]string{}},
+		},
+		map[string]storeapi.StoreApiClient{
+			"store1": store1Mock,
+			"store2": store2Mock,
+			"store3": store3Mock,
+		},
+	)
+
+	tr := querytracer.New(true, "test")
+	_, _, _, _ = searchIngestor.Search(ctx, &SearchRequest{Q: []byte("*"), Explain: true, Size: 10}, tr)
+	tr.Done()
+
+	expected := &querytracer.Span{
+		Message: "test",
+		Children: []*querytracer.Span{
+			{
+				Message: "proxy/searchShard",
+				Children: []*querytracer.Span{
+					{Message: "Making search request to store1"},
+					{Message: "store/Search 1"},
+				},
+			},
+			{
+				Message: "proxy/searchShard",
+				Children: []*querytracer.Span{
+					{Message: "Making search request to store2"},
+					{Message: "store/Search 2"},
+				},
+			},
+			{
+				Message: "proxy/searchShard",
+				Children: []*querytracer.Span{
+					{Message: "Making search request to store3"},
+					{Message: "Got error from store3: some error"},
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, expected, zeroDurationsInSpan(tr.ToSpan()))
+}
+
+func zeroDurationsInSpan(s *querytracer.Span) *querytracer.Span {
+	s.Duration = 0
+	for _, c := range s.Children {
+		zeroDurationsInSpan(c)
+	}
+	return s
 }

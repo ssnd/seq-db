@@ -527,7 +527,7 @@ func (t *TestingEnv) Search(q string, size int, options ...SearchOption) (*seq.Q
 	}
 
 	var docs [][]byte
-	qpr, docsStream, duration, err := t.Ingestor().SearchIngestor.Search(context.Background(), sr)
+	qpr, docsStream, duration, err := t.Ingestor().SearchIngestor.Search(context.Background(), sr, nil)
 	if docsStream != nil {
 		docs = search.ReadAll(docsStream)
 	}

@@ -12,6 +12,7 @@ import (
 	gomock "github.com/golang/mock/gomock"
 	seqproxyapi "github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
 	search "github.com/ozontech/seq-db/proxy/search"
+	querytracer "github.com/ozontech/seq-db/querytracer"
 	seq "github.com/ozontech/seq-db/seq"
 	metadata "google.golang.org/grpc/metadata"
 )
@@ -55,9 +56,9 @@ func (mr *MockSearchIngestorMockRecorder) Documents(ctx, ids interface{}) *gomoc
 }
 
 // Search mocks base method.
-func (m *MockSearchIngestor) Search(ctx context.Context, sr *search.SearchRequest) (*seq.QPR, search.DocsIterator, time.Duration, error) {
+func (m *MockSearchIngestor) Search(ctx context.Context, sr *search.SearchRequest, tr *querytracer.Tracer) (*seq.QPR, search.DocsIterator, time.Duration, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Search", ctx, sr)
+	ret := m.ctrl.Call(m, "Search", ctx, sr, tr)
 	ret0, _ := ret[0].(*seq.QPR)
 	ret1, _ := ret[1].(search.DocsIterator)
 	ret2, _ := ret[2].(time.Duration)
@@ -66,9 +67,9 @@ func (m *MockSearchIngestor) Search(ctx context.Context, sr *search.SearchReques
 }
 
 // Search indicates an expected call of Search.
-func (mr *MockSearchIngestorMockRecorder) Search(ctx, sr interface{}) *gomock.Call {
+func (mr *MockSearchIngestorMockRecorder) Search(ctx, sr, tr interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockSearchIngestor)(nil).Search), ctx, sr)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockSearchIngestor)(nil).Search), ctx, sr, tr)
 }
 
 // Status mocks base method.

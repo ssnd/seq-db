@@ -174,6 +174,7 @@ func (s *ReplicasEnv) searchStores() (map[string]int, error) {
 			WithTotal:   true,
 			ShouldFetch: true,
 		},
+		nil,
 	)
 	if err != nil {
 		return result, err

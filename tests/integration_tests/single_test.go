@@ -302,6 +302,7 @@ func (s *SingleTestSuite) TestSearchFromTo() {
 						ShouldFetch: true,
 						Order:       o,
 					},
+					nil,
 				)
 				s.Require().NoError(err)
 				foundDocs := common.ToStringSlice(search.ReadAll(docsStream))

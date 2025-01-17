@@ -17,6 +17,7 @@ import (
 	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/proxy/stores"
+	"github.com/ozontech/seq-db/querytracer"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
 )
@@ -55,7 +56,16 @@ func NewIngestor(config Config, clients map[string]storeapi.StoreApiClient) *Ing
 	}
 }
 
-func (si *Ingestor) Search(ctx context.Context, sr *SearchRequest) (qpr *seq.QPR, docsStream DocsIterator, overallDuration time.Duration, err error) {
+func (si *Ingestor) Search(
+	ctx context.Context,
+	sr *SearchRequest,
+	tr *querytracer.Tracer,
+) (
+	qpr *seq.QPR,
+	docsStream DocsIterator,
+	overallDuration time.Duration,
+	err error,
+) {
 	if sr.Explain {
 		logger.Info("search request",
 			zap.String("query", string(sr.Q)),
@@ -72,7 +82,7 @@ func (si *Ingestor) Search(ctx context.Context, sr *SearchRequest) (qpr *seq.QPR
 	if si.config.HotReadStores != nil && len(si.config.HotReadStores.Shards) > 0 {
 		searchStores = si.config.HotReadStores
 	}
-	qprs, err := si.searchStores(ctx, sr, searchStores)
+	qprs, err := si.searchStores(ctx, sr, searchStores, tr)
 	var partialRespErr error
 
 	if err != nil {
@@ -83,7 +93,7 @@ func (si *Ingestor) Search(ctx context.Context, sr *SearchRequest) (qpr *seq.QPR
 				return nil, nil, 0, err
 			}
 			metric.SearchColdTotal.Inc()
-			qprs, err = si.searchStores(ctx, sr, si.config.ReadStores)
+			qprs, err = si.searchStores(ctx, sr, si.config.ReadStores, tr)
 			if err != nil {
 				metric.SearchColdErrors.Add(1)
 				if errors.Is(err, consts.ErrPartialResponse) {
@@ -342,7 +352,12 @@ func (si *Ingestor) aggregate(times []time.Time, docs []int, to, interval seq.MI
 	return times, docs, curTime
 }
 
-func (si *Ingestor) searchStores(ctx context.Context, sr *SearchRequest, s *stores.Stores) ([]*seq.QPR, error) {
+func (si *Ingestor) searchStores(
+	ctx context.Context,
+	sr *SearchRequest,
+	s *stores.Stores,
+	tr *querytracer.Tracer,
+) ([]*seq.QPR, error) {
 	request := sr.GetAPISearchRequest()
 
 	// this cancellation can be useful in the case where we received an ErrIngestorQueryWantsOldData error
@@ -360,16 +375,18 @@ func (si *Ingestor) searchStores(ctx context.Context, sr *SearchRequest, s *stor
 	wg.Add(len(s.Shards))
 	respChan := make(chan ShardResponse, len(s.Shards))
 	for _, shard := range s.Shards {
-		go func(shard []string) {
+		searchShardTr := tr.NewChild("proxy/searchShard")
+		go func(shard []string, tr *querytracer.Tracer) {
 			defer wg.Done()
+			defer tr.Done()
 
-			resp, source, err := si.searchShard(ctx, shard, request)
+			resp, source, err := si.searchShard(ctx, shard, request, tr)
 			respChan <- ShardResponse{
 				Data:   resp,
 				Source: source,
 				Err:    err,
 			}
-		}(shard)
+		}(shard, searchShardTr)
 	}
 
 	go func() {
@@ -466,7 +483,12 @@ func responseToQPR(resp *storeapi.SearchResponse, source uint64, explain bool) *
 }
 
 // searchShard searches on all hosts of given shard. Returns err only if all hosts return err.
-func (si *Ingestor) searchShard(ctx context.Context, hosts []string, request *storeapi.SearchRequest) (*storeapi.SearchResponse, uint64, error) {
+func (si *Ingestor) searchShard(
+	ctx context.Context,
+	hosts []string,
+	request *storeapi.SearchRequest,
+	tr *querytracer.Tracer,
+) (*storeapi.SearchResponse, uint64, error) {
 	var idx []int
 	if si.config.ShuffleReplicas {
 		idx = util.IdxShuffle(len(hosts))
@@ -476,11 +498,14 @@ func (si *Ingestor) searchShard(ctx context.Context, hosts []string, request *st
 
 	var errs []error
 	for i := 0; i < len(hosts); i++ {
-		resp, source, err := si.searchHost(ctx, request, hosts[idx[i]])
+		host := hosts[idx[i]]
+		tr.Printf("Making search request to %s", host)
+		resp, source, err := si.searchHost(ctx, request, host)
 
 		// TODO: remove in future versions
 		if err != nil {
 			errMessage := status.Convert(err).Message()
+			tr.Printf("Got error from %s: %s", host, errMessage)
 			if errMessage == consts.ErrIngestorQueryWantsOldData.Error() {
 				// only hot store can return such error
 				// fail fast in this case
@@ -491,6 +516,10 @@ func (si *Ingestor) searchShard(ctx context.Context, hosts []string, request *st
 			}
 			errs = append(errs, err)
 			continue
+		}
+
+		if resp.Explain != nil {
+			tr.AddChildWithSpan(explainEntryToTracerSpan(resp.Explain))
 		}
 
 		switch resp.Code {
@@ -525,6 +554,23 @@ func (si *Ingestor) searchHost(ctx context.Context, req *storeapi.SearchRequest,
 	}
 
 	return data, si.sourceByClient[host], nil
+}
+
+func explainEntryToTracerSpan(e *storeapi.ExplainEntry) *querytracer.Span {
+	if e == nil {
+		return nil
+	}
+
+	span := &querytracer.Span{
+		Message:  e.Message,
+		Duration: e.Duration.AsDuration(),
+	}
+
+	for _, child := range e.Children {
+		span.Children = append(span.Children, explainEntryToTracerSpan(child))
+	}
+
+	return span
 }
 
 type IngestorStatus struct {

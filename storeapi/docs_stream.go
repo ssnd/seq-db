@@ -2,8 +2,6 @@ package storeapi
 
 import (
 	"context"
-	"errors"
-	"sync"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/ozontech/seq-db/conf"
@@ -22,73 +20,63 @@ type streamDocsBatch struct {
 }
 
 type docsStream struct {
-	ctx       context.Context
-	ids       seq.IDSources
-	totalIDs  int
-	fetcher   *fetch.Fetcher
-	fracs     fracmanager.FracsList
-	out       chan streamDocsBatch
-	docsBatch [][]byte
+	ctx      context.Context
+	ids      seq.IDSources
+	totalIDs int
+	fetcher  *fetch.Fetcher
+	fracs    fracmanager.FracsList
+	out      chan streamDocsBatch
+	docsBuf  [][]byte
 }
 
 func (d *docsStream) Next() ([]byte, error) {
-	if len(d.docsBatch) == 0 {
+	if len(d.docsBuf) == 0 {
 		batch := <-d.out
 		if batch.err != nil {
 			return nil, batch.err
 		}
-		d.docsBatch = batch.docs
+		if len(batch.docs) == 0 {
+			panic("no more docs to fetch; Next() was called either more times than the number of ids, or after an error")
+		}
+		d.docsBuf = batch.docs
 	}
 
-	doc := d.docsBatch[0]
-	d.docsBatch = d.docsBatch[1:]
+	doc := d.docsBuf[0]
+	d.docsBuf = d.docsBuf[1:]
 
 	return doc, nil
-}
-
-func (d *docsStream) nextBatch(chunkSize int) (b streamDocsBatch) {
-	var chunk seq.IDSources
-	l := min(len(d.ids), chunkSize)
-	chunk, d.ids = d.ids[:l], d.ids[l:]
-
-	if len(chunk) == 0 {
-		b.err = errors.New("no more ids for fetch")
-	} else {
-		b.docs, b.err = d.fetcher.FetchDocs(d.ctx, d.fracs, chunk)
-	}
-
-	return b
 }
 
 func (d *docsStream) batchLoader() {
 	chunkSize := initChunkSize
 
-	for {
+	for len(d.ids) > 0 {
 		select {
 		case <-d.ctx.Done():
 			return
 		default:
-			batch := d.nextBatch(chunkSize)
+			// cut chunk
+			l := min(len(d.ids), chunkSize)
+			chunk := d.ids[:l]
+			d.ids = d.ids[l:]
 
-			if !d.send(batch) {
+			// fetch chunk
+			docs, err := d.fetcher.FetchDocs(d.ctx, d.fracs, chunk)
+
+			// first we send regardless of the error,
+			// the possible error will be handled at the destination.
+			select {
+			case <-d.ctx.Done():
+				return
+			case d.out <- streamDocsBatch{docs: docs, err: err}:
+			}
+
+			if err != nil { // but stop fetching on error
 				return
 			}
 
-			if batch.err != nil {
-				return
-			}
-
-			chunkSize = d.calcChunkSize(batch.docs, chunkSize)
+			chunkSize = d.calcChunkSize(docs, chunkSize)
 		}
-	}
-}
-
-func (d *docsStream) send(b streamDocsBatch) bool {
-	select {
-	case <-d.ctx.Done():
-		return false
-	case d.out <- b:
-		return true
 	}
 }
 
@@ -126,16 +114,8 @@ func newDocsStream(ctx context.Context, ids seq.IDSources, fetcher *fetch.Fetche
 		out:      make(chan streamDocsBatch, 1), // buffered chan to async load the next batch while we are sending the prev batch to the client
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
 	go func() {
-		defer wg.Done()
 		d.batchLoader()
-	}()
-
-	go func() {
-		wg.Wait()
 		close(d.out)
 	}()
 

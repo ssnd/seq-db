@@ -31,20 +31,30 @@ type docsStream struct {
 
 func (d *docsStream) Next() ([]byte, error) {
 	if len(d.docsBuf) == 0 {
-		batch := <-d.out
-		if batch.err != nil {
-			return nil, batch.err
+		var err error
+		if d.docsBuf, err = d.nextBatch(); err != nil {
+			return nil, err
 		}
-		if len(batch.docs) == 0 {
-			panic("no more docs to fetch; Next() was called either more times than the number of ids, or after an error")
-		}
-		d.docsBuf = batch.docs
 	}
 
 	doc := d.docsBuf[0]
 	d.docsBuf = d.docsBuf[1:]
 
 	return doc, nil
+}
+
+func (d *docsStream) nextBatch() ([][]byte, error) {
+	b, ok := <-d.out
+	if !ok {
+		if d.ctx.Err() != nil { // streaming was interrupted by the client or due to a timeout
+			return nil, d.ctx.Err()
+		}
+		panic("no more docs to fetch; Next() was called either more times than the number of ids, or after an error")
+	}
+	if b.err != nil {
+		return nil, b.err
+	}
+	return b.docs, nil
 }
 
 func (d *docsStream) batchLoader() {

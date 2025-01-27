@@ -34,6 +34,8 @@ var TestMapping = Mapping{
 	"process.serviceName": NewSingleType(TokenizerTypeKeyword, "", 0),
 	"tags.sometag":        NewSingleType(TokenizerTypeKeyword, "", 0),
 	"request_duration":    NewSingleType(TokenizerTypeKeyword, "", 0),
+	"spans":               NewSingleType(TokenizerTypeNested, "", 0),
+	"spans.span_id":       NewSingleType(TokenizerTypeKeyword, "", 0),
 	"_exists_":            NewSingleType(TokenizerTypeKeyword, "", 0),
 
 	"m": NewSingleType(TokenizerTypeKeyword, "", 0),
@@ -42,10 +44,9 @@ var TestMapping = Mapping{
 type MappingFieldType string
 
 const (
-	FieldTypeText        MappingFieldType = "text"
-	FieldTypeKeyword     MappingFieldType = "keyword"
-	FieldTypeKeywordList MappingFieldType = "keyword-list"
-	FieldTypePath        MappingFieldType = "path"
+	FieldTypeText    MappingFieldType = "text"
+	FieldTypeKeyword MappingFieldType = "keyword"
+	FieldTypePath    MappingFieldType = "path"
 
 	FieldTypeObject MappingFieldType = "object"
 	FieldTypeTags   MappingFieldType = "tags"

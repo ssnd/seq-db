@@ -323,6 +323,7 @@ func iterateEvalTree(
 
 	total := 0
 	ids := seq.IDSources{}
+	var lastID seq.ID
 
 	for {
 
@@ -359,12 +360,17 @@ func iterateEvalTree(
 				rid := idsProvider.GetRID(seq.LID(lid))
 				m.Stop()
 
-				foundID := seq.IDSource{
-					ID:     seq.ID{MID: mid, RID: rid},
-					Source: 0,
-					Hint:   fracName,
+				id := seq.ID{MID: mid, RID: rid}
+
+				if total == 0 || lastID != id { // lids increase monotonically, it's enough to compare current id with the last one
+					foundID := seq.IDSource{
+						ID:     id,
+						Source: 0,
+						Hint:   fracName,
+					}
+					ids = append(ids, foundID)
 				}
-				ids = append(ids, foundID)
+				lastID = id
 			}
 		}
 

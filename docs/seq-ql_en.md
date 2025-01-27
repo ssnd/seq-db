@@ -36,7 +36,7 @@ Wildcards in SeqQL allow for partial matching in search. The language supports t
 These symbols can be used to search within tokens or parts of tokens. For example, a query on
 the [keyword](index.md#keyword) index `source_type:access*` will match all documents starting with `access`.
 
-## Range
+## Filter `range`
 
 SeqQL enables range filtering to limit data by value, particularly useful for numeric fields such as sizes or
 timestamps. Ranges are specified using square or round brackets:
@@ -49,6 +49,20 @@ Example of range usage:
 ```plaintext
 bytes:(100, 1000]
 bytes:[100, 1000)
+```
+
+## Filter `in`
+
+SeqQL allows using the `in` filter to filter a list of tokens.  
+The syntax for full-text search is the same as in [full-text search](#full-text-search) and supports all types of string
+literals. Search tokens must be separated by commas.
+
+Example usage of `in`:
+
+```plaintext
+level:error and k8s_namespace:in(default, kube-system) and k8s_pod:in(kube-proxy-*, kube-apiserver-*, kube-scheduler-*)
+
+trace_id:in(123e4567-e89b-12d3-a456-426655440000, '123e4567-e89b-12d3-a456-426655440001', "123e4567-e89b-12d3-a456-426655440002",`123e4567-e89b-12d3-a456-426655440003`)
 ```
 
 ## Pipes

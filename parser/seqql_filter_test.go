@@ -41,6 +41,8 @@ func TestSeqQLAll(t *testing.T) {
 	t.Parallel()
 
 	mapping := seq.Mapping{
+		"k8s_namespace":   seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"k8s_pod":         seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 		"service":         seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 		"level":           seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
 		"message":         seq.NewSingleType(seq.TokenizerTypeText, "", 0),
@@ -210,6 +212,19 @@ service:"wms-svc-logistics-megasort" and level:"#"
 	test(`service:clickhouse-shard-1`, `service:clickhouse-shard-1`)
 	test(`x-forwarded-for: abc`, `x-forwarded-for:abc`)
 	test(`user-agent:"ozondeliveryapp_ios_prod"`, `user-agent:ozondeliveryapp_ios_prod`)
+
+	// Test filter 'in'.
+	test(`service:in(auth-api, api-gateway, clickhouse-shard-*)`, `((service:auth-api or service:api-gateway) or service:clickhouse-shard-*)`)
+	test(`service:in(*, *, *)`, `((service:* or service:*) or service:*)`)
+	test(`service:in(*)`, `service:*`)
+	test(`level:in(1)`, `level:1`)
+	test(`level:in(1, '2', 'three')`, `((level:1 or level:2) or level:three)`)
+	test(`level:in(1, '2', ''*3*"")`, `((level:1 or level:2) or level:*3*)`)
+	test(`level:in(""''''"", ****','","****"*")`, `(level:"" or level:****",,"*****)`)
+	test(`level:in(one, t,wo)`, `((level:one or level:t) or level:wo)`)
+	test(`level:"in(one, t,wo)"`, `level:"in(one, t,wo)"`)
+	test(`level:error and k8s_namespace:in(default, kube-system) and k8s_pod:in(kube-proxy-*, kube-apiserver-*, kube-scheduler-*)`,
+		`((level:error and (k8s_namespace:default or k8s_namespace:kube-system)) and ((k8s_pod:kube-proxy-* or k8s_pod:kube-apiserver-*) or k8s_pod:kube-scheduler-*))`)
 }
 
 func TestSeqQLCaseSensitive(t *testing.T) {
@@ -341,6 +356,17 @@ func TestParseSeqQLError(t *testing.T) {
 	test(`level service:abc`, `missing ':' after "level"`)
 	test(`(level:3 AND level level:abc)`, `missing ':' after "level"`)
 	test(`NOT (:"abc")`, `parsing field name: unexpected symbol ":"`)
+
+	// Test filter 'in'.
+	test(`service:in`, `parsing 'in' filter: expect '(', got ""`)
+	test(`service:in()`, `parsing 'in' filter: empty 'in' filter`)
+	test(`service:in(1,)`, `parsing 'in' filter: parsing filter value for field "service": unexpected symbol ")"`)
+	test(`service:in)`, `parsing 'in' filter: expect '(', got ")"`)
+	test(`service:in(1`, `parsing 'in' filter: expect ')', got ""`)
+	test(`service:in(1,3^2)`, `parsing 'in' filter: expect ')', got "^"`)
+	test(`in(1):in(2)`, `missing ':' after "in"`)
+	test(`service:in(2, in(4, 8))`, `parsing 'in' filter: expect ')', got "("`)
+	test(`service:'in'(2, in(4, 8))`, `expected 'and', 'or', 'not', got: "("`)
 
 	// Test pipes.
 	test(`message:--||`, `unknown pipe: |`)

@@ -36,7 +36,7 @@ func TestParsePipeRemove(t *testing.T) {
 	test(`* | remove "_id"`, `* | remove _id`)
 	test(`* | remove "_\\message\\_"`, `* | remove "_\\message\\_"`)
 	test(`* | remove "_\\message*"`, `* | remove "_\\message\*"`)
-	test(`* | remove k8s_namespace`, `* | fields k8s_namespace`)
+	test(`* | remove k8s_namespace`, `* | remove k8s_namespace`)
 }
 
 func TestParsePipeWhere(t *testing.T) {

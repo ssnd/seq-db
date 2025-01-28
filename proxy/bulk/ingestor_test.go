@@ -550,3 +550,39 @@ func mustMarshalJSON(v any) string {
 	}
 	return string(data)
 }
+
+func TestProcessDocumentType(t *testing.T) {
+	r := require.New(t)
+
+	test := func(doc string, expected int) {
+		t.Helper()
+		client := &FakeClient{}
+		ingestor := NewIngestor(IngestorConfig{MaxInflightBulks: 1}, client)
+		defer ingestor.Stop()
+
+		stop := false
+		n, err := ingestor.ProcessDocuments(context.Background(), time.Now(), func() ([]byte, error) {
+			if stop {
+				return nil, nil
+			}
+			stop = true
+			return []byte(doc), nil
+		})
+		r.NoError(err)
+		r.Equal(expected, n)
+		r.Equal(n, client.total)
+		if n != 0 {
+			r.True(len(client.docs) > 0)
+			r.True(len(client.metas) > 0)
+		} else {
+			r.True(len(client.docs) == 0)
+			r.True(len(client.metas) == 0)
+		}
+	}
+
+	test(`{}`, 1)
+	test(`null`, 0)
+	test(`"string"`, 0)
+	test(`42.0`, 0)
+	test(`[{"k":"v"}]`, 0)
+}

@@ -66,7 +66,7 @@ func parsePipes(lex *lexer) ([]Pipe, error) {
 		}
 
 		if fieldFilters > 1 {
-			return nil, fmt.Errorf("cannot mix 'fields' and 'remove' pipes")
+			return nil, fmt.Errorf("multiple field filters is not allowed")
 		}
 
 		if newStage != lastStage {

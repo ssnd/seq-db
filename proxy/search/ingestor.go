@@ -7,19 +7,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ozontech/seq-db/parser"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/encoding/gzip"
-	"google.golang.org/grpc/status"
-
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
+	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/status"
 )
 
 type Config struct {

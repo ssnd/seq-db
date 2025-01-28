@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ozontech/seq-db/consts"
@@ -19,12 +20,13 @@ import (
 	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
 	"github.com/ozontech/seq-db/proxy/search"
+	"github.com/ozontech/seq-db/querytracer"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
 )
 
 type SearchIngestor interface {
-	Search(ctx context.Context, sr *search.SearchRequest) (*seq.QPR, search.DocsIterator, time.Duration, error)
+	Search(ctx context.Context, sr *search.SearchRequest, tr *querytracer.Tracer) (*seq.QPR, search.DocsIterator, time.Duration, error)
 	Documents(ctx context.Context, r search.FetchRequest) (search.DocsIterator, error)
 	Status(ctx context.Context) *search.IngestorStatus
 }
@@ -153,9 +155,11 @@ type proxySearchResponse struct {
 }
 
 func (g *grpcV1) doSearch(
-	ctx context.Context, req *seqproxyapi.ComplexSearchRequest, shouldFetch bool,
+	ctx context.Context,
+	req *seqproxyapi.ComplexSearchRequest,
+	shouldFetch bool,
+	tr *querytracer.Tracer,
 ) (*proxySearchResponse, error) {
-
 	metric.SearchOverall.Add(1)
 
 	span := trace.FromContext(ctx)
@@ -241,7 +245,7 @@ func (g *grpcV1) doSearch(
 		proxyReq.Interval = seq.MID(intervalDuration.Milliseconds())
 	}
 
-	qpr, docsStream, _, err := g.searchIngestor.Search(ctx, proxyReq)
+	qpr, docsStream, _, err := g.searchIngestor.Search(ctx, proxyReq, tr)
 	psr := &proxySearchResponse{
 		qpr:        qpr,
 		docsStream: docsStream,
@@ -321,4 +325,21 @@ func validateAgg(agg *seqproxyapi.AggQuery) error {
 		return status.Error(codes.InvalidArgument, "'groupBy' or 'field' must be set")
 	}
 	return nil
+}
+
+func tracerSpanToExplainEntry(span *querytracer.Span) *seqproxyapi.ExplainEntry {
+	if span == nil {
+		return nil
+	}
+
+	ee := &seqproxyapi.ExplainEntry{
+		Message:  span.Message,
+		Duration: durationpb.New(span.Duration),
+	}
+
+	for _, child := range span.Children {
+		ee.Children = append(ee.Children, tracerSpanToExplainEntry(child))
+	}
+
+	return ee
 }

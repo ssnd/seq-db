@@ -13,13 +13,8 @@ mem.out
 .frac-cache
 *.log
 logs/
-tests/data/complicated_1/raw-docs.json
-tests/data/complicated_1/batches
 *.test
 /bin
-mongodb_data
-graylog_journal
-graylog_data
 .DS_Store
 .vscode
 .idea
@@ -29,3 +24,4 @@ cover.out
 junit.xml
 /go.work*
 /data
+.immature

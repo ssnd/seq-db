@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -75,4 +76,26 @@ func TestStatusResponseMarshalJSON(t *testing.T) {
 	test(&StatusResponse{OldestStorageTime: nil}, `{"oldest_storage_time":null}`)
 	test(&StatusResponse{OldestStorageTime: timestamppb.New(time.UnixMilli(999))}, `{"oldest_storage_time":"1970-01-01T00:00:00.999Z"}`)
 	test(&StatusResponse{OldestStorageTime: timestamppb.New(time.UnixMilli(9999999))}, `{"oldest_storage_time":"1970-01-01T02:46:39.999Z"}`)
+}
+
+func TestExplainEntryMarshalJSON(t *testing.T) {
+	r := require.New(t)
+
+	test := func(explainEntry *ExplainEntry, expected string) {
+		t.Helper()
+
+		raw, err := json.Marshal(explainEntry)
+		r.NoError(err)
+		r.Equal(expected, string(raw))
+
+		unmarshaled := &ExplainEntry{}
+		r.NoError(json.Unmarshal(raw, unmarshaled))
+
+		r.Equal(explainEntry, unmarshaled)
+	}
+
+	test(&ExplainEntry{Duration: durationpb.New(12 * time.Microsecond)}, `{"duration":"12µs"}`)
+	test(&ExplainEntry{Duration: durationpb.New(8*time.Millisecond + 58*time.Microsecond)}, `{"duration":"8.058ms"}`)
+	test(&ExplainEntry{Duration: durationpb.New(1*time.Second + 12*time.Millisecond)}, `{"duration":"1.012s"}`)
+	test(&ExplainEntry{Duration: durationpb.New(2*time.Minute + 28*time.Second + 12*time.Millisecond)}, `{"duration":"2m28.012s"}`)
 }

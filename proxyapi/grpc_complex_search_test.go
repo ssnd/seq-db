@@ -253,6 +253,24 @@ func TestGrpcV1_ComplexSearch(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "ok_with_explain",
+			data: cSearchTestCaseData{
+				searchQ: &testSearchQuery{
+					query:   "message:ok",
+					from:    now,
+					to:      now.Add(time.Hour),
+					explain: true,
+				},
+				size:      10,
+				offset:    0,
+				totalSize: 1000,
+				respErr: &seqproxyapi.Error{
+					Code: seqproxyapi.ErrorCode_ERROR_CODE_NO,
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "partial_resp",
 			data: cSearchTestCaseData{
 				searchQ: &testSearchQuery{
@@ -474,6 +492,12 @@ func TestGrpcV1_ComplexSearch(t *testing.T) {
 				}
 			} else {
 				r.Nil(got.Hist)
+			}
+
+			if testData.req.Query.Explain {
+				r.NotNil(got.Explain)
+			} else {
+				r.Nil(got.Explain)
 			}
 		})
 	}

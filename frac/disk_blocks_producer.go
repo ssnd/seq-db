@@ -5,8 +5,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/gogo/protobuf/sortkeys"
-
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/frac/lids"
 	"github.com/ozontech/seq-db/frac/token"
@@ -98,7 +96,7 @@ func (g *DiskBlocksProducer) getFracSortedFields() []string {
 		for field := range g.frac.TokenList.FieldTIDs {
 			g.fields = append(g.fields, field)
 		}
-		sortkeys.Strings(g.fields)
+		sort.Strings(g.fields)
 	}
 	return g.fields
 }

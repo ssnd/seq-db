@@ -4,6 +4,7 @@ option go_package = "github.com/ozontech/seq-db/pkg/storeapi;storeapi";
 
 package api;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -96,6 +97,13 @@ message SearchResponse {
   uint64 total = 5;
   repeated string errors = 6;
   SearchErrorCode code = 7;
+  optional ExplainEntry explain = 8;
+}
+
+message ExplainEntry {
+  string message = 1;
+  google.protobuf.Duration duration = 2;
+  repeated ExplainEntry children = 3;
 }
 
 enum SearchErrorCode {

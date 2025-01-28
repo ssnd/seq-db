@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ozontech/seq-db/seq"
-
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/ozontech/seq-db/conf"
@@ -16,7 +15,9 @@ import (
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/pkg/storeapi"
+	"github.com/ozontech/seq-db/querytracer"
 	"github.com/ozontech/seq-db/search"
+	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
 )
 
@@ -158,4 +159,21 @@ func (g *GrpcV1) bulkStats() {
 			logger.Info("bulk api stats for 5s: no batches have been written")
 		}
 	}
+}
+
+func tracerSpanToExplainEntry(span *querytracer.Span) *storeapi.ExplainEntry {
+	if span == nil {
+		return nil
+	}
+
+	ee := &storeapi.ExplainEntry{
+		Message:  span.Message,
+		Duration: durationpb.New(span.Duration),
+	}
+
+	for _, child := range span.Children {
+		ee.Children = append(ee.Children, tracerSpanToExplainEntry(child))
+	}
+
+	return ee
 }

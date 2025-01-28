@@ -23,7 +23,7 @@ func (g *grpcV1) GetAggregation(
 		Query: req.Query,
 		Aggs:  req.Aggs,
 	}
-	sResp, err := g.doSearch(ctx, proxyReq, false)
+	sResp, err := g.doSearch(ctx, proxyReq, false, nil)
 	if err != nil {
 		return nil, err
 	}

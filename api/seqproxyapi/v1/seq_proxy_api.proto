@@ -4,6 +4,7 @@ option go_package = "github.com/ozontech/seq-db/pkg/seqproxyapi/v1;seqproxyapi";
 
 package seqproxyapi.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
 
@@ -157,6 +158,13 @@ message HistQuery {
   string interval = 1; // Interval in promql duration format like `1m`, `5s`. More details: https://prometheus.io/docs/prometheus/latest/querying/basics/#float-literals-and-time-durations
 }
 
+// Explain info
+message ExplainEntry {
+  string message = 1;
+  google.protobuf.Duration duration = 2;
+  repeated ExplainEntry children = 3;
+}
+
 message SearchRequest {
   SearchQuery query = 1; // Search query.
   int64 size = 2;        // Maximum number of documents to return.
@@ -189,6 +197,7 @@ message ComplexSearchResponse {
   repeated Aggregation aggs = 4;                 // Aggregation results.
   optional Histogram hist = 5;                   // Histogram results.
   Error error = 6;                               // Error if happened.
+  optional ExplainEntry explain = 7;             // Explain info.
 }
 
 message GetAggregationRequest {

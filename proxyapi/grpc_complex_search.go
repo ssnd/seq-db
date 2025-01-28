@@ -3,7 +3,11 @@ package proxyapi
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
+	"github.com/ozontech/seq-db/querytracer"
 	"github.com/ozontech/seq-db/seq"
 )
 
@@ -13,7 +17,13 @@ func (g *grpcV1) ComplexSearch(
 	ctx, cancel := context.WithTimeout(ctx, g.config.SearchTimeout)
 	defer cancel()
 
-	sResp, err := g.doSearch(ctx, req, true)
+	if req.Query == nil {
+		return nil, status.Error(codes.InvalidArgument, "search query must be provided")
+	}
+
+	tr := querytracer.New(req.Query.Explain, "proxy/ComplexSearch")
+
+	sResp, err := g.doSearch(ctx, req, true, tr)
 	if err != nil {
 		return nil, err
 	}
@@ -26,16 +36,23 @@ func (g *grpcV1) ComplexSearch(
 		},
 	}
 	if req.Aggs != nil {
+		aggTr := tr.NewChild("aggregate")
 		allAggregations := sResp.qpr.Aggregate(aggregationArgsFromProto(req.Aggs))
 		resp.Aggs = makeProtoAggregation(allAggregations)
+		aggTr.Done()
 	}
 	if req.Hist != nil {
+		histTr := tr.NewChild("histogram")
 		resp.Hist = makeProtoHistogram(sResp.qpr)
+		histTr.Done()
 	}
 	if sResp.err != nil {
 		resp.Error = sResp.err
 		resp.PartialResponse = sResp.err.Code == seqproxyapi.ErrorCode_ERROR_CODE_PARTIAL_RESPONSE
 	}
+
+	tr.Done()
+	resp.Explain = tracerSpanToExplainEntry(tr.ToSpan())
 
 	return resp, nil
 }

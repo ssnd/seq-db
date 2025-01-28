@@ -59,33 +59,18 @@ func (p *ActiveIDsProvider) LessOrEqual(lid seq.LID, id seq.ID) bool {
 
 type ActiveDataProvider struct {
 	*Active
-	sc          *SearchCell
-	tracer      *tracer.Tracer
-	idsProvider *ActiveIDsProvider
+	sc       *SearchCell
+	tracer   *tracer.Tracer
+	inverser *inverser
 }
 
-// getIDsProvider creates on demand and returns ActiveIDsProvider.
-// Creation of inverser for ActiveIDsProvider is expensive operation
-func (dp *ActiveDataProvider) getIDsProvider() *ActiveIDsProvider {
-	if dp.idsProvider == nil {
-		m := dp.tracer.Start("get_all_documents")
-		mapping := dp.GetAllDocuments() // creation order is matter
-		mids := dp.MIDs.GetVals()       // mids and rids should be created after mapping to ensure that
-		rids := dp.RIDs.GetVals()       // they contain all the ids that mapping contains.
-		m.Stop()
-
-		m = dp.tracer.Start("inverse")
-		info := dp.Info()
-		inverser := newInverser(mapping, info.From, info.To, mids)
-		m.Stop()
-
-		dp.idsProvider = &ActiveIDsProvider{
-			inverser: inverser,
-			mids:     mids,
-			rids:     rids,
-		}
+// getInverser creates on demand and returns inverser
+// inverser creation is expensive operation
+func (dp *ActiveDataProvider) getInverser() *inverser {
+	if dp.inverser == nil {
+		dp.inverser = dp.Active.inverser(dp.tracer)
 	}
-	return dp.idsProvider
+	return dp.inverser
 }
 
 func (dp *ActiveDataProvider) Tracer() *tracer.Tracer {
@@ -93,7 +78,11 @@ func (dp *ActiveDataProvider) Tracer() *tracer.Tracer {
 }
 
 func (dp *ActiveDataProvider) IDsProvider() IDsProvider {
-	return dp.getIDsProvider()
+	return &ActiveIDsProvider{
+		inverser: dp.getInverser(),
+		mids:     dp.MIDs.GetVals(),
+		rids:     dp.RIDs.GetVals(),
+	}
 }
 
 func (dp *ActiveDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) ([]uint32, error) {
@@ -101,7 +90,7 @@ func (dp *ActiveDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) 
 }
 
 func (dp *ActiveDataProvider) GetLIDsFromTIDs(tids []uint32, stats lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node {
-	return dp.Active.GetLIDsFromTIDs(tids, dp.getIDsProvider().inverser, stats, minLID, maxLID, dp.tracer, order)
+	return dp.Active.GetLIDsFromTIDs(tids, dp.getInverser(), stats, minLID, maxLID, dp.tracer, order)
 }
 
 func (dp *ActiveDataProvider) Fetch(ids []seq.ID) ([][]byte, error) {
@@ -426,6 +415,22 @@ func inverseLIDs(unmapped []uint32, inv *inverser, minLID, maxLID uint32) []uint
 	return result
 }
 
+func (f *Active) inverser(tr *tracer.Tracer) *inverser {
+	m := tr.Start("get_all_documents")
+	mapping := f.GetAllDocuments()
+	m.Stop()
+
+	if len(mapping) == 0 {
+		return nil
+	}
+
+	m = tr.Start("inverse")
+	i := newInverser(mapping)
+	m.Stop()
+
+	return i
+}
+
 func (f *Active) GetValByTID(tid uint32) []byte {
 	return f.TokenList.GetValByTID(tid)
 }
@@ -436,9 +441,8 @@ func (f *Active) Type() string {
 
 func (f *Active) Release(sealed Fraction) {
 	f.useLock.Lock()
-	defer f.useLock.Unlock()
-
 	f.sealed = sealed
+	f.useLock.Unlock()
 
 	f.TokenList.Stop()
 
@@ -521,11 +525,10 @@ func (f *Active) BuildInfoDistribution(ids []seq.ID) {
 	f.statsMu.Unlock()
 }
 
-func (f *Active) Suicide() {
+func (f *Active) Suicide() { // it seams we never call this method (of Active fraction)
 	f.useLock.Lock()
-	defer f.useLock.Unlock()
-
 	f.suicided = true
+	f.useLock.Unlock()
 
 	if !f.isSealed {
 		f.close(true, "suicide")
@@ -573,28 +576,33 @@ func (f *Active) String() string {
 
 func (f *Active) DataProvider(ctx context.Context) (DataProvider, func(), bool) {
 	f.useLock.RLock()
-	if f.sealed != nil {
-		defer f.useLock.RUnlock()
+
+	if f.sealed == nil && !f.suicided && f.MIDs.Len() > 0 { // it is ordinary active fraction state
+		dp := ActiveDataProvider{
+			Active: f,
+			sc:     NewSearchCell(ctx),
+			tracer: tracer.New(),
+		}
+
+		return &dp, func() {
+			if dp.inverser != nil {
+				dp.inverser.Release()
+			}
+			f.useLock.RUnlock()
+		}, true
+	}
+
+	defer f.useLock.RUnlock()
+
+	if f.sealed != nil { // move on to the daughter sealed faction
 		dp, releaseSealed, ok := f.sealed.DataProvider(ctx)
 		metric.CountersTotal.WithLabelValues("use_sealed_from_active").Inc()
 		return dp, releaseSealed, ok
 	}
 
-	if f.Info().DocsTotal == 0 {
-		f.useLock.RUnlock()
-		return nil, nil, false
+	if f.suicided {
+		metric.CountersTotal.WithLabelValues("fraction_suicided").Inc()
 	}
 
-	dp := ActiveDataProvider{
-		Active: f,
-		sc:     NewSearchCell(ctx),
-		tracer: tracer.New(),
-	}
-
-	return &dp, func() {
-		if dp.idsProvider != nil {
-			dp.idsProvider.inverser.Release()
-		}
-		f.useLock.RUnlock()
-	}, true
+	return nil, nil, false
 }

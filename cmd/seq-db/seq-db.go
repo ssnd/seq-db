@@ -15,7 +15,6 @@ import (
 
 	"github.com/ozontech/seq-db/seq"
 
-	"github.com/mailru/easyjson/buffer"
 	"go.uber.org/atomic"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
@@ -119,11 +118,6 @@ func validateIngestorTopology(hotStores, hotReadStores, _, _ *stores.Stores) err
 func main() {
 	encoding.RegisterCodec(grpcutil.VTProtoCodec{})
 	rand.Seed(time.Now().UnixNano())
-	buffer.Init(buffer.PoolConfig{
-		StartSize:  256,
-		PooledSize: 256,
-		MaxSize:    1024 * 1024,
-	})
 
 	logger.Info("hi, I am seq-db",
 		zap.String("version", buildinfo.Version),

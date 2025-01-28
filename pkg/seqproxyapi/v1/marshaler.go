@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -168,4 +169,38 @@ func unmarshalTime(val json.RawMessage) (*timestamppb.Timestamp, error) {
 		return nil, err
 	}
 	return timestamppb.New(parsed), nil
+}
+
+// TestExplainEntry is ExplainEntry wrapper that is used to omit methods like MarshalJSON.
+type TestExplainEntry ExplainEntry
+
+type formattedExplainEntry struct {
+	Duration json.RawMessage `json:"duration"`
+	*TestExplainEntry
+}
+
+// MarshalJSON overrides duration field with formatted string instead of google.protobuf.Duration.
+func (e *ExplainEntry) MarshalJSON() ([]byte, error) {
+	ee := &formattedExplainEntry{
+		TestExplainEntry: (*TestExplainEntry)(e),
+		Duration:         json.RawMessage(strconv.Quote(e.Duration.AsDuration().String())),
+	}
+	return json.Marshal(ee)
+}
+
+func (e *ExplainEntry) UnmarshalJSON(data []byte) error {
+	var ee formattedExplainEntry
+	err := json.Unmarshal(data, &ee)
+	if err != nil {
+		return err
+	}
+
+	duration, err := time.ParseDuration(string(bytes.Trim(ee.Duration, `"`)))
+	if err != nil {
+		return err
+	}
+
+	e.Duration = durationpb.New(duration)
+
+	return nil
 }

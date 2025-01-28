@@ -1,48 +1,35 @@
 package frac
 
 import (
-	"unsafe"
+	"slices"
+	"sync"
 
-	"github.com/ozontech/seq-db/bytespool"
-	"github.com/ozontech/seq-db/seq"
+	"go.uber.org/zap"
+
+	"github.com/ozontech/seq-db/logger"
 )
 
+// maxReusableInverserSliceSize has a certain magical value, chosen empirically and relevant at the moment.
+// In the future this should be replaced by some dynamically calculated value based on statistics.
+// Or perhaps we will get rid of the reuse of the slice and maybe the inverser altogether.
+const maxReusableInverserSliceSize = 2_000_000
+
+var inverserSlicePool = sync.Pool{}
+
 type inverser struct {
-	buf       *bytespool.Buffer
 	values    []uint32
 	inversion []int
 }
 
-func newInverser(values []uint32, minMID, maxMID seq.MID, mids []uint64) *inverser {
-	// skip greater than maxMID
-	l := 0
-	for l < len(values) && mids[values[l]] > uint64(maxMID) {
-		l++
-	}
-
-	// skip less than minMID
-	r := len(values) - 1
-	for r >= 0 && mids[values[r]] < uint64(minMID) {
-		r--
-	}
-
-	if r < l {
-		// we should never end up here
-		panic("can't search on empty fraction")
-	}
-
-	// build inverse map
-	values = values[l : r+1]
-	buf, inversion := getSlice(len(mids))
-	for i, v := range values {
-		inversion[v] = i + 1
-	}
-
-	return &inverser{
-		buf:       buf,
+func newInverser(values []uint32) *inverser {
+	is := inverser{
 		values:    values,
-		inversion: inversion,
+		inversion: getSlice(int(slices.Max(values)) + 1),
 	}
+	for i, v := range values {
+		is.inversion[v] = i + 1
+	}
+	return &is
 }
 
 func (is *inverser) Len() int {
@@ -78,15 +65,50 @@ func (is *inverser) Revert(i uint32) uint32 {
 }
 
 func (is *inverser) Release() {
-	bytespool.Release(is.buf)
-	is.buf = nil
-	is.inversion = nil
+	if cap(is.inversion) > maxReusableInverserSliceSize {
+		return
+	}
+	inverserSlicePool.Put(&is.inversion)
 }
 
-func getSlice(size int) (*bytespool.Buffer, []int) {
-	const sizeOfInt = unsafe.Sizeof(int(0))
-	buf := bytespool.Acquire(size * int(sizeOfInt))
-	s := unsafe.Slice((*int)(unsafe.Pointer(unsafe.SliceData(buf.B))), size)
-	clear(s)
-	return buf, s
+func getSlice(size int) []int {
+	if result := reuseSlice(size); result != nil {
+		return result
+	}
+	logger.Info("recreate Inverser slice", zap.Int("size", size))
+	if size > maxReusableInverserSliceSize {
+		return make([]int, size)
+	}
+	return make([]int, size, maxReusableInverserSliceSize)
+}
+
+func reuseSlice(size int) []int {
+	if size > maxReusableInverserSliceSize {
+		return nil
+	}
+
+	item := inverserSlicePool.Get()
+
+	if item == nil {
+		return nil
+	}
+
+	slice, ok := item.(*[]int)
+
+	if !ok {
+		return nil
+	}
+
+	if cap(*slice) < size {
+		return nil
+	}
+
+	return cleanSlice((*slice)[:size])
+}
+
+func cleanSlice(slice []int) []int {
+	for i := range slice {
+		slice[i] = 0
+	}
+	return slice
 }

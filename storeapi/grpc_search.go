@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/gogo/protobuf/sortkeys"
 	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -23,6 +22,7 @@ import (
 	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/pkg/storeapi"
+	"github.com/ozontech/seq-db/querytracer"
 	"github.com/ozontech/seq-db/search"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/tracing"
@@ -45,17 +45,28 @@ func (g *GrpcV1) Search(ctx context.Context, req *storeapi.SearchRequest) (*stor
 		span.AddAttributes(trace.StringAttribute("aggregation_filter", req.AggregationFilter))
 	}
 
-	data, err := g.doSearch(ctx, req)
+	tr := querytracer.New(req.Explain, "store/Search")
+	data, err := g.doSearch(ctx, req, tr)
 	if err != nil {
 		span.SetStatus(trace.Status{Code: 1, Message: err.Error()})
 		logger.Error("search error", zap.Error(err), zap.Object("request", (*searchRequestMarshaler)(req)))
 	}
+
+	tr.Done()
+	if req.Explain {
+		data.Explain = tracerSpanToExplainEntry(tr.ToSpan())
+	}
+
 	return data, err
 }
 
 var aggAsteriskFilter = "*"
 
-func (g *GrpcV1) doSearch(ctx context.Context, req *storeapi.SearchRequest) (*storeapi.SearchResponse, error) {
+func (g *GrpcV1) doSearch(
+	ctx context.Context,
+	req *storeapi.SearchRequest,
+	tr *querytracer.Tracer,
+) (*storeapi.SearchResponse, error) {
 	metric.SearchInFlightQueriesTotal.Inc()
 	defer metric.SearchInFlightQueriesTotal.Dec()
 
@@ -95,10 +106,14 @@ func (g *GrpcV1) doSearch(ctx context.Context, req *storeapi.SearchRequest) (*st
 	}
 
 	t := time.Now()
+
+	parseQueryTr := tr.NewChild("parse query")
 	ast, err := g.parseQuery(ctx, req.Query)
+	parseQueryTr.Done()
 	if err != nil {
 		return nil, err
 	}
+
 	searchCell.AddParseTime(time.Since(t))
 
 	if searchCell.IsCancelled() {
@@ -133,7 +148,9 @@ func (g *GrpcV1) doSearch(ctx context.Context, req *storeapi.SearchRequest) (*st
 		Order:        req.Order.MustDocsOrder(),
 	}
 
+	searchTr := tr.NewChild("search iteratively")
 	qpr, stats, evalDuration, err := g.searchIteratively(searchCell, searchParams, g.config.Search.FractionsPerIteration)
+	searchTr.Done()
 	if err != nil {
 		if errors.Is(err, consts.ErrTooManyUniqValues) {
 			return &storeapi.SearchResponse{Code: storeapi.SearchErrorCode_TOO_MANY_UNIQ_VALUES}, nil
@@ -153,11 +170,12 @@ func (g *GrpcV1) doSearch(ctx context.Context, req *storeapi.SearchRequest) (*st
 		logger.Info(searchCell.ExplainSB.String())
 
 		if req.Interval > 0 {
-			keys := make(sortkeys.Uint64Slice, 0)
+			keys := make([]uint64, 0, len(qpr.Histogram))
 			for key := range qpr.Histogram {
 				keys = append(keys, uint64(key))
 			}
-			sort.Sort(keys)
+			slices.Sort(keys)
+
 			for _, key := range keys {
 				logger.Info("histogram",
 					zap.Int64("t", t.UnixNano()),

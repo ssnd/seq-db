@@ -22,7 +22,7 @@ func (g *grpcV1) GetHistogram(
 		Query: req.Query,
 		Hist:  req.Hist,
 	}
-	sResp, err := g.doSearch(ctx, proxyReq, false)
+	sResp, err := g.doSearch(ctx, proxyReq, false, nil)
 	if err != nil {
 		return nil, err
 	}

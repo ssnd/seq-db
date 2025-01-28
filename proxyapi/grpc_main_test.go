@@ -162,7 +162,7 @@ func prepareMock(m *mocks, mData *mocksData) {
 		if mData.si.search != nil {
 			ret := mData.si.search.ret
 			m.siMock.EXPECT().Search(
-				gomock.Any(), mData.si.search.sr,
+				gomock.Any(), mData.si.search.sr, gomock.Any(),
 			).Return(ret.qpr, ret.docs, ret.took, ret.err)
 		}
 		if mData.si.documents != nil {

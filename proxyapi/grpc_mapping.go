@@ -7,6 +7,6 @@ import (
 )
 
 func (g *grpcV1) Mapping(_ context.Context, _ *seqproxyapi.MappingRequest) (*seqproxyapi.MappingResponse, error) {
-	mapping := g.mapping.GetRawMappingBytes()
+	mapping := g.mappingProvider.GetRawMapping().GetRawMappingBytes()
 	return &seqproxyapi.MappingResponse{Data: mapping}, nil
 }

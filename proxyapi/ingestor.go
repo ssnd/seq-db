@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ozontech/seq-db/network/grpcutil"
-	"github.com/ozontech/seq-db/seq"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"go.uber.org/atomic"
@@ -108,8 +107,6 @@ func appendClients(ctx context.Context, clients map[string]storeapi.StoreApiClie
 func NewIngestor(config IngestorConfig) (*Ingestor, error) {
 	config.setDefaults()
 
-	mapping := seq.NewRawMapping(config.Bulk.TokenMapping)
-
 	rateLimiter := ratelimiter.NewRateLimiter(config.API.QueryRateLimit, metric.RateLimiterSize.Set)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -149,7 +146,7 @@ func NewIngestor(config IngestorConfig) (*Ingestor, error) {
 	return &Ingestor{
 		Config:         config,
 		httpServer:     newHTTPServer(handler),
-		grpcServer:     newGRPCServer(config.API, searchIngestor, mapping, rateLimiter, mirror),
+		grpcServer:     newGRPCServer(config.API, searchIngestor, config.Bulk.MappingProvider, rateLimiter, mirror),
 		BulkIngestor:   bulkIngestor,
 		SearchIngestor: searchIngestor,
 		rateLimiter:    rateLimiter,

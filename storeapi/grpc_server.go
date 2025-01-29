@@ -5,8 +5,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/ozontech/seq-db/seq"
-
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // Register gzip compressor
@@ -26,10 +24,10 @@ type grpcServer struct {
 	apiV1 *GrpcV1
 }
 
-func newGRPCServer(apiConfig APIConfig, fracManager *fracmanager.FracManager, mapping seq.Mapping) *grpcServer {
+func newGRPCServer(apiConfig APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *grpcServer {
 	s := initServer()
 
-	apiV1 := NewGrpcV1(apiConfig, fracManager, mapping)
+	apiV1 := NewGrpcV1(apiConfig, fracManager, mappingProvider)
 	storeapi.RegisterStoreApiServer(s, apiV1)
 
 	return &grpcServer{

@@ -7,10 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
+	"github.com/ozontech/seq-db/seq"
 )
 
 type mappingTestCaseData struct {
-	mapping []byte
+	mapping seq.Mapping
 	noResp  bool
 }
 
@@ -23,7 +24,7 @@ type mappingTestData struct {
 func prepareMappingTestData(cData mappingTestCaseData) mappingTestData {
 	var resp *seqproxyapi.MappingResponse
 	if !cData.noResp {
-		resp = &seqproxyapi.MappingResponse{Data: cData.mapping}
+		resp = &seqproxyapi.MappingResponse{Data: seq.NewRawMapping(cData.mapping).GetRawMappingBytes()}
 	}
 	return mappingTestData{
 		req:  &seqproxyapi.MappingRequest{},
@@ -45,7 +46,7 @@ func TestGrpcV1_Mapping(t *testing.T) {
 		{
 			name: "ok",
 			data: mappingTestCaseData{
-				mapping: []byte(`{"message":"text"}`),
+				mapping: seq.Mapping{"message": seq.NewSingleType(seq.TokenizerTypeText, "", 0)},
 			},
 			wantErr: false,
 		},

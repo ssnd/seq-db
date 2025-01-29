@@ -13,8 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ozontech/seq-db/seq"
-
 	"go.uber.org/atomic"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
@@ -28,6 +26,7 @@ import (
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
+	"github.com/ozontech/seq-db/mappingprovider"
 	"github.com/ozontech/seq-db/network/circuitbreaker"
 	"github.com/ozontech/seq-db/network/debugserver"
 	"github.com/ozontech/seq-db/network/grpcutil"
@@ -98,6 +97,9 @@ var (
 	sealCompressLevel      = kingpin.Flag("seal-zstd-compress-level", "ZSTD compress level that will be used to seal the active fraction: https://facebook.github.io/zstd/zstd_manual.html").Default("3").Int()
 
 	maxDocSize = kingpin.Flag("max-document-size", "the maximum document size, documents larger than this will be skipped").Default("128KiB").Bytes()
+
+	enableMappingUpdates = kingpin.Flag("enable-mapping-updates", "this will periodically check mapping file and reload configuration if there is an update").Default("false").Bool()
+	mappingUpdatePeriod  = kingpin.Flag("mapping-update-period", "the amount of time to pass for the mappings to be reloaded").Default("30s").Duration()
 )
 
 const (
@@ -131,11 +133,17 @@ func main() {
 	}
 
 	kingpin.Parse()
-
 	kingpin.Version(buildinfo.Version)
-	mapping, err := seq.LoadMapping(*mappingPath)
+
+	mappingProvider, err := mappingprovider.New(
+		*mappingPath,
+		mappingprovider.WithUpdatePeriod(*mappingUpdatePeriod),
+	)
 	if err != nil {
 		logger.Fatal("load mapping error", zap.Error(err))
+	}
+	if *enableMappingUpdates {
+		mappingProvider.WatchUpdates(ctx)
 	}
 
 	runtime.SetMutexProfileFraction(5)
@@ -216,7 +224,7 @@ func main() {
 				},
 			},
 		}
-		store, err = storeapi.NewStore(ctx, config, mapping)
+		store, err = storeapi.NewStore(ctx, config, mappingProvider)
 		if err != nil {
 			logger.Fatal("initializing store", zap.Error(err))
 		}
@@ -286,7 +294,7 @@ func main() {
 					MaxInflightBulks:       *maxInflightBulks,
 					AllowedTimeDrift:       *allowedTimeDrift,
 					FutureAllowedTimeDrift: *futureAllowedTimeDrift,
-					TokenMapping:           mapping,
+					MappingProvider:        mappingProvider,
 					MaxTokenSize:           *maxTokenSize,
 					CaseSensitive:          *caseSensitive,
 					PartialFieldIndexing:   *partialFieldIndexing,

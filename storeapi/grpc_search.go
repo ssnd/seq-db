@@ -210,14 +210,14 @@ func (g *GrpcV1) parseQuery(ctx context.Context, query string) (*parser.ASTNode,
 	}
 	var ast *parser.ASTNode
 	if hasHeaderUseSeqQL(ctx) {
-		seqql, err := parser.ParseSeqQL(query, g.mapping)
+		seqql, err := parser.ParseSeqQL(query, g.mappingProvider.GetMapping())
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "can't parse query %q: %v", query, err)
 		}
 		ast = seqql.Root
 	} else {
 		var err error
-		ast, err = parser.ParseQuery(query, g.mapping)
+		ast, err = parser.ParseQuery(query, g.mappingProvider.GetMapping())
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "can't parse query %q: %v", query, err)
 		}

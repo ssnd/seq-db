@@ -87,11 +87,3 @@ func RandomString(minLen, maxLen int) string {
 	}
 	return string(res)
 }
-
-func LoadMapping() seq.Mapping {
-	if m, err := seq.LoadMapping(TestDataDir + "/mappings/logging.yaml"); err != nil {
-		return m
-	}
-
-	return nil
-}

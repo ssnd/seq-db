@@ -43,6 +43,11 @@ var (
 	})
 )
 
+type MappingProvider interface {
+	GetMapping() seq.Mapping
+	GetRawMapping() *seq.RawMapping
+}
+
 type IngestorConfig struct {
 	HotStores   *stores.Stores
 	WriteStores *stores.Stores
@@ -53,7 +58,8 @@ type IngestorConfig struct {
 	AllowedTimeDrift       time.Duration
 	FutureAllowedTimeDrift time.Duration
 
-	TokenMapping         seq.Mapping
+	MappingProvider MappingProvider
+
 	MaxTokenSize         int
 	CaseSensitive        bool
 	PartialFieldIndexing bool
@@ -296,7 +302,7 @@ func (i *Ingestor) getProcessor() *processor {
 		return procEface.(*processor)
 	}
 	index := rand.Uint64() % consts.IngestorMaxInstances
-	return newBulkProcessor(i.config.TokenMapping, i.tokenizers, i.config.AllowedTimeDrift, i.config.FutureAllowedTimeDrift, index)
+	return newBulkProcessor(i.config.MappingProvider.GetMapping(), i.tokenizers, i.config.AllowedTimeDrift, i.config.FutureAllowedTimeDrift, index)
 }
 
 func (i *Ingestor) putProcessor(proc *processor) {

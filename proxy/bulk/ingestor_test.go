@@ -14,6 +14,7 @@ import (
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/frac"
+	"github.com/ozontech/seq-db/mappingprovider"
 	"github.com/ozontech/seq-db/packer"
 	"github.com/ozontech/seq-db/seq"
 )
@@ -22,55 +23,59 @@ func TestProcessDocuments(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+
+	mappingProvider, err := mappingprovider.New("", mappingprovider.WithMapping(map[string]seq.MappingTypes{
+		"path":                                  newMapping(seq.TokenizerTypePath),
+		"level":                                 newMapping(seq.TokenizerTypeKeyword),
+		"message":                               newMapping(seq.TokenizerTypeText),
+		"error":                                 newMapping(seq.TokenizerTypeText),
+		"shard":                                 newMapping(seq.TokenizerTypeKeyword),
+		"trace_id":                              newMapping(seq.TokenizerTypeKeyword),
+		"trace_duration":                        newMapping(seq.TokenizerTypeKeyword),
+		"service":                               newMapping(seq.TokenizerTypeKeyword),
+		"tags":                                  newMapping(seq.TokenizerTypeTags),
+		"tags.level":                            newMapping(seq.TokenizerTypeKeyword),
+		"tags.message":                          newMapping(seq.TokenizerTypeText),
+		"tags.path":                             newMapping(seq.TokenizerTypePath),
+		"spans":                                 newMapping(seq.TokenizerTypeNested),
+		"spans.trace_id":                        newMapping(seq.TokenizerTypeKeyword),
+		"spans.span_id":                         newMapping(seq.TokenizerTypeKeyword),
+		"spans.duration":                        newMapping(seq.TokenizerTypeKeyword),
+		"spans.tags":                            newMapping(seq.TokenizerTypeTags),
+		"spans.tags.zone":                       newMapping(seq.TokenizerTypeKeyword),
+		"spans.tags.otel.status_code":           newMapping(seq.TokenizerTypeKeyword),
+		"spans.error_tag":                       newMapping(seq.TokenizerTypeKeyword),
+		"spans.process":                         newMapping(seq.TokenizerTypeObject),
+		"spans.process.service_name":            newMapping(seq.TokenizerTypeKeyword),
+		"spans.process.tags":                    newMapping(seq.TokenizerTypeTags),
+		"spans.process.tags.app.version":        newMapping(seq.TokenizerTypeKeyword),
+		"spans.process.tags.k8s.namespace.name": newMapping(seq.TokenizerTypeKeyword),
+		"spans.process.tags.k8s.label.app":      newMapping(seq.TokenizerTypeKeyword),
+		"spans.process.tags.k8s.service.name":   newMapping(seq.TokenizerTypeKeyword),
+		"spans.process.tags.k8s.pod.name":       newMapping(seq.TokenizerTypeKeyword),
+		"spans.process.tags.k8s.node.name":      newMapping(seq.TokenizerTypeKeyword),
+		"spans.process.tags.k8s.host.name":      newMapping(seq.TokenizerTypeKeyword),
+		"spans.operation_name":                  newMapping(seq.TokenizerTypeKeyword),
+		"spans.tagsMap":                         newMapping(seq.TokenizerTypeObject),
+		"spans.tagsMap.error":                   newMapping(seq.TokenizerTypeKeyword),
+		"spans.tagsMap.ip":                      newMapping(seq.TokenizerTypeKeyword),
+		"spans.tagsMap.span.kind":               newMapping(seq.TokenizerTypeKeyword),
+		"spans.tagsMap.page.type":               newMapping(seq.TokenizerTypeKeyword),
+		"spans.tagsMap.slo.violated":            newMapping(seq.TokenizerTypeKeyword),
+		"spans.tagsMap.http.url":                newMapping(seq.TokenizerTypeKeyword),
+		"spans.tagsMap.http.method":             newMapping(seq.TokenizerTypeKeyword),
+		"spans2":                                newMapping(seq.TokenizerTypeNested),
+		"spans2.span_id":                        newMapping(seq.TokenizerTypeKeyword),
+		"spans2.operation_name":                 newMapping(seq.TokenizerTypeKeyword),
+		"exists_only":                           newMapping(seq.TokenizerTypeExists),
+	}))
+	require.NoError(t, err)
+
 	cfg := IngestorConfig{
 		MaxInflightBulks:       1,
 		AllowedTimeDrift:       time.Hour,
 		FutureAllowedTimeDrift: time.Hour,
-		TokenMapping: map[string]seq.MappingTypes{
-			"path":                                  newMapping(seq.TokenizerTypePath),
-			"level":                                 newMapping(seq.TokenizerTypeKeyword),
-			"message":                               newMapping(seq.TokenizerTypeText),
-			"error":                                 newMapping(seq.TokenizerTypeText),
-			"shard":                                 newMapping(seq.TokenizerTypeKeyword),
-			"trace_id":                              newMapping(seq.TokenizerTypeKeyword),
-			"trace_duration":                        newMapping(seq.TokenizerTypeKeyword),
-			"service":                               newMapping(seq.TokenizerTypeKeyword),
-			"tags":                                  newMapping(seq.TokenizerTypeTags),
-			"tags.level":                            newMapping(seq.TokenizerTypeKeyword),
-			"tags.message":                          newMapping(seq.TokenizerTypeText),
-			"tags.path":                             newMapping(seq.TokenizerTypePath),
-			"spans":                                 newMapping(seq.TokenizerTypeNested),
-			"spans.trace_id":                        newMapping(seq.TokenizerTypeKeyword),
-			"spans.span_id":                         newMapping(seq.TokenizerTypeKeyword),
-			"spans.duration":                        newMapping(seq.TokenizerTypeKeyword),
-			"spans.tags":                            newMapping(seq.TokenizerTypeTags),
-			"spans.tags.zone":                       newMapping(seq.TokenizerTypeKeyword),
-			"spans.tags.otel.status_code":           newMapping(seq.TokenizerTypeKeyword),
-			"spans.error_tag":                       newMapping(seq.TokenizerTypeKeyword),
-			"spans.process":                         newMapping(seq.TokenizerTypeObject),
-			"spans.process.service_name":            newMapping(seq.TokenizerTypeKeyword),
-			"spans.process.tags":                    newMapping(seq.TokenizerTypeTags),
-			"spans.process.tags.app.version":        newMapping(seq.TokenizerTypeKeyword),
-			"spans.process.tags.k8s.namespace.name": newMapping(seq.TokenizerTypeKeyword),
-			"spans.process.tags.k8s.label.app":      newMapping(seq.TokenizerTypeKeyword),
-			"spans.process.tags.k8s.service.name":   newMapping(seq.TokenizerTypeKeyword),
-			"spans.process.tags.k8s.pod.name":       newMapping(seq.TokenizerTypeKeyword),
-			"spans.process.tags.k8s.node.name":      newMapping(seq.TokenizerTypeKeyword),
-			"spans.process.tags.k8s.host.name":      newMapping(seq.TokenizerTypeKeyword),
-			"spans.operation_name":                  newMapping(seq.TokenizerTypeKeyword),
-			"spans.tagsMap":                         newMapping(seq.TokenizerTypeObject),
-			"spans.tagsMap.error":                   newMapping(seq.TokenizerTypeKeyword),
-			"spans.tagsMap.ip":                      newMapping(seq.TokenizerTypeKeyword),
-			"spans.tagsMap.span.kind":               newMapping(seq.TokenizerTypeKeyword),
-			"spans.tagsMap.page.type":               newMapping(seq.TokenizerTypeKeyword),
-			"spans.tagsMap.slo.violated":            newMapping(seq.TokenizerTypeKeyword),
-			"spans.tagsMap.http.url":                newMapping(seq.TokenizerTypeKeyword),
-			"spans.tagsMap.http.method":             newMapping(seq.TokenizerTypeKeyword),
-			"spans2":                                newMapping(seq.TokenizerTypeNested),
-			"spans2.span_id":                        newMapping(seq.TokenizerTypeKeyword),
-			"spans2.operation_name":                 newMapping(seq.TokenizerTypeKeyword),
-			"exists_only":                           newMapping(seq.TokenizerTypeExists),
-		},
+		MappingProvider:        mappingProvider,
 		MaxTokenSize:           consts.KB,
 		CaseSensitive:          false,
 		PartialFieldIndexing:   false,
@@ -470,18 +475,24 @@ func (f *FakeClient) StoreDocuments(_ context.Context, total int, docs, metas []
 
 func BenchmarkProcessDocuments(b *testing.B) {
 	ctx := context.Background()
+
+	mappingProvider, err := mappingprovider.New("", mappingprovider.WithMapping(map[string]seq.MappingTypes{
+		"level":   seq.NewSingleType(seq.TokenizerTypeKeyword, "level", consts.KB),
+		"message": seq.NewSingleType(seq.TokenizerTypeText, "message", consts.KB),
+		"error":   seq.NewSingleType(seq.TokenizerTypeText, "error", consts.KB),
+		"shard":   seq.NewSingleType(seq.TokenizerTypeKeyword, "shard", consts.KB),
+	}))
+	if err != nil {
+		b.Fatal(err)
+	}
+
 	cfg := IngestorConfig{
 		MaxInflightBulks:       1,
 		AllowedTimeDrift:       time.Hour * 100,
 		FutureAllowedTimeDrift: time.Hour * 100,
-		TokenMapping: map[string]seq.MappingTypes{
-			"level":   seq.NewSingleType(seq.TokenizerTypeKeyword, "level", consts.KB),
-			"message": seq.NewSingleType(seq.TokenizerTypeText, "message", consts.KB),
-			"error":   seq.NewSingleType(seq.TokenizerTypeText, "error", consts.KB),
-			"shard":   seq.NewSingleType(seq.TokenizerTypeKeyword, "shard", consts.KB),
-		},
-		CaseSensitive: false,
-		MaxTokenSize:  consts.KB,
+		MappingProvider:        mappingProvider,
+		CaseSensitive:          false,
+		MaxTokenSize:           consts.KB,
 	}
 
 	ingestor := NewIngestor(cfg, &FakeClient{})

@@ -2,6 +2,7 @@ package seq
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,12 +14,12 @@ const (
 )
 
 func TestReadMappingWithError(t *testing.T) {
-	_, err := LoadMapping("tests/data/mappings/non-existent")
+	_, err := loadMapping("tests/data/mappings/non-existent")
 	assert.Error(t, err)
 }
 
 func TestReadMappingFromFile(t *testing.T) {
-	actual, err := LoadMapping("../tests/data/mappings/logging-new.yaml")
+	actual, err := loadMapping("../tests/data/mappings/logging-new.yaml")
 	assert.NoError(t, err)
 	expected := Mapping{
 		"k8s_pod":       NewSingleType(TokenizerTypeKeyword, "", 0),
@@ -252,4 +253,12 @@ func TestReadMappingError(t *testing.T) {
 			assert.Equal(t, testCase.expectedError, err)
 		})
 	}
+}
+
+func loadMapping(file string) (Mapping, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	return ReadMapping(data)
 }

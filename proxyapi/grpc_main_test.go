@@ -77,7 +77,7 @@ type rlMockData struct {
 }
 
 type acMockData struct {
-	mapping []byte
+	mapping seq.Mapping
 }
 
 type mocksData struct {
@@ -89,7 +89,7 @@ type mocksData struct {
 type mocks struct {
 	siMock *mock.MockSearchIngestor
 	rlMock *mock.MockRateLimiter
-	acMock *mock.MockMapping
+	acMock *mock.MockMappingProvider
 }
 
 type testGrpcV1Data struct {
@@ -145,7 +145,7 @@ func initTestGrpcV1(ctrl *gomock.Controller) testGrpcV1Data {
 	)
 	m := &mocks{}
 	m.siMock = mock.NewMockSearchIngestor(ctrl)
-	m.acMock = mock.NewMockMapping(ctrl)
+	m.acMock = mock.NewMockMappingProvider(ctrl)
 	m.rlMock = mock.NewMockRateLimiter(ctrl)
 
 	cfg := APIConfig{
@@ -178,7 +178,7 @@ func prepareMock(m *mocks, mData *mocksData) {
 		).Return(!mData.rl.limited)
 	}
 	if m.acMock != nil && mData.ac != nil {
-		m.acMock.EXPECT().GetRawMappingBytes().Return(mData.ac.mapping)
+		m.acMock.EXPECT().GetRawMapping().Return(seq.NewRawMapping(mData.ac.mapping))
 	}
 }
 

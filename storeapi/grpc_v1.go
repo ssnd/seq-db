@@ -21,6 +21,10 @@ import (
 	"github.com/ozontech/seq-db/util"
 )
 
+type MappingProvider interface {
+	GetMapping() seq.Mapping
+}
+
 type AggregationsConfig struct {
 	MaxGroupTokens     int
 	MaxFieldTokens     int
@@ -91,19 +95,19 @@ type GrpcV1 struct {
 
 	config APIConfig
 
-	fracManager *fracmanager.FracManager
-	mapping     seq.Mapping
+	fracManager     *fracmanager.FracManager
+	mappingProvider MappingProvider
 
 	bulkData   bulkData
 	searchData searchData
 	fetchData  fetchData
 }
 
-func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mapping seq.Mapping) *GrpcV1 {
+func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *GrpcV1 {
 	g := &GrpcV1{
-		config:      config,
-		fracManager: fracManager,
-		mapping:     mapping,
+		config:          config,
+		fracManager:     fracManager,
+		mappingProvider: mappingProvider,
 		bulkData: bulkData{
 			appendQueue: atomic.NewUint64(0),
 			writeQueue:  atomic.NewUint64(0),

@@ -86,41 +86,41 @@ func (mr *MockSearchIngestorMockRecorder) Status(ctx interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Status", reflect.TypeOf((*MockSearchIngestor)(nil).Status), ctx)
 }
 
-// MockMapping is a mock of Mapping interface.
-type MockMapping struct {
+// MockMappingProvider is a mock of MappingProvider interface.
+type MockMappingProvider struct {
 	ctrl     *gomock.Controller
-	recorder *MockMappingMockRecorder
+	recorder *MockMappingProviderMockRecorder
 }
 
-// MockMappingMockRecorder is the mock recorder for MockMapping.
-type MockMappingMockRecorder struct {
-	mock *MockMapping
+// MockMappingProviderMockRecorder is the mock recorder for MockMappingProvider.
+type MockMappingProviderMockRecorder struct {
+	mock *MockMappingProvider
 }
 
-// NewMockMapping creates a new mock instance.
-func NewMockMapping(ctrl *gomock.Controller) *MockMapping {
-	mock := &MockMapping{ctrl: ctrl}
-	mock.recorder = &MockMappingMockRecorder{mock}
+// NewMockMappingProvider creates a new mock instance.
+func NewMockMappingProvider(ctrl *gomock.Controller) *MockMappingProvider {
+	mock := &MockMappingProvider{ctrl: ctrl}
+	mock.recorder = &MockMappingProviderMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMapping) EXPECT() *MockMappingMockRecorder {
+func (m *MockMappingProvider) EXPECT() *MockMappingProviderMockRecorder {
 	return m.recorder
 }
 
-// GetRawMappingBytes mocks base method.
-func (m *MockMapping) GetRawMappingBytes() []byte {
+// GetRawMapping mocks base method.
+func (m *MockMappingProvider) GetRawMapping() *seq.RawMapping {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRawMappingBytes")
-	ret0, _ := ret[0].([]byte)
+	ret := m.ctrl.Call(m, "GetRawMapping")
+	ret0, _ := ret[0].(*seq.RawMapping)
 	return ret0
 }
 
-// GetRawMappingBytes indicates an expected call of GetRawMappingBytes.
-func (mr *MockMappingMockRecorder) GetRawMappingBytes() *gomock.Call {
+// GetRawMapping indicates an expected call of GetRawMapping.
+func (mr *MockMappingProviderMockRecorder) GetRawMapping() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRawMappingBytes", reflect.TypeOf((*MockMapping)(nil).GetRawMappingBytes))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRawMapping", reflect.TypeOf((*MockMappingProvider)(nil).GetRawMapping))
 }
 
 // MockRateLimiter is a mock of RateLimiter interface.

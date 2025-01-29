@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	"gopkg.in/yaml.v2"
 )
@@ -176,13 +175,9 @@ func readMapping(mapYAML *mappingYAML, finalMapping Mapping) error {
 	return nil
 }
 
-func LoadMapping(file string) (Mapping, error) {
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return nil, err
-	}
+func ReadMapping(data []byte) (Mapping, error) {
 	mapYAML := &mappingYAML{}
-	err = yaml.Unmarshal(data, mapYAML)
+	err := yaml.Unmarshal(data, mapYAML)
 	if err != nil {
 		return nil, err
 	}

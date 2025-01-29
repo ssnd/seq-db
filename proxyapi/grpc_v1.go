@@ -31,8 +31,8 @@ type SearchIngestor interface {
 	Status(ctx context.Context) *search.IngestorStatus
 }
 
-type Mapping interface {
-	GetRawMappingBytes() []byte
+type MappingProvider interface {
+	GetRawMapping() *seq.RawMapping
 }
 
 type RateLimiter interface {
@@ -52,22 +52,28 @@ type FetchServer interface {
 type grpcV1 struct {
 	seqproxyapi.UnimplementedSeqProxyApiServer
 
-	config         APIConfig
-	searchIngestor SearchIngestor
-	mapping        Mapping
-	rateLimiter    RateLimiter
-	mirror         seqproxyapi.SeqProxyApiClient
-	mirrorRequests atomic.Int64
+	config          APIConfig
+	searchIngestor  SearchIngestor
+	mappingProvider MappingProvider
+	rateLimiter     RateLimiter
+	mirror          seqproxyapi.SeqProxyApiClient
+	mirrorRequests  atomic.Int64
 }
 
-func newGrpcV1(config APIConfig, si SearchIngestor, mapping Mapping, rl RateLimiter, mirror seqproxyapi.SeqProxyApiClient) *grpcV1 {
+func newGrpcV1(
+	config APIConfig,
+	si SearchIngestor,
+	mappingProvider MappingProvider,
+	rl RateLimiter,
+	mirror seqproxyapi.SeqProxyApiClient,
+) *grpcV1 {
 	return &grpcV1{
-		config:         config,
-		searchIngestor: si,
-		mapping:        mapping,
-		rateLimiter:    rl,
-		mirror:         mirror,
-		mirrorRequests: atomic.Int64{},
+		config:          config,
+		searchIngestor:  si,
+		mappingProvider: mappingProvider,
+		rateLimiter:     rl,
+		mirror:          mirror,
+		mirrorRequests:  atomic.Int64{},
 	}
 }
 

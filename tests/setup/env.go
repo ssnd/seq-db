@@ -19,6 +19,7 @@ import (
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
+	"github.com/ozontech/seq-db/mappingprovider"
 	"github.com/ozontech/seq-db/network/circuitbreaker"
 	"github.com/ozontech/seq-db/proxy/bulk"
 	"github.com/ozontech/seq-db/proxy/search"
@@ -219,7 +220,12 @@ func (cfg *TestingEnvConfig) MakeStores(confs []storeapi.StoreConfig, ports []in
 
 		common.CreateDir(confs[i].FracManager.DataDir)
 
-		store, err := storeapi.NewStore(context.Background(), confs[i], cfg.Mapping)
+		mappingProvider, err := mappingprovider.New("", mappingprovider.WithMapping(cfg.Mapping))
+		if err != nil {
+			logger.Fatal("can't create mapping", zap.Error(err))
+		}
+
+		store, err := storeapi.NewStore(context.Background(), confs[i], mappingProvider)
 		if err != nil {
 			panic(err)
 		}
@@ -270,6 +276,10 @@ func MakeIngestors(cfg *TestingEnvConfig, hot, cold [][]string) []*Ingestor {
 	for i := 0; i < cfg.IngestorCount; i++ {
 		addr := giveAddr(cfg.StartIngestorPort + i)
 		grpcAddr := giveAddr(cfg.StartIngestorPort + i + cfg.IngestorCount)
+		mappingProvider, err := mappingprovider.New("", mappingprovider.WithMapping(cfg.Mapping))
+		if err != nil {
+			logger.Fatal("can't create mapping", zap.Error(err))
+		}
 		proxyIngestor, err := proxyapi.NewIngestor(
 			proxyapi.IngestorConfig{
 				API: proxyapi.APIConfig{
@@ -289,7 +299,7 @@ func MakeIngestors(cfg *TestingEnvConfig, hot, cold [][]string) []*Ingestor {
 					MaxInflightBulks:       0,
 					AllowedTimeDrift:       24 * time.Hour,
 					FutureAllowedTimeDrift: 24 * time.Hour,
-					TokenMapping:           cfg.Mapping,
+					MappingProvider:        mappingProvider,
 					MaxTokenSize:           consts.DefaultMaxTokenSize,
 					CaseSensitive:          false,
 					PartialFieldIndexing:   false,

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/ozontech/seq-db/seq"
-
 	"go.uber.org/atomic"
 
 	"github.com/ozontech/seq-db/consts"
@@ -43,7 +41,7 @@ func (c *StoreConfig) setDefaults() error {
 	return nil
 }
 
-func NewStore(ctx context.Context, config StoreConfig, mapping seq.Mapping) (*Store, error) {
+func NewStore(ctx context.Context, config StoreConfig, mappingProvider MappingProvider) (*Store, error) {
 	if err := config.setDefaults(); err != nil {
 		return nil, err
 	}
@@ -59,7 +57,7 @@ func NewStore(ctx context.Context, config StoreConfig, mapping seq.Mapping) (*St
 		Config: config,
 		// We will set grpcAddr later in Start()
 		grpcAddr:    "",
-		grpcServer:  newGRPCServer(config.API, fracManager, mapping),
+		grpcServer:  newGRPCServer(config.API, fracManager, mappingProvider),
 		FracManager: fracManager,
 		isStopped:   atomic.Bool{},
 	}, nil

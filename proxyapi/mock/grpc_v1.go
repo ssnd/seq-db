@@ -41,18 +41,18 @@ func (m *MockSearchIngestor) EXPECT() *MockSearchIngestorMockRecorder {
 }
 
 // Documents mocks base method.
-func (m *MockSearchIngestor) Documents(ctx context.Context, ids []seq.ID) (search.DocsIterator, error) {
+func (m *MockSearchIngestor) Documents(ctx context.Context, r search.FetchRequest) (search.DocsIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Documents", ctx, ids)
+	ret := m.ctrl.Call(m, "Documents", ctx, r)
 	ret0, _ := ret[0].(search.DocsIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Documents indicates an expected call of Documents.
-func (mr *MockSearchIngestorMockRecorder) Documents(ctx, ids interface{}) *gomock.Call {
+func (mr *MockSearchIngestorMockRecorder) Documents(ctx, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Documents", reflect.TypeOf((*MockSearchIngestor)(nil).Documents), ctx, ids)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Documents", reflect.TypeOf((*MockSearchIngestor)(nil).Documents), ctx, r)
 }
 
 // Search mocks base method.

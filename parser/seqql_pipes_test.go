@@ -19,11 +19,11 @@ func TestParsePipeFields(t *testing.T) {
 	test("* | fields level", "* | fields level")
 	test(`* | fields "_id"`, `* | fields _id`)
 	test(`* | fields "_\\message\\_"`, `* | fields "_\\message\\_"`)
-	// Wildcards must be escaped in the output.
 	test(`* | fields "_\\message*"`, `* | fields "_\\message\*"`)
+	test(`* | fields k8s_namespace`, `* | fields k8s_namespace`)
 }
 
-func TestParsePipeDelete(t *testing.T) {
+func TestParsePipeRemove(t *testing.T) {
 	test := func(q, expected string) {
 		t.Helper()
 		query, err := ParseSeqQL(q, nil)
@@ -31,12 +31,12 @@ func TestParsePipeDelete(t *testing.T) {
 		require.Equal(t, expected, query.SeqQLString())
 	}
 
-	test("* | delete message,error, level", "* | delete message, error, level")
-	test("* | delete level", "* | delete level")
-	test("* | delete level", "* | delete level")
-	test(`* | delete "_id"`, `* | delete _id`)
-	test(`* | delete "_\\message\\_"`, `* | delete "_\\message\\_"`)
-	test(`* | delete "_\\message*"`, `* | delete "_\\message\*"`)
+	test("* | remove message,error, level", "* | remove message, error, level")
+	test("* | remove level", "* | remove level")
+	test(`* | remove "_id"`, `* | remove _id`)
+	test(`* | remove "_\\message\\_"`, `* | remove "_\\message\\_"`)
+	test(`* | remove "_\\message*"`, `* | remove "_\\message\*"`)
+	test(`* | remove k8s_namespace`, `* | remove k8s_namespace`)
 }
 
 func TestParsePipeWhere(t *testing.T) {
@@ -53,10 +53,12 @@ func TestParsePipeWhere(t *testing.T) {
 	test(`* | where "User-Agent":"curl"`, `* | where User-Agent:curl`)
 	test(`* | where "_\\message*":"*"`, `* | where "_\\message\*":*`)
 	test(`* | where '_\message'*:*`, `* | where "_\\message\*":*`)
-	test(`* | where test:composite-pipes | delete level | fields level`, `* | where test:composite-pipes | delete level | fields level`)
+	test(`* | where test:composite-pipes | where * | fields level`, `* | where test:composite-pipes | where * | fields level`)
 	test(` # My search query
 			* 
 | 
-where test:composite-pipes|delete level|
-fields level`, `* | where test:composite-pipes | delete level | fields level`)
+where test:composite-pipes|where *
+|remove level`, `* | where test:composite-pipes | where * | remove level`)
+
+	test(`* | where level:error | where level:*`, `* | where level:error | where level:*`)
 }

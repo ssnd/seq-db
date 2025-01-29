@@ -537,7 +537,7 @@ func (t *TestingEnv) Search(q string, size int, options ...SearchOption) (*seq.Q
 func (t *TestingEnv) Fetch(ids []seq.ID) ([][]byte, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stream, err := t.Ingestor().SearchIngestor.Documents(ctx, ids)
+	stream, err := t.Ingestor().SearchIngestor.Documents(ctx, search.FetchRequest{IDs: ids})
 	if err != nil {
 		return nil, err
 	}

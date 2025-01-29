@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ozontech/seq-db/conf"
+	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/logger"
+	"github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
+	"github.com/ozontech/seq-db/proxy/search"
+	"github.com/ozontech/seq-db/seq"
 	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	"github.com/ozontech/seq-db/conf"
-	"github.com/ozontech/seq-db/consts"
-	"github.com/ozontech/seq-db/logger"
-	"github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
-	"github.com/ozontech/seq-db/seq"
 )
 
 func (g *grpcV1) Fetch(req *seqproxyapi.FetchRequest, stream seqproxyapi.SeqProxyApi_FetchServer) error {
@@ -49,7 +49,13 @@ func (g *grpcV1) Fetch(req *seqproxyapi.FetchRequest, stream seqproxyapi.SeqProx
 		errMsg := fmt.Sprintf("too many documents are requested: count=%d", len(ids))
 		return status.Error(codes.InvalidArgument, errMsg)
 	}
-	docsStream, err := g.searchIngestor.Documents(ctx, ids)
+	docsStream, err := g.searchIngestor.Documents(ctx, search.FetchRequest{
+		IDs: ids,
+		FieldsFilter: search.FetchFieldsFilter{
+			Fields:    req.GetFieldsFilter().GetFields(),
+			AllowList: req.GetFieldsFilter().GetAllowList(),
+		},
+	})
 	if err != nil {
 		return status.Errorf(codes.Internal, "can't fetch: %v", err)
 	}

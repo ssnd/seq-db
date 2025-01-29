@@ -251,7 +251,7 @@ func (s *SingleTestSuite) TestFetchHints() {
 		ids := make(seq.IDSources, len(origIDs))
 		copy(ids, origIDs)
 
-		docsStreamWithHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false)
+		docsStreamWithHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false, search.FetchFieldsFilter{})
 		s.Assert().NoError(err)
 
 		fetched := []string{}
@@ -265,7 +265,7 @@ func (s *SingleTestSuite) TestFetchHints() {
 			ids[i].Hint = ""
 		}
 
-		docsStreamNoHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false)
+		docsStreamNoHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false, search.FetchFieldsFilter{})
 		s.Assert().NoError(err)
 
 		fetched = []string{}
@@ -279,7 +279,7 @@ func (s *SingleTestSuite) TestFetchHints() {
 			ids[i].Hint = "foobar"
 		}
 
-		docsStreamBrokenHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false)
+		docsStreamBrokenHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false, search.FetchFieldsFilter{})
 		s.Assert().NoError(err)
 
 		fetched = []string{}

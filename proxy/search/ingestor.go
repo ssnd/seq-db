@@ -7,19 +7,19 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/encoding/gzip"
-	"google.golang.org/grpc/status"
-
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
+	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/querytracer"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/status"
 )
 
 type Config struct {
@@ -142,7 +142,9 @@ func (si *Ingestor) Search(
 			return nil, nil, 0, ctx.Err()
 		}
 		metric.DocumentsRequested.Observe(float64(len(ids)))
-		docsStream, err = si.FetchDocsStream(ctx, ids, sr.Explain)
+
+		fieldsFilter := tryParseFieldsFilter(string(sr.Q))
+		docsStream, err = si.FetchDocsStream(ctx, ids, sr.Explain, fieldsFilter)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -167,6 +169,33 @@ func (si *Ingestor) Search(
 	return qpr, docsStream, overallDuration, partialRespErr
 }
 
+// tryParseFieldsFilter tries to parse seq-ql query to extract fields/remove pipe.
+// If it fails, returns empty filter which means no filtering.
+func tryParseFieldsFilter(query string) FetchFieldsFilter {
+	// Parse seq-ql query to extract fields/remove pipe.
+	q, err := parser.ParseSeqQL(query, nil)
+	if err != nil {
+		logger.Error("failed to parse query on fetch stage", zap.String("query", query), zap.Error(err))
+		return FetchFieldsFilter{}
+	}
+	// Find first 'fields' or 'remove' pipe since only one of them is allowed.
+	for _, pipe := range q.Pipes {
+		switch p := pipe.(type) {
+		case *parser.PipeRemove:
+			return FetchFieldsFilter{
+				Fields:    p.Fields,
+				AllowList: false,
+			}
+		case *parser.PipeFields:
+			return FetchFieldsFilter{
+				Fields:    p.Fields,
+				AllowList: true,
+			}
+		}
+	}
+	return FetchFieldsFilter{}
+}
+
 func (si *Ingestor) paginateIDs(ids seq.IDSources, offset, size int) (seq.IDSources, int) {
 	if len(ids) > offset {
 		ids = ids[offset:]
@@ -182,7 +211,7 @@ func (si *Ingestor) paginateIDs(ids seq.IDSources, offset, size int) (seq.IDSour
 	return ids, size
 }
 
-func (si *Ingestor) singleDocsStream(ctx context.Context, explain bool, source uint64, ids []seq.IDSource) (DocsIterator, error) {
+func (si *Ingestor) singleDocsStream(ctx context.Context, explain bool, source uint64, ids []seq.IDSource, fields FetchFieldsFilter) (DocsIterator, error) {
 	startTime := time.Now()
 	host, has := si.clientBySource[source]
 	if !has {
@@ -193,7 +222,7 @@ func (si *Ingestor) singleDocsStream(ctx context.Context, explain bool, source u
 		return nil, fmt.Errorf("can't fetch: no client for host %s", host)
 	}
 
-	stream, err := client.Fetch(ctx, si.makeFetchReq(ids, explain),
+	stream, err := client.Fetch(ctx, si.makeFetchReq(ids, explain, fields),
 		grpc.MaxCallRecvMsgSize(256*consts.MB),
 		grpc.MaxCallSendMsgSize(256*consts.MB),
 	)
@@ -239,11 +268,19 @@ func lessFuncPosBased(ids []seq.IDSource) func(a, b seq.IDSource) bool {
 	}
 }
 
-func (si *Ingestor) FetchDocsStream(ctx context.Context, ids []seq.IDSource, explain bool) (DocsIterator, error) {
+type FetchFieldsFilter struct {
+	// Fields list of fields to fetch. Empty list means to fetch all fields.
+	Fields []string
+	// AllowList truth if we need to exclude all fields except the fields from the Fields list
+	// and false if we need to exclude given Fields from a fetch result.
+	AllowList bool
+}
+
+func (si *Ingestor) FetchDocsStream(ctx context.Context, ids []seq.IDSource, explain bool, ff FetchFieldsFilter) (DocsIterator, error) {
 	errs := make([]error, 0)
 	streams := make([]DocsIterator, 0)
 	for source, ids := range groupIDsBySource(ids) {
-		if stream, err := si.singleDocsStream(ctx, explain, source, ids); err != nil {
+		if stream, err := si.singleDocsStream(ctx, explain, source, ids, ff); err != nil {
 			metric.FetchErrors.Inc()
 			errs = append(errs, err)
 			logger.Error("fetch error", zap.Error(err), zap.String("store", si.clientBySource[source]))
@@ -270,10 +307,15 @@ func expandIDsBySources(orig []seq.ID, clientBySource map[uint64]string) []seq.I
 	return ids
 }
 
-func (si *Ingestor) Documents(ctx context.Context, ids []seq.ID) (DocsIterator, error) {
-	metric.DocumentsRequested.Observe(float64(len(ids)))
+type FetchRequest struct {
+	IDs          []seq.ID
+	FieldsFilter FetchFieldsFilter
+}
+
+func (si *Ingestor) Documents(ctx context.Context, r FetchRequest) (DocsIterator, error) {
+	metric.DocumentsRequested.Observe(float64(len(r.IDs)))
 	// todo: ***REMOVED*** we fetch from both stores hot and cold there; need fix that
-	docsStream, err := si.FetchDocsStream(ctx, expandIDsBySources(ids, si.clientBySource), false)
+	docsStream, err := si.FetchDocsStream(ctx, expandIDsBySources(r.IDs, si.clientBySource), false, r.FieldsFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -281,8 +323,8 @@ func (si *Ingestor) Documents(ctx context.Context, ids []seq.ID) (DocsIterator, 
 	return newUniqueIDIterator(docsStream), nil
 }
 
-func (si *Ingestor) Document(ctx context.Context, id seq.ID) []byte {
-	docsStream, err := si.Documents(ctx, []seq.ID{id})
+func (si *Ingestor) Document(ctx context.Context, id seq.ID, ff FetchFieldsFilter) []byte {
+	docsStream, err := si.Documents(ctx, FetchRequest{IDs: []seq.ID{id}, FieldsFilter: ff})
 	if err != nil {
 		return nil
 	}
@@ -298,7 +340,7 @@ func (si *Ingestor) Document(ctx context.Context, id seq.ID) []byte {
 	return docs[0]
 }
 
-func (si *Ingestor) makeFetchReq(ids []seq.IDSource, explain bool) *storeapi.FetchRequest {
+func (si *Ingestor) makeFetchReq(ids []seq.IDSource, explain bool, ff FetchFieldsFilter) *storeapi.FetchRequest {
 	idsWithHints := make([]*storeapi.IdWithHint, 0, len(ids))
 	idsStr := make([]string, 0, len(ids))
 	if len(ids) > 0 {
@@ -320,9 +362,13 @@ func (si *Ingestor) makeFetchReq(ids []seq.IDSource, explain bool) *storeapi.Fet
 	}
 
 	return &storeapi.FetchRequest{
-		IdsWithHints: idsWithHints,
 		Ids:          idsStr,
 		Explain:      explain,
+		IdsWithHints: idsWithHints,
+		FieldsFilter: &storeapi.FetchRequest_FieldsFilter{
+			Fields:    ff.Fields,
+			AllowList: ff.AllowList,
+		},
 	}
 }
 

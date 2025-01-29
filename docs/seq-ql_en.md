@@ -2,26 +2,26 @@
 
 ## Full-text Search
 
-Full-text search in SeqQL enables filtering results based on document tokens. Queries can include exact phrases or
+Full-text search in SeqQL allows filtering results based on document tokens. Queries can include exact phrases or
 keywords separated by spaces. The behavior depends on the index type; more details on token formation can be found in
 the [index types](docs/index.md) documentation. When performing a full-text search, the system automatically selects
 results that match the specified text.
 
-Search queries is case-insensitive by default.
-To change this behavior, use the `--case-sensitive` flag, but it affects only new documents.
+Search queries are case-insensitive by default.
+To change this behavior, use the `--case-sensitive` flag, but it only affects new documents.
 
 ## Logical Operators
 
 SeqQL supports logical operators for more precise search filtering. The operators `and`, `or`, and `not` allow combining
 and refining queries:
 
-- `and` — used when both conditions need to be true.
+- `and` — requires both conditions to be true.
 - `or` — returns results if at least one condition is met.
 - `not` — excludes results that match a specific condition.
 
 Examples:
 
-```plaintext
+```seq-ql
 message:error and level:critical
 message:login or message:logout
 not level:debug
@@ -29,7 +29,7 @@ not level:debug
 
 ## Wildcards
 
-Wildcards in SeqQL allow for partial matching in search. The language supports the following symbols:
+Wildcards in SeqQL allow partial matching in search. The language supports the following symbols:
 
 - `*` — replaces any number of characters.
 
@@ -38,7 +38,7 @@ the [keyword](index.md#keyword) index `source_type:access*` will match all docum
 
 ## Filter `range`
 
-SeqQL enables range filtering to limit data by value, particularly useful for numeric fields such as sizes or
+SeqQL enables range filtering to limit data by value, which is particularly useful for numeric fields such as sizes or
 timestamps. Ranges are specified using square or round brackets:
 
 - `[a, b]` — includes both ends of the range.
@@ -46,7 +46,7 @@ timestamps. Ranges are specified using square or round brackets:
 
 Example of range usage:
 
-```plaintext
+```seq-ql
 bytes:(100, 1000]
 bytes:[100, 1000)
 ```
@@ -67,7 +67,7 @@ trace_id:in(123e4567-e89b-12d3-a456-426655440000, '123e4567-e89b-12d3-a456-42665
 
 ## Pipes
 
-In SeqQL, pipes are used to sequentially process data after the [primary filtering](#full-text-search) stage. Pipes
+Pipes in SeqQL are used to sequentially process data after the [primary filtering](#full-text-search) stage. Pipes
 enable data transformation, enrichment, filtering, aggregation, and formatting of results.
 
 Pipes in SeqQL are divided into three main categories:
@@ -87,14 +87,14 @@ Examples:
 - `where` — filters data based on a specified condition.
 - `limit` — limits the number of returned results.
 
-#### where Pipe (in development)
+#### `where` Pipe (in development)
 
 The `where` pipe performs filtering at the index level. It is used to limit results to those that meet a specific
 condition.
 
 Example:
 
-```plaintext
+```seq-ql
 source_type:access* | eval KB=bytes/1024 | where KB>100
 ```
 
@@ -111,49 +111,53 @@ Examples:
 - `stats` — aggregates data by the specified method (e.g., `count`, `sum`, `avg`).
 - `topK` — finds the most frequent values.
 
-#### count Pipe (in development)
+#### `count` Pipe (in development)
 
 The `count` pipe counts the number of records that meet a specified criterion and is often used with other aggregation
 pipes to group data.
 
 Example:
 
-```plaintext
+```seq-ql
 source_type:access* | stats count by user
 ```
 
 In this example, the query counts records for each user.
 
-### Formatting Pipes (in development)
+### Formatting pipes
 
 Formatting pipes enable modifications to the final search result presentation after all filtering and aggregation
 stages. They work with the final data, selecting or excluding fields, sorting, and organizing results.
 
-#### delete Pipe (in development)
+#### `remove` pipe
 
-The `delete` pipe removes specified fields from the search result, which is useful when certain data is no longer
-needed.
+The `remove` pipe deletes specified fields from the search result. This is useful when certain data is no longer needed,
+particularly when exporting large datasets.
 
 Example:
 
-```plaintext
-source_type:access* | delete timestamp
+```seq-ql
+source_type:access* | remove remote_addr, message, http_code
 ```
 
-In this example, the `timestamp` field will be removed from the result.
+In this example, the fields `remote_addr`, `message`, and `http_code` are excluded from the result.
 
-#### fields Pipe (in development)
+See the [fields](#fields-pipe) pipe if you need to keep only specified fields.
+
+#### `fields` pipe
 
 The `fields` pipe retains only the specified fields in the results, excluding all others. This minimizes the volume of
 returned data and enhances readability.
 
 Example:
 
-```plaintext
+```seq-ql
 source_type:access* | fields user, KB
 ```
 
 Here, only the `user` and `KB` fields will be in the final result.
+
+See the [remove](#remove-pipe) pipe if you need to remove only certain fields.
 
 ## Query Optimization Recommendations for SeqQL
 
@@ -164,9 +168,9 @@ Below are key recommendations for optimizing SeqQL queries:
 
 ### Maximizing Filtering in the Primary Search Stage
 
-In query construction, filter as much data as possible at the primary search level. Refine search criteria by specifying
-fields such as `source_type`, `status`, or `date` to exclude irrelevant data and reduce its volume before processing
-with pipes. For example, setting narrow value ranges like time intervals or specific index values,
+Filter as much data as possible at the primary search level. Refine search criteria by specifying fields such
+as `source_type`, `status`, or `date` to exclude irrelevant data and reduce its volume before processing with pipes.
+For example, setting narrow value ranges like time intervals or specific index values,
 e.g., `source_type:access* AND date:[2023-01-01, 2023-12-31]`, excludes irrelevant data before further processing.
 
 ### Reducing Returned Fields
@@ -174,7 +178,7 @@ e.g., `source_type:access* AND date:[2023-01-01, 2023-12-31]`, excludes irreleva
 Specify only the fields you need to reduce data volume and accelerate query processing. Use the `fields` formatting pipe
 to select only important fields:
 
-```plaintext
+```seq-ql
 source_type:access* | eval KB=bytes/1024 | where KB > 100 | fields KB, status, timestamp
 ```
 
@@ -188,8 +192,32 @@ the required number of records, saving resources.
 
 Example using `limit` to avoid processing all available data:
 
-```plaintext
+```seq-ql
 source_type:access* | where status:200 | limit 100
 ```
 
 This query returns only the first 100 records that meet the conditions, reducing query processing time.
+
+## Common Errors in SeqQL
+
+### `pipe ... cannot be after pipe ...`
+
+The error `pipe ... cannot be after pipe ...` occurs when you attempt to return to a previous processing stage in the
+pipe sequence. This can happen due to the incorrect order of pipes in your query.
+
+Example:
+
+```seq-ql
+source_type:access* | fields message | where login:admin
+```
+
+This query will return the error `pipe "where" cannot be after pipe "fields"`.
+
+Correct usage:
+
+```seq-ql
+source_type:access* | where login:admin | fields message
+```
+
+For more information about SeqQL processing stages, see [Pipes](#pipes).
+

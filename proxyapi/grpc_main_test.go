@@ -168,7 +168,7 @@ func prepareMock(m *mocks, mData *mocksData) {
 		if mData.si.documents != nil {
 			ret := mData.si.documents.ret
 			m.siMock.EXPECT().Documents(
-				gomock.Any(), mData.si.documents.ids,
+				gomock.Any(), search.FetchRequest{IDs: mData.si.documents.ids},
 			).Return(ret.docs, ret.err)
 		}
 	}

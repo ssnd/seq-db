@@ -568,7 +568,9 @@ func TestProcessDocumentType(t *testing.T) {
 	test := func(doc string, expected int) {
 		t.Helper()
 		client := &FakeClient{}
-		ingestor := NewIngestor(IngestorConfig{MaxInflightBulks: 1}, client)
+		mp, err := mappingprovider.New("", mappingprovider.WithMapping(map[string]seq.MappingTypes{}))
+		r.NoError(err)
+		ingestor := NewIngestor(IngestorConfig{MaxInflightBulks: 1, MappingProvider: mp}, client)
 		defer ingestor.Stop()
 
 		stop := false

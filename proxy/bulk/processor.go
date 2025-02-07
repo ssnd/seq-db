@@ -1,6 +1,7 @@
 package bulk
 
 import (
+	"errors"
 	"math"
 	"math/rand/v2"
 	"time"
@@ -8,7 +9,6 @@ import (
 	insaneJSON "github.com/ozontech/insane-json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/seq"
@@ -59,10 +59,15 @@ func newBulkProcessor(mapping seq.Mapping, tokenizers map[seq.TokenizerType]toke
 	}
 }
 
+var errNotAnObject = errors.New("not an object")
+
 func (p *processor) Process(doc []byte, requestTime time.Time) ([]byte, []frac.MetaData, error) {
 	err := p.decoder.DecodeBytes(doc)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !p.decoder.IsObject() {
+		return nil, nil, errNotAnObject
 	}
 	docTime, timeField := extractDocTime(p.decoder.Node, requestTime)
 	docDelay := requestTime.Sub(docTime)

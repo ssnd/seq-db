@@ -3,6 +3,7 @@ package bulk
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -163,6 +164,13 @@ var (
 		Help:      "",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 16),
 	})
+
+	notAnObjectTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "seq_db_ingestor",
+		Subsystem: "bulk",
+		Name:      "not_an_object_errors_total",
+		Help:      "Number of ingestion errors due to incorrect document type",
+	})
 )
 
 func (i *Ingestor) ProcessDocuments(ctx context.Context, requestTime time.Time, readNext func() ([]byte, error)) (int, error) {
@@ -255,19 +263,24 @@ func (i *Ingestor) processDocsToCompressor(ctx context.Context, compressor *frac
 
 	total := 0
 	for {
-		doc, err := readNext()
+		originalDoc, err := readNext()
 		if err != nil {
 			return total, fmt.Errorf("reading next document: %s", err)
 		}
-		if doc == nil {
+		if originalDoc == nil {
 			break
 		}
 		parseStart := time.Now()
-		doc, metas, err := proc.Process(doc, requestTime)
-		parseDuration += time.Since(parseStart)
+		doc, metas, err := proc.Process(originalDoc, requestTime)
 		if err != nil {
+			if errors.Is(err, errNotAnObject) {
+				logger.Error("unable to process the document because it is not an object", zap.Any("document", json.RawMessage(originalDoc)))
+				notAnObjectTotal.Inc()
+				continue
+			}
 			return total, fmt.Errorf("processing doc: %s", err)
 		}
+		parseDuration += time.Since(parseStart)
 
 		binaryDocs.B = binary.LittleEndian.AppendUint32(binaryDocs.B, uint32(len(doc)))
 		binaryDocs.B = append(binaryDocs.B, doc...)

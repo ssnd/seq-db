@@ -179,11 +179,8 @@ func TestProcessDocuments(t *testing.T) {
 					ExpMeta: []frac.MetaData{
 						{ID: id, Size: uint32(len(doc)), Tokens: []frac.MetaToken{
 							newToken(seq.TokenAll, ""),
-							newToken("tags.level", ""), // TODO: this token shouldn't be appear.
 							newToken("_exists_", "tags.level"),
-							newToken("tags.message", ""), // TODO: this token shouldn't be appear.
 							newToken("_exists_", "tags.message"),
-							newToken("tags.path", ""), // TODO: this token shouldn't be appear.
 							newToken("_exists_", "tags.path"),
 						}},
 					},
@@ -243,8 +240,6 @@ func TestProcessDocuments(t *testing.T) {
 				type Tag struct {
 					Key   string `json:"key"`
 					Value string `json:"value,omitempty"`
-					VStr  string `json:"v_str,omitempty"`
-					VType int64  `json:"v_type,omitempty"`
 				}
 				type TagsMap struct {
 					Error      string `json:"error"`
@@ -293,7 +288,7 @@ func TestProcessDocuments(t *testing.T) {
 						Flags:         4242,
 						StartTime:     time.Date(2024, 9, 24, 14, 10, 14, 2673000, time.UTC),
 						Duration:      4000,
-						Tags:          []Tag{{Key: "zone", VStr: "z504"}, {Key: "otel.status_code", VType: 2}},
+						Tags:          []Tag{{Key: "zone", Value: "z504"}, {Key: "otel.status_code", Value: "2"}},
 						Logs:          any([]string{`{"time":"2024-09-24T14:10:14.267Z","message": "request failed: context canceled"}`}),
 						Process: Process{
 							ServiceName: "seq-ui-server",
@@ -345,8 +340,8 @@ func TestProcessDocuments(t *testing.T) {
 							"spans.span_id", "iszfjv0zhwu=",
 							"spans.operation_name", "memcache: get_multi",
 							"spans.duration", "4000",
-							"spans.tags.zone", "",
-							"spans.tags.otel.status_code", "",
+							"spans.tags.zone", "z504",
+							"spans.tags.otel.status_code", "2",
 							"spans.process.service_name", "seq-ui-server",
 							"spans.process.tags.app.version", "release-s3-10455",
 							"spans.process.tags.k8s.namespace.name", "s3",

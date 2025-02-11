@@ -103,7 +103,11 @@ func (i *indexer) index(tokenTypes seq.MappingTypes, tokens []frac.MetaToken, ke
 			title = unsafe.Slice(unsafe.StringData(tokenType.Title), len(tokenType.Title))
 		}
 
-		tokens = i.tokenizers[tokenType.TokenizerType].Tokenize(tokens, title, value, tokenType.MaxSize)
+		// value can be nil (not the same as empty) in case of tags indexer type,
+		// so don't tokenize it.
+		if value != nil {
+			tokens = i.tokenizers[tokenType.TokenizerType].Tokenize(tokens, title, value, tokenType.MaxSize)
+		}
 		tokens = append(tokens, frac.MetaToken{
 			Key:   seq.ExistsTokenName,
 			Value: title,
@@ -146,6 +150,9 @@ func (i *indexer) appendNestedMeta() {
 }
 
 func encodeInsaneNode(field *insaneJSON.Node) []byte {
+	if field.IsNil() {
+		return nil
+	}
 	if field.IsArray() || field.IsObject() || field.IsNull() || field.IsTrue() || field.IsFalse() {
 		return field.Encode(nil)
 	}

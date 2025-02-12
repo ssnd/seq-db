@@ -53,7 +53,7 @@ func (g *GrpcV1) Search(ctx context.Context, req *storeapi.SearchRequest) (*stor
 	}
 
 	tr.Done()
-	if req.Explain {
+	if req.Explain && data != nil {
 		data.Explain = tracerSpanToExplainEntry(tr.ToSpan())
 	}
 

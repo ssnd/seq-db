@@ -6,7 +6,8 @@ run:
   tests: true
 
 output:
-  formats: colored-line-number
+  formats:
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
 
@@ -26,8 +27,6 @@ linters-settings:
   unused:
     field-writes-are-uses: false
     post-statements-are-reads: false
-    # Following parameter does not work correctly: https://github.com/golangci/golangci-lint/issues/4218
-    exported-is-used: true
     exported-fields-are-used: false
     # Disable due to false-positive cases
     parameters-are-used: true

@@ -1,8 +1,12 @@
+---
+id: rate-limiting
+---
+
 # Rate limiting requests
 
 Obviously there is a need to rate limit some requests from users or other
 services. Right now we use simple internal implementation of RateLimiter,
-see [`network/ratelimiter.go`](../network/ratelimiter.go), it is enough
+see `network/ratelimiter.go`, it is enough
 for current tasks. Following sections describe the use cases for
 rate limiter.
 
@@ -13,7 +17,7 @@ repeating the same search query multiple times. Search query may create
 a significant load on stores, and to evade useless work, search queries
 are rate limited by stores. Two queries are considered identical if they
 have same query string, aggregation and interval. This is implemented in
-[`search_store.go`](../network/search_store.go).
+`search_store.go`.
 
 ## Rate limiting document fetching
 
@@ -23,7 +27,7 @@ when document is directly requested from API on ingestor. Second way
 is vulnerable to DDOS kind of attack, because fetching by ID is not
 simple operation for now. So rate limiter is implemented to throttle
 such requests by message ID. This is implemented in 
-[`search_proxy.go`](../network/search_proxy.go).
+`search_proxy.go`.
 
 ## How to enable the rate limiter
 The rate limiter can be enabled on launch using the `query-rate-limit` flag 

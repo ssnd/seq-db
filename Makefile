@@ -89,3 +89,23 @@ mock:
 
 get-version:
 	@echo ${VERSION}
+
+.PHONY: docs-en
+docs-en:
+	docker run -e LOCALE=en --rm -it -p 3000:3000 -v ./docs/en:/website/docs/seq-db ghcr.io/ozontech/seq-db-docs:v0.0.1
+
+.PHONY: docs-ru
+docs-ru:
+	docker run -e LOCALE=ru --rm -it -p 3000:3000 -v ./docs/en:/website/docs/seq-db \
+		-v ./docs/ru:/website/i18n/ru/docusaurus-plugin-content-docs/current/seq-db \
+		ghcr.io/ozontech/seq-db-docs:v0.0.1
+
+.PHONY: build-docs
+build-docs:
+	docker run --rm \
+		-v ./bin/docs:/website/build \
+ 		-v ./docs/en:/website/docs/seq-db \
+		-v ./docs/ru:/website/i18n/ru/docusaurus-plugin-content-docs/current/seq-db \
+		--entrypoint /bin/sh \
+		ghcr.io/ozontech/seq-db-docs:v0.0.1 \
+		-c 'npm run build'

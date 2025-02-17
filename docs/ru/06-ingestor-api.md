@@ -1,4 +1,4 @@
-# Ingestor Api
+# Ingestor API
 
 ## `/_bulk`
 
@@ -132,9 +132,9 @@ Search and returns docs.
 Expects `Content-Type: application/json` in headers.
 
 There are three main types of query:
- - regular search query (see [`search-multi.sh`](../tests/data/search.sh))
- - aggregation query (see [`search-aggregation.sh`](../tests/data/search-aggregation.sh))
- - histogram query (see [`search-histogram.sh`](../tests/data/search-histogram.sh))
+ - regular search query see `search-multi.sh`
+ - aggregation query see `search-aggregation.sh`
+ - histogram query see `search-histogram.sh`
 
 Example of regular search request:
 

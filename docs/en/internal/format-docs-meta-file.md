@@ -10,7 +10,7 @@
 
 **Documents** file is a part of fraction data. It has \*.docs extention and contains documents stored in fraction.
 
-The file format is a sequence of **[DocBlock](/disk/doc_block.go)** following one after another. 
+The file format is a sequence of **DocBlock** following one after another. 
 
 ```<DocBlocks1> <DocBlocks2> <DocBlocks3> ... <DocBlocksN>```
 

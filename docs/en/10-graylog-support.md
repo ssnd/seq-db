@@ -1,4 +1,8 @@
-# How SeqDB & Graylog work together
+---
+id: graylog-support
+---
+
+# Graylog support
 
 ## Intro
 Graylog is a very popular tool that consumes logs from different inputs, then uses ElasticSearch to store/index/search logs. At Ozon we use SeqDB as the main database to store and analyze logs instead of ElastcSearch (why we do that is beyond the scope of this document).
@@ -9,7 +13,7 @@ To be able to trick Graylog into believing that it is actually interacting with 
 **Important!** As of 6 Apr, 2022, the supported features were tested **only with Graylog 4.2**.
 Support for newer graylog versions should be tested additionally.
 
-## Setup & Run 
+## Setup and Run
 Here we assume that Graylog 4.2 is launched using docker. A working `docker-compose.yaml` example is provided in the root of this repo. 
 It's important to mention a couple of things that should be done correctly before starting the Graylog Server.
 1) These two environment variables shouldn't be changed because SeqDB only works correctly when Graylog expects to interact with ES6 and the index prefix is equal to `graylog_seq_db`.
@@ -24,7 +28,7 @@ In case anything works wrong, check out the [Troubleshooting](#troubleshooting) 
 
 ## Supported features
 Here's a list of features in Graylog that we currently provide support for:
-- Basic search/store (See [Ingestor API](./ingestor-api.md))
+- Basic search/store (See [Ingestor API](./ingestor-api))
 - Autocomplete
 - Export to CSV
 - `/api/search/universal/absolute` and `/api/search/universal/relative` handlers.
@@ -58,7 +62,7 @@ Graylog index recalculation doesn't work unless it has a 'healthy' connection to
 
 ## Troubleshooting
 ## MongoDB
-After you have done all the steps described in the [Setup & Run](#setup-run) section, you can check if all the changes were correctly commited to the MongoDB database. Here's a small list of collections to look at:
+After you have done all the steps described in the [Setup & Run](#setup-and-run) section, you can check if all the changes were correctly commited to the MongoDB database. Here's a small list of collections to look at:
 - `index_ranges`: after index range recalculation it should contain a record looking similar to this:
   ```json
   {

@@ -1,4 +1,8 @@
-# Introduction of long term stores
+---
+id: long-term-store
+---
+
+# Long term stores
 
 ## Problem
 Currently seq-db is using SSD storage to ensure good performance for users.

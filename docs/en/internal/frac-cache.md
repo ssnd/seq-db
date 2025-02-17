@@ -17,7 +17,7 @@ Both sealed and active fractions have the following *metadata*:
 - `To` - the latest document timestamp in fraction
 - `CreationTime` - the time at which the fraction has been created
 
-Please refer to the `Info` structure in the [`fraction.go`](../frac/fraction.go) file for more info on fraction metadata.
+Please refer to the `Info` structure in the `fraction.go` file for more info on fraction metadata.
 
 ## Fraction cache for sealed fractions
 SeqDB has a structure named **sealed fraction cache** containing sealed fractions metadata. This structure is stored in-memory and dumped to the disk each time a new fraction is sealed. 

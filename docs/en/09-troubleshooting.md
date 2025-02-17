@@ -1,4 +1,8 @@
-# Troubleshooting Guide for seq-db
+---
+id: troubleshooting
+---
+
+# Troubleshooting
 
 This document provides guidance for troubleshooting common issues with resource usage and performance when working with
 seq-db.
@@ -10,7 +14,7 @@ If you notice that seq-db is consuming too much memory, consider the following a
 ### Reduce Cache Size
 
 Seq-db uses a cache to reuse data blocks previously read from disk. Reducing the cache size can help lower overall
-memory usage. For more details on how caching works, refer to the [cache documentation](cache.md).
+memory usage. For more details on how caching works, refer to the [cache documentation](internal/cache).
 
 ### Adjust Go Runtime Settings
 
@@ -39,7 +43,7 @@ CPU time.
 
 The `frac-size` parameter defines the maximum amount of memory that seq-db will store before sealing the active
 fraction. Reducing this parameter can help lower memory consumption but may increase query times. See more details
-about `frac-size` in the [configuration documentation](configuration.md#frac-size).
+about `frac-size` in the [configuration documentation](flags#data-configuration-flags).
 
 ## Issue: Slow Search Queries
 

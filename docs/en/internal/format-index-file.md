@@ -23,20 +23,20 @@ Then, after all **DataBlocks** have been written, we write that blocks metadata 
 ## DataBlocks structure
 
 **DataBlocks** consist of 6 sections:
- * Section with one **InfoBlock** (see [`DiskInfoBlock.pack()`](../frac/disk_blocks.go) method) contains stats data of fraction in json format.
- * Section with several **TokensBlocks** (see [`DiskTokensBlock.pack()`](../frac/disk_blocks.go) method). Contains a list of sorted tokens.
+ * Section with one **InfoBlock** (see `DiskInfoBlock.pack()`) contains stats data of fraction in json format.
+ * Section with several **TokensBlocks** (see `DiskTokensBlock.pack()` method). Contains a list of sorted tokens.
  * **EmptyBlock**
- * Section with several **TokenTablesBlocks** (see [`DiskTokenTableBlock.pack()`](../frac/disk_blocks.go) method). Contains an index for **TokensBlocks**.
+ * Section with several **TokenTablesBlocks** (see `DiskTokenTableBlock.pack()` method). Contains an index for **TokensBlocks**.
  * **EmptyBlock**
- * Section with one **PositionsBlock** (see [`DiskPositionsBlock.pack()`](../frac/disk_blocks.go) method). Contains an index of DocBlocks in  \*.docs file, i.e. a list with position of each **DocumentBlock**.
- * Section with several **IDsBlocks** (see [`DiskIDsBlock.pack()`](../frac/disk_blocks.go) method). Physically, each **IDsBlock** represents 3 blocks:
+ * Section with one **PositionsBlock** (see `DiskPositionsBlock.pack()` method). Contains an index of DocBlocks in  \*.docs file, i.e. a list with position of each **DocumentBlock**.
+ * Section with several **IDsBlocks** (see `DiskIDsBlock.pack()` method). Physically, each **IDsBlock** represents 3 blocks:
     * **MIDsBlock** - just list of MIDs
     * **RIDsBlock** - just list of RIDs
     * **PosBlock** - position of documents. Each position is a _uint64_ where first 34 bits is index of block (from PositionsBlock) and the rest of 30 bits it is position of document (byte offset) inside **DocumentBlock** in \*.docs file
  
      For each block type (**MIDsBlock**, **RIDsBlock**, **PosBlock**) we have the same ID order. Thus, for each triple, the values in the same positions correspond to the same ID.
  * **EmptyBlock**
- * Section with several **LIDsBlocks** (see [`DiskLIDsBlock.pack()`](../frac/disk_blocks.go) method) - a list of LIDs sorted by fields, tokens, MIDs and RIDs. In **BlocksRegistry** we store the _range of TIDs_ for each **LIDsBlocks** so we can easily find desired block.
+ * Section with several **LIDsBlocks** (see `DiskLIDsBlock.pack()` method) - a list of LIDs sorted by fields, tokens, MIDs and RIDs. In **BlocksRegistry** we store the _range of TIDs_ for each **LIDsBlocks** so we can easily find desired block.
  * **EmptyBlock**
 
 ![img.png](data-blocks.png)
@@ -51,7 +51,7 @@ There are also an _empty_ **BlocksRegistryEntries**. Such **EmptyBlocks** do not
 
 ### Format of BlocksRegistryEntry
 
-See [`disk/blocks_registry_entry.go`](../disk/blocks_registry_entry.go)
+See `disk/blocks_registry_entry.go`
 
 ```go
 // Format: C : LLLL : UUUU : EEEE-EEEE-EEEE-EEEE : PPPP-PPPP

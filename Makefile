@@ -29,11 +29,11 @@ test:
 .bin-deps:
 	$(info Installing binary dependencies...)
 
-	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.22.0
-	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.22.0
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
-	go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.0
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.26.1
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.26.1
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+	go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.20240319094008-0393e58bdf10
 
 .PHONY: bin-deps
 bin-deps: .bin-deps

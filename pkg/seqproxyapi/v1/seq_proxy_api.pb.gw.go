@@ -10,6 +10,7 @@ package seqproxyapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 
@@ -24,125 +25,120 @@ import (
 )
 
 // Suppress "imported and not used" errors
-var _ codes.Code
-var _ io.Reader
-var _ status.Status
-var _ = runtime.String
-var _ = utilities.NewDoubleArray
-var _ = metadata.Join
+var (
+	_ codes.Code
+	_ io.Reader
+	_ status.Status
+	_ = errors.New
+	_ = runtime.String
+	_ = utilities.NewDoubleArray
+	_ = metadata.Join
+)
 
 func request_SeqProxyApi_Search_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq SearchRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq SearchRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := client.Search(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_SeqProxyApi_Search_0(ctx context.Context, marshaler runtime.Marshaler, server SeqProxyApiServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq SearchRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq SearchRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := server.Search(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_SeqProxyApi_ComplexSearch_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ComplexSearchRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq ComplexSearchRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := client.ComplexSearch(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_SeqProxyApi_ComplexSearch_0(ctx context.Context, marshaler runtime.Marshaler, server SeqProxyApiServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ComplexSearchRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq ComplexSearchRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := server.ComplexSearch(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_SeqProxyApi_GetAggregation_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetAggregationRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq GetAggregationRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := client.GetAggregation(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_SeqProxyApi_GetAggregation_0(ctx context.Context, marshaler runtime.Marshaler, server SeqProxyApiServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetAggregationRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq GetAggregationRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := server.GetAggregation(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_SeqProxyApi_GetHistogram_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetHistogramRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq GetHistogramRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := client.GetHistogram(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_SeqProxyApi_GetHistogram_0(ctx context.Context, marshaler runtime.Marshaler, server SeqProxyApiServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq GetHistogramRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq GetHistogramRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	msg, err := server.GetHistogram(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_SeqProxyApi_Fetch_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (SeqProxyApi_FetchClient, runtime.ServerMetadata, error) {
-	var protoReq FetchRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq FetchRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	stream, err := client.Fetch(ctx, &protoReq)
 	if err != nil {
 		return nil, metadata, err
@@ -153,53 +149,52 @@ func request_SeqProxyApi_Fetch_0(ctx context.Context, marshaler runtime.Marshale
 	}
 	metadata.HeaderMD = header
 	return stream, metadata, nil
-
 }
 
 func request_SeqProxyApi_Mapping_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq MappingRequest
-	var metadata runtime.ServerMetadata
-
+	var (
+		protoReq MappingRequest
+		metadata runtime.ServerMetadata
+	)
 	msg, err := client.Mapping(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_SeqProxyApi_Mapping_0(ctx context.Context, marshaler runtime.Marshaler, server SeqProxyApiServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq MappingRequest
-	var metadata runtime.ServerMetadata
-
+	var (
+		protoReq MappingRequest
+		metadata runtime.ServerMetadata
+	)
 	msg, err := server.Mapping(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_SeqProxyApi_Status_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StatusRequest
-	var metadata runtime.ServerMetadata
-
+	var (
+		protoReq StatusRequest
+		metadata runtime.ServerMetadata
+	)
 	msg, err := client.Status(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
-
 }
 
 func local_request_SeqProxyApi_Status_0(ctx context.Context, marshaler runtime.Marshaler, server SeqProxyApiServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq StatusRequest
-	var metadata runtime.ServerMetadata
-
+	var (
+		protoReq StatusRequest
+		metadata runtime.ServerMetadata
+	)
 	msg, err := server.Status(ctx, &protoReq)
 	return msg, metadata, err
-
 }
 
 func request_SeqProxyApi_Export_0(ctx context.Context, marshaler runtime.Marshaler, client SeqProxyApiClient, req *http.Request, pathParams map[string]string) (SeqProxyApi_ExportClient, runtime.ServerMetadata, error) {
-	var protoReq ExportRequest
-	var metadata runtime.ServerMetadata
-
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && err != io.EOF {
+	var (
+		protoReq ExportRequest
+		metadata runtime.ServerMetadata
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-
 	stream, err := client.Export(ctx, &protoReq)
 	if err != nil {
 		return nil, metadata, err
@@ -210,7 +205,6 @@ func request_SeqProxyApi_Export_0(ctx context.Context, marshaler runtime.Marshal
 	}
 	metadata.HeaderMD = header
 	return stream, metadata, nil
-
 }
 
 // RegisterSeqProxyApiHandlerServer registers the http handlers for service SeqProxyApi to "mux".
@@ -219,16 +213,13 @@ func request_SeqProxyApi_Export_0(ctx context.Context, marshaler runtime.Marshal
 // Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterSeqProxyApiHandlerFromEndpoint instead.
 // GRPC interceptors will not work for this type of registration. To use interceptors, you must use the "runtime.WithMiddlewares" option in the "runtime.NewServeMux" call.
 func RegisterSeqProxyApiHandlerServer(ctx context.Context, mux *runtime.ServeMux, server SeqProxyApiServer) error {
-
-	mux.Handle("POST", pattern_SeqProxyApi_Search_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_Search_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Search", runtime.WithHTTPPathPattern("/search"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Search", runtime.WithHTTPPathPattern("/search"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -240,20 +231,15 @@ func RegisterSeqProxyApiHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Search_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_ComplexSearch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_ComplexSearch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/ComplexSearch", runtime.WithHTTPPathPattern("/complex-search"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/ComplexSearch", runtime.WithHTTPPathPattern("/complex-search"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -265,20 +251,15 @@ func RegisterSeqProxyApiHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_ComplexSearch_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_GetAggregation_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_GetAggregation_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetAggregation", runtime.WithHTTPPathPattern("/aggregate"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetAggregation", runtime.WithHTTPPathPattern("/aggregate"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -290,20 +271,15 @@ func RegisterSeqProxyApiHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_GetAggregation_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_GetHistogram_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_GetHistogram_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetHistogram", runtime.WithHTTPPathPattern("/histogram"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetHistogram", runtime.WithHTTPPathPattern("/histogram"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -315,27 +291,22 @@ func RegisterSeqProxyApiHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_GetHistogram_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
-	mux.Handle("POST", pattern_SeqProxyApi_Fetch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_Fetch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
 		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 		return
 	})
-
-	mux.Handle("GET", pattern_SeqProxyApi_Mapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_SeqProxyApi_Mapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Mapping", runtime.WithHTTPPathPattern("/mappings"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Mapping", runtime.WithHTTPPathPattern("/mappings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -347,20 +318,15 @@ func RegisterSeqProxyApiHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Mapping_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("GET", pattern_SeqProxyApi_Status_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_SeqProxyApi_Status_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Status", runtime.WithHTTPPathPattern("/status"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Status", runtime.WithHTTPPathPattern("/status"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -372,12 +338,10 @@ func RegisterSeqProxyApiHandlerServer(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Status_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
 
-	mux.Handle("POST", pattern_SeqProxyApi_Export_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_Export_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
 		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -408,7 +372,6 @@ func RegisterSeqProxyApiHandlerFromEndpoint(ctx context.Context, mux *runtime.Se
 			}
 		}()
 	}()
-
 	return RegisterSeqProxyApiHandler(ctx, mux, conn)
 }
 
@@ -424,14 +387,11 @@ func RegisterSeqProxyApiHandler(ctx context.Context, mux *runtime.ServeMux, conn
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
 // "SeqProxyApiClient" to call the correct interceptors. This client ignores the HTTP middlewares.
 func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux, client SeqProxyApiClient) error {
-
-	mux.Handle("POST", pattern_SeqProxyApi_Search_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_Search_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Search", runtime.WithHTTPPathPattern("/search"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Search", runtime.WithHTTPPathPattern("/search"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -442,18 +402,13 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Search_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_ComplexSearch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_ComplexSearch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/ComplexSearch", runtime.WithHTTPPathPattern("/complex-search"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/ComplexSearch", runtime.WithHTTPPathPattern("/complex-search"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -464,18 +419,13 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_ComplexSearch_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_GetAggregation_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_GetAggregation_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetAggregation", runtime.WithHTTPPathPattern("/aggregate"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetAggregation", runtime.WithHTTPPathPattern("/aggregate"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -486,18 +436,13 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_GetAggregation_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_GetHistogram_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_GetHistogram_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetHistogram", runtime.WithHTTPPathPattern("/histogram"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/GetHistogram", runtime.WithHTTPPathPattern("/histogram"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -508,18 +453,13 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_GetHistogram_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_Fetch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_Fetch_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Fetch", runtime.WithHTTPPathPattern("/fetch"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Fetch", runtime.WithHTTPPathPattern("/fetch"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -530,18 +470,13 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Fetch_0(annotatedContext, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("GET", pattern_SeqProxyApi_Mapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_SeqProxyApi_Mapping_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Mapping", runtime.WithHTTPPathPattern("/mappings"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Mapping", runtime.WithHTTPPathPattern("/mappings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -552,18 +487,13 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Mapping_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("GET", pattern_SeqProxyApi_Status_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_SeqProxyApi_Status_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Status", runtime.WithHTTPPathPattern("/status"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Status", runtime.WithHTTPPathPattern("/status"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -574,18 +504,13 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Status_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
 	})
-
-	mux.Handle("POST", pattern_SeqProxyApi_Export_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_SeqProxyApi_Export_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Export", runtime.WithHTTPPathPattern("/export"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/seqproxyapi.v1.SeqProxyApi/Export", runtime.WithHTTPPathPattern("/export"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -596,46 +521,29 @@ func RegisterSeqProxyApiHandlerClient(ctx context.Context, mux *runtime.ServeMux
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-
 		forward_SeqProxyApi_Export_0(annotatedContext, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
-
 	})
-
 	return nil
 }
 
 var (
-	pattern_SeqProxyApi_Search_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"search"}, ""))
-
-	pattern_SeqProxyApi_ComplexSearch_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"complex-search"}, ""))
-
+	pattern_SeqProxyApi_Search_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"search"}, ""))
+	pattern_SeqProxyApi_ComplexSearch_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"complex-search"}, ""))
 	pattern_SeqProxyApi_GetAggregation_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"aggregate"}, ""))
-
-	pattern_SeqProxyApi_GetHistogram_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"histogram"}, ""))
-
-	pattern_SeqProxyApi_Fetch_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"fetch"}, ""))
-
-	pattern_SeqProxyApi_Mapping_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"mappings"}, ""))
-
-	pattern_SeqProxyApi_Status_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"status"}, ""))
-
-	pattern_SeqProxyApi_Export_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"export"}, ""))
+	pattern_SeqProxyApi_GetHistogram_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"histogram"}, ""))
+	pattern_SeqProxyApi_Fetch_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"fetch"}, ""))
+	pattern_SeqProxyApi_Mapping_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"mappings"}, ""))
+	pattern_SeqProxyApi_Status_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"status"}, ""))
+	pattern_SeqProxyApi_Export_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"export"}, ""))
 )
 
 var (
-	forward_SeqProxyApi_Search_0 = runtime.ForwardResponseMessage
-
-	forward_SeqProxyApi_ComplexSearch_0 = runtime.ForwardResponseMessage
-
+	forward_SeqProxyApi_Search_0         = runtime.ForwardResponseMessage
+	forward_SeqProxyApi_ComplexSearch_0  = runtime.ForwardResponseMessage
 	forward_SeqProxyApi_GetAggregation_0 = runtime.ForwardResponseMessage
-
-	forward_SeqProxyApi_GetHistogram_0 = runtime.ForwardResponseMessage
-
-	forward_SeqProxyApi_Fetch_0 = runtime.ForwardResponseStream
-
-	forward_SeqProxyApi_Mapping_0 = runtime.ForwardResponseMessage
-
-	forward_SeqProxyApi_Status_0 = runtime.ForwardResponseMessage
-
-	forward_SeqProxyApi_Export_0 = runtime.ForwardResponseStream
+	forward_SeqProxyApi_GetHistogram_0   = runtime.ForwardResponseMessage
+	forward_SeqProxyApi_Fetch_0          = runtime.ForwardResponseStream
+	forward_SeqProxyApi_Mapping_0        = runtime.ForwardResponseMessage
+	forward_SeqProxyApi_Status_0         = runtime.ForwardResponseMessage
+	forward_SeqProxyApi_Export_0         = runtime.ForwardResponseStream
 )

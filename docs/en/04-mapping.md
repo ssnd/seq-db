@@ -2,7 +2,7 @@
 id: mapping
 ---
 
-# How we index fields
+# Mapping 
 seq-db doesn't index any fields from the ingested data by default.
 Instead, indexing is controlled through a special file called the *mapping file*. 
 The mapping file specifies the indexed fields and the used index types. 
@@ -101,6 +101,28 @@ mapping-list:
   - type:  "text"
     name: "nestedtext"
 ```
+
+
+### Field names containing dots and nested objects
+seq-db doesn't differentiate between fields indexed 
+in a nested object and fields containing a dot in their name.
+For example, the mapping displayed below, will index both `name`
+keys nested inside the object with the key `user`, and the `user.name` field
+inside the root log.
+```yaml
+mapping-list:
+  - name: user
+    type: object
+    mapping-list:
+      - type: keyword
+        name: name
+  - user.name: keyword
+```
+
+Both fields will generate the same `user.name` meta and 
+the search result may be not what you expect them to be. 
+Please keep this corner case in mind when configuring your seq-db instance.
+
 
 ## Multiple indexing types
 A single field can be indexed with multiple types at the same time. 

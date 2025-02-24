@@ -24,22 +24,6 @@ mapping-list:
     type: keyword
 ```
 
-### `text` mapping type
-
-Index for content like error messages or request bodies where full-text search is required.
-This mapping type is used to index fields containing unstructured, natural language text, as well as human-written messages, descriptions,
-error messages and other free-text fields.
-
-For example, the search query `message:"error"` will emit all the documents that contain token `error`. And query `message:"error code"` will emit all the documents that contain both `error` and `code`.
-
-Example of a mapping for a text field:
-
-```yaml
-mapping-list:
-  - name: message
-    type: text
-```
-
 ### `path` mapping type
 This mapping type indexes hierarchical path-like values.
 It is very similar to the
@@ -64,6 +48,23 @@ mapping-list:
   - name: uri
     type: path
 ```
+
+### `text` mapping type
+
+Index for content like error messages or request bodies where full-text search is required.
+This mapping type is used to index fields containing unstructured, natural language text, as well as human-written messages, descriptions,
+error messages and other free-text fields.
+
+For example, the search query `message:"error"` will emit all the documents that contain token `error`. And query `message:"error code"` will emit all the documents that contain both `error` and `code`.
+
+Example of a mapping for a text field:
+
+```yaml
+mapping-list:
+  - name: message
+    type: text
+```
+
 
 ### `exists` mapping type
 
@@ -131,7 +132,7 @@ mapping-list:
 ```
 
 
-## Multiple indexes on single field
+## Multiple indexes on a single field
 
 A single field can be indexed with multiple types at the same time.
 This allows to combine multiple indexing strategies enabling more flexible

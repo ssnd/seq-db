@@ -31,7 +31,7 @@ elasticsearch's [path tokenizer](https://www.elastic.co/guide/en/elasticsearch/r
 When a field is indexed with the `path` index, its value is broken
 into hierarchical terms.
 
-`path` mapping type for searching by beginning of a path or full path. For example, the following documents will match query `uri:"/my/path"`:
+Used for searching by beginning of a path or full path. For example, the following documents will match query `uri:"/my/path"`:
 ```json
 [
   {"uri": "/my/path"},

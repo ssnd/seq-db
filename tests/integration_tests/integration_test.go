@@ -106,7 +106,7 @@ func (s *IntegrationTestSuite) TestSearchOne() {
 	}
 }
 
-func (s *IntegrationTestSuite) TestPipeFieldsAndRemove() {
+func (s *IntegrationTestSuite) TestPipeFields() {
 	config := *s.Config
 	config.Mapping = map[string]seq.MappingTypes{
 		"event":   seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
@@ -167,7 +167,7 @@ func (s *IntegrationTestSuite) TestPipeFieldsAndRemove() {
 	  {},
 	  {}
 	]`))
-	test(`* | remove original_timestamp,ts, event`, []byte(`[
+	test(`* | fields except original_timestamp,ts, event`, []byte(`[
 		{"level":"info","logger":"fd.k8s.action.debug","message":"input event sample","offset":40059539},
 		{"level":"info","logger":"fd.kubelet","message":"pipeline stats","stat":"interval=5s, active procs=0/4, events in use=0/256, out=0|0.0Mb, rate=0/s|0.0Mb/s, read ops=0/s, total=0|0.0Mb, avg size=0"},
 		{"level":"info","message":"file plugin stats for last 5 seconds: offsets saves=104111, jobs done=28, jobs total=28","logger":"fd.k8s.input.k8s"}

@@ -92,13 +92,13 @@ get-version:
 
 .PHONY: docs-en
 docs-en:
-	docker run -e LOCALE=en --rm -it -p 3000:3000 -v ./docs/en:/website/docs/seq-db ghcr.io/ozontech/seq-db-docs:v0.0.1
+	docker run -e LOCALE=en --rm -it -p 3000:3000 -v ./docs/en:/website/docs/seq-db ghcr.io/ozontech/seq-db-docs:v0.0.2
 
 .PHONY: docs-ru
 docs-ru:
 	docker run -e LOCALE=ru --rm -it -p 3000:3000 -v ./docs/en:/website/docs/seq-db \
 		-v ./docs/ru:/website/i18n/ru/docusaurus-plugin-content-docs/current/seq-db \
-		ghcr.io/ozontech/seq-db-docs:v0.0.1
+		ghcr.io/ozontech/seq-db-docs:v0.0.2
 
 .PHONY: build-docs
 build-docs:

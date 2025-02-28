@@ -100,6 +100,8 @@ var (
 
 	enableMappingUpdates = kingpin.Flag("enable-mapping-updates", "this will periodically check mapping file and reload configuration if there is an update").Default("false").Bool()
 	mappingUpdatePeriod  = kingpin.Flag("mapping-update-period", "the amount of time to pass for the mappings to be reloaded").Default("30s").Duration()
+
+	useSeqQLByDefault = kingpin.Flag("use-seq-ql-by-default", "enable seq-ql as default query language").Default("false").Bool()
 )
 
 const (
@@ -159,6 +161,7 @@ func main() {
 	conf.CaseSensitive = *caseSensitive
 	conf.SkipFsync = *skipFsync
 	conf.MaxRequestedDocuments = int(*maxSearchDocs)
+	conf.UseSeqQLByDefault = *useSeqQLByDefault
 	backoff.DefaultConfig.MaxDelay = 10 * time.Second
 
 	var serviceReady atomic.Bool

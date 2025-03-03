@@ -2,11 +2,11 @@
 id: seq-ql
 ---
 
-# SeqQL
+# seq-ql
 
 ## Full-text Search
 
-Full-text search in SeqQL allows filtering results based on document tokens.
+Full-text search in seq-ql allows filtering results based on document tokens.
 Queries can include exact phrases or keywords separated by spaces.
 The behavior depends on the index type; more details on token formation can be found in
 the [index types](index-types) documentation.
@@ -15,9 +15,53 @@ When performing a full-text search, the system automatically selects results tha
 Search queries are case-insensitive by default.
 To change this behavior, use the `--case-sensitive` flag, but it affects only new documents.
 
+### String Literals
+
+In seq-ql, different syntaxes can be used for string literals when specifying values in filters.
+
+1. **Without quotes** — can be used if the field or value consists of a single word without spaces or special
+   characters:
+   ```seq-ql
+   key: value
+   ```
+
+2. **Single quotes (`'`)** — allow specifying fields or values containing spaces and special characters:
+   ```seq-ql
+   key: 'value with spaces'
+   ```
+   Inside quotes, escape sequences can be used, which must always start with the ` \ ` character. Example:
+   ```seq-ql
+   # Equivalent to search: key:значение
+   key: '\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435'
+   ```
+   Supported escape sequences:
+    * [Wildcard](#wildcard-characters) characters – `\*`
+    * Quotes and slashes – ` \" `, ` \' `, ` \\ `
+    * Unicode – `\u` for 4-byte characters, `\U` for 8-byte characters
+    * Control characters – `\n`, `\r`
+    * Byte – `\x`
+
+3. **Double quotes (`"`)** — similar to single quotes but allow single quotes inside the string:
+   ```seq-ql
+   "key": "value with 'quotes'"
+   ```
+
+4. **Backticks (`` ` ``)** — used for fields and values containing both single and double quotes:
+   ```seq-ql
+   `key with space`:`value with "double" and 'single' quotes`
+   ```
+   Important: backticks do not escape [wildcard](#wildcard-characters) and escape sequences, so the following examples
+   are equivalent:
+   ```seq-ql
+   key: `\n` or key: `*`
+   ```
+   ```seq-ql
+   key: '\\n' or key: '\*'
+   ```
+
 ## Logical Operators
 
-SeqQL supports logical operators for more precise search filtering.
+seq-ql supports logical operators for more precise search filtering.
 The operators `and`, `or`, and `not` allow combining and refining queries:
 
 - `and` — requires both conditions to be true.
@@ -34,7 +78,7 @@ not level:debug
 
 ## Wildcards
 
-Wildcards in SeqQL allow for partial matching in search.
+Wildcards in seq-ql allow for partial matching in search.
 The language supports the following symbols:
 
 - `*` — replaces any number of characters.
@@ -45,7 +89,7 @@ with `access`.
 
 ## Filter `range`
 
-SeqQL enables range filtering to limit data by value, which is particularly useful for numeric fields such as sizes or
+seq-ql enables range filtering to limit data by value, which is particularly useful for numeric fields such as sizes or
 timestamps.
 Ranges are specified using square or round brackets:
 
@@ -61,7 +105,7 @@ bytes:[100, 1000)
 
 ## Filter `in`
 
-SeqQL allows using the `in` filter to filter a list of tokens.
+seq-ql allows using the `in` filter to filter a list of tokens.
 The syntax for full-text search is the same as in [full-text search](#full-text-search) and supports all types of string
 literals.
 Search tokens must be separated by commas.
@@ -76,7 +120,7 @@ trace_id:in(123e4567-e89b-12d3-a456-426655440000, '123e4567-e89b-12d3-a456-42665
 
 ## Pipes
 
-Pipes in SeqQL are used to sequentially process data.
+Pipes in seq-ql are used to sequentially process data.
 Pipes enable data transformation, enrichment, filtering, aggregation, and formatting of results.
 
 #### `fields` pipe
@@ -103,18 +147,22 @@ source_type:access* | fields except payload, cookies
 
 In this example, the `payload` and `cookies` fields will be excluded from the result.
 
-## Query Optimization Recommendations for SeqQL
+## Comments
 
-Optimizing SeqQL queries enables efficient data processing and faster access to results, reducing system load.
-The primary goal of optimization is to minimize the amount of data processed at each stage.
+Comments are user-provided text that will be ignored when executing a query.  
+Comments must start with the `#` keyword, followed by the comment text, which must end with a newline character.
 
-### Maximizing Filtering in the Primary Search Stage
+Example:
 
-Filter as much data as possible at the primary search level.
-Refine search criteria by specifying fields such as `source_type`, `status`, or `date` to exclude irrelevant data and
-reduce its volume before processing with pipes.
-For example, setting narrow value ranges like time intervals or specific index values,
-e.g., `source_type:access* AND date:[2023-01-01, 2023-12-31]`, excludes irrelevant data before further processing.
+```seq-ql
+# Exporting debug logs for file.d
+service: file-d and message: 'Event sample' and level: error # Filtering file.d logs by "error" level
+| fields event # Returning the 'event' field to retrieve all debug logs for file.d
+```
+
+## Query Optimization Recommendations for seq-ql
+
+Optimizing seq-ql queries enables efficient data processing and faster access to results, reducing system load.
 
 ### Reducing Returned Fields
 
@@ -125,5 +173,4 @@ Use the `fields` formatting pipe to select only important fields:
 source_type:access* | fields KB, status, timestamp
 ```
 
-In this example, the final result includes only `KB`, `status`, and `timestamp`, conserving memory and reducing output
-time.
+In this example, the final result includes only `KB`, `status`, and `timestamp`, reducing output time.

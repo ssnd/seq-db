@@ -315,6 +315,7 @@ func MakeIngestors(cfg *TestingEnvConfig, hot, cold [][]string) []*Ingestor {
 					ShuffleReplicas: false,
 				},
 			},
+			nil,
 		)
 		if err != nil {
 			logger.Fatal("error during ingestor init", zap.Error(err))

@@ -35,7 +35,7 @@ In seq-ql, different syntaxes can be used for string literals when specifying va
    key: '\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435'
    ```
    Supported escape sequences:
-    * [Wildcard](#wildcard-characters) characters – `\*`
+    * [Wildcard](#wildcards) characters – `\*`
     * Quotes and slashes – ` \" `, ` \' `, ` \\ `
     * Unicode – `\u` for 4-byte characters, `\U` for 8-byte characters
     * Control characters – `\n`, `\r`
@@ -50,7 +50,7 @@ In seq-ql, different syntaxes can be used for string literals when specifying va
    ```seq-ql
    `key with space`:`value with "double" and 'single' quotes`
    ```
-   Important: backticks do not escape [wildcard](#wildcard-characters) and escape sequences, so the following examples
+   Important: backticks do not escape [wildcard](#wildcards) and escape sequences, so the following examples
    are equivalent:
    ```seq-ql
    key: `\n` or key: `*`

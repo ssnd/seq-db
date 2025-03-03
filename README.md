@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **Seq-DB** is a scalable and high-performance database designed for storing and querying logs efficiently.
+**seq-db** is a scalable and high-performance database designed for storing and querying logs efficiently.
 It supports both single-instance and clustered deployments to meet various scalability and availability needs.
 
 ## Quickstart
@@ -21,7 +21,7 @@ our [Cluster Configuration Guide](http://todo/cluster-configuration).
 
 ## GitHub Registry
 
-The latest versions of the Seq-DB are available in
+The latest versions of seq-db are available in
 our [GitHub Registry](https://github.com/ozontech/seq-db/pkgs/container/seq-db).
 
 ## Community

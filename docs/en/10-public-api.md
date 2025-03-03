@@ -72,7 +72,7 @@ Example response:
 ```
 
 You can notice that service field `index` is left empty. seq-db ignores data passed in this field, since it uses mapping
-for field indexing. More information about mapping in [relevant document](mapping)
+for field indexing. More information about mapping in [relevant document](03-index-types.md)
 
 ## Search gRPC API
 

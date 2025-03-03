@@ -13,7 +13,7 @@ If you notice that seq-db is consuming too much memory, consider the following a
 
 ### Reduce Cache Size
 
-Seq-db uses a cache to reuse data blocks previously read from disk. Reducing the cache size can help lower overall
+seq-db uses a cache to reuse data blocks previously read from disk. Reducing the cache size can help lower overall
 memory usage. For more details on how caching works, refer to the [cache documentation](internal/cache.md).
 
 ### Adjust Go Runtime Settings

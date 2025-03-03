@@ -128,7 +128,7 @@ Pipes enable data transformation, enrichment, filtering, aggregation, and format
 The `fields` pipe allows removing unnecessary fields from documents in the output.
 This is useful when only specific fields are needed, especially when exporting large datasets to reduce network load.
 
-The listed fields may not be present in the [mapping](04-mapping.md), and their absence does not affect the performance of
+The listed fields may not be present in the [mapping](03-index-types.md), and their absence does not affect the performance of
 the `fields` pipe.
 
 Example:

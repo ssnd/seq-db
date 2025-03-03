@@ -9,7 +9,7 @@ id: seq-ql
 Full-text search in seq-ql allows filtering results based on document tokens.
 Queries can include exact phrases or keywords separated by spaces.
 The behavior depends on the index type; more details on token formation can be found in
-the [index types](index-types) documentation.
+the [index types](03-index-types.md) documentation.
 When performing a full-text search, the system automatically selects results that match the specified text.
 
 Search queries are case-insensitive by default.
@@ -35,7 +35,7 @@ In seq-ql, different syntaxes can be used for string literals when specifying va
    key: '\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435'
    ```
    Supported escape sequences:
-    * [Wildcard](#wildcard-characters) characters – `\*`
+    * [Wildcard](#wildcards) characters – `\*`
     * Quotes and slashes – ` \" `, ` \' `, ` \\ `
     * Unicode – `\u` for 4-byte characters, `\U` for 8-byte characters
     * Control characters – `\n`, `\r`
@@ -50,7 +50,7 @@ In seq-ql, different syntaxes can be used for string literals when specifying va
    ```seq-ql
    `key with space`:`value with "double" and 'single' quotes`
    ```
-   Important: backticks do not escape [wildcard](#wildcard-characters) and escape sequences, so the following examples
+   Important: backticks do not escape [wildcard](#wildcards) and escape sequences, so the following examples
    are equivalent:
    ```seq-ql
    key: `\n` or key: `*`
@@ -84,7 +84,7 @@ The language supports the following symbols:
 - `*` — replaces any number of characters.
 
 These symbols can be used to search within tokens or parts of tokens.
-For example, a query on the [keyword](index-types#keyword) index `source_type:access*` will match all documents starting
+For example, a query on the [keyword](03-index-types.md#keyword) index `source_type:access*` will match all documents starting
 with `access`.
 
 ## Filter `range`
@@ -128,7 +128,7 @@ Pipes enable data transformation, enrichment, filtering, aggregation, and format
 The `fields` pipe allows removing unnecessary fields from documents in the output.
 This is useful when only specific fields are needed, especially when exporting large datasets to reduce network load.
 
-The listed fields may not be present in the [mapping](mapping), and their absence does not affect the performance of
+The listed fields may not be present in the [mapping](04-mapping.md), and their absence does not affect the performance of
 the `fields` pipe.
 
 Example:

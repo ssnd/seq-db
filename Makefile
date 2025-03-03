@@ -90,13 +90,15 @@ mock:
 get-version:
 	@echo ${VERSION}
 
-LOCALE ?= 'en' # Use 'en' or 'ru'
+LOCALE ?= 'en' # Use 'en' or 'ru'.
+DOCS_VERSION := v0.0.3
 
 .PHONY: serve-docs
 serve-docs:
-	docker run -e LOCALE=$(LOCALE) --rm -it -p 3000:3000 -v ./docs/en:/website/docs/seq-db \
+	docker run -e LOCALE=$(LOCALE) --rm -it -p 3000:3000 \
+		-v ./docs/en:/website/docs/seq-db \
 		-v ./docs/ru:/website/i18n/ru/docusaurus-plugin-content-docs/current/seq-db \
-		ghcr.io/ozontech/seq-db-docs:v0.0.3
+		ghcr.io/ozontech/seq-db-docs:$(DOCS_VERSION)
 
 .PHONY: build-docs
 build-docs:
@@ -105,5 +107,5 @@ build-docs:
  		-v ./docs/en:/website/docs/seq-db \
 		-v ./docs/ru:/website/i18n/ru/docusaurus-plugin-content-docs/current/seq-db \
 		--entrypoint /bin/sh \
-		ghcr.io/ozontech/seq-db-docs:v0.0.3 \
+		ghcr.io/ozontech/seq-db-docs:$(DOCS_VERSION) \
 		-c 'npm run build'

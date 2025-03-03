@@ -3,8 +3,10 @@ id: quickstart
 slug: /
 ---
 
-# seq-db Quickstart
+# Quickstart
+
 Welcome to the seq-db quickstart guide! In just a few minutes, you'll learn how to:
+
 - Quickly spin up a seq-db instance
 - Write and store sample log messages
 - Query and retrieve messages using search filters
@@ -12,7 +14,9 @@ Welcome to the seq-db quickstart guide! In just a few minutes, you'll learn how 
 ## Running seq-db
 
 ### Docker image
+
 seq-db can be quickly launched in a docker container. Pull seq-db image from Docker hub and create a container:
+
 ```bash
 docker run --rm \
   -p 9002:9002 \ 
@@ -21,17 +25,20 @@ docker run --rm \
   -it ghcr.io/ozontech/seq-db:latest --mapping ./default.yaml --mode single
 ```
 
-Note that in this example we use a default mapping file (built into the docker image) as seq-db doesn't index any fields by default. 
+Note that in this example we use a default mapping file (built into the docker image) as seq-db doesn't index any fields
+by default.
 The example uses the `--mode single` flag to run both seq-db in a single binary, rather than in cluster mode.
 
-Read more about [mappings and how we index fields](04-mapping.md) and seq-db architecture and operating modes (single/cluster).
-
+Read more about [mappings and how we index fields](04-mapping.md) and seq-db architecture and operating modes (
+single/cluster).
 
 ## Write documents to seq-db
 
 ### Writing documents using `curl`
+
 seq-db supports elasticsearch `bulk` API, so, given a seq-db single instance is listening on port 9002,
 a single document can be added like this:
+
 ```bash 
 curl --request POST \
   --url http://localhost:9002/_bulk \
@@ -45,9 +52,9 @@ curl --request POST \
 '
 ```
 
-
 ## Search for documents
-We'll wrap up this guide with a simple search query 
+
+We'll wrap up this guide with a simple search query
 that filters the ingested logs by the `message` field.
 
 Note: make sure `curl` and `jq` are installed to run this example.
@@ -72,7 +79,8 @@ EOF
 
 ## What's next
 
-seq-db offers many more useful features for working with logs. Here's a couple: 
+seq-db offers many more useful features for working with logs. Here's a couple:
+
 - A custom query language - [seq-ql](05-seq-ql.md) - that supports pipes, range queries, wildcards and more.
 - Built-in support for various types of aggregations: sum, avg, quantiles etc. TODO add aggregation doc?
 - The ability to combine multiple aggregations into a single request using complex-search TODO add link

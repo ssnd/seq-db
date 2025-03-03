@@ -72,7 +72,3 @@ seq-db offers many more useful features for working with logs. Here's a couple:
 - Built-in support for various types of aggregations: sum, avg, quantiles etc. TODO add aggregation doc?
 - The ability to combine multiple aggregations into a single request using complex-search TODO add link
 - Document-ID based retrieval can be [fetched](06-ingestor-api.md#fetch)
-
-
-
-

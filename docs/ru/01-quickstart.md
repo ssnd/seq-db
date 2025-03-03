@@ -29,7 +29,7 @@ Note that in this example we use a default mapping file (built into the docker i
 by default.
 The example uses the `--mode single` flag to run both seq-db in a single binary, rather than in cluster mode.
 
-Read more about [mappings and how we index fields](04-mapping.md) and seq-db architecture and operating modes (
+Read more about [mappings and how we index fields](03-index-types.md) and seq-db architecture and operating modes (
 single/cluster).
 
 ## Write documents to seq-db

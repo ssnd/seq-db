@@ -22,8 +22,7 @@ build-image: build-binaries
 run: build-binaries
 	@$(eval DATA_DIR := $(shell mktemp -d))
 	${BIN}/seq-db --mode single \
-		--data-dir ${DATA_DIR} \
-		--mapping tests/data/mappings/logging-new.yaml
+		--data-dir ${DATA_DIR}
 
 .PHONY: push-image
 push-image: build-image

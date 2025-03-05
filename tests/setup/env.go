@@ -144,7 +144,6 @@ func NewTestingEnv(cfg *TestingEnvConfig) *TestingEnv {
 		cfg.Mapping = seq.TestMapping
 	}
 
-	fmt.Printf("cfg.IndexAllFields: %v\n", cfg.IndexAllFields)
 	hotStores, hotStoresList := MakeStores(cfg, cfg.GetHotFactor(), false)
 	coldStores, coldStoresList := MakeStores(cfg, cfg.GetColdFactor(), true)
 

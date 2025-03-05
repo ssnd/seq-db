@@ -170,7 +170,7 @@ func main() {
 	mappingProvider, err := mappingprovider.New(
 		*mappingPath,
 		mappingprovider.WithUpdatePeriod(*mappingUpdatePeriod),
-		mappingprovider.WithIndexAllFields(enableIndexing(*mode, *mappingPath)),
+		mappingprovider.WithIndexAllFields(enableIndexingForAllFields(*mode, *mappingPath)),
 	)
 	if err != nil {
 		logger.Fatal("load mapping error", zap.Error(err))
@@ -360,6 +360,6 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 	return store
 }
 
-func enableIndexing(mode string, mappingPath string) bool {
-	return mappingPath == "" || mode == appModeSingle
+func enableIndexingForAllFields(mode, mappingPath string) bool {
+	return mappingPath == "" && mode == appModeSingle
 }

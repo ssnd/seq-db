@@ -53,7 +53,7 @@ var (
 	fracSize               = kingpin.Flag("frac-size", `size of one fraction`).Default("128MB").Bytes()
 	totalSize              = kingpin.Flag("total-size", `max size of all data`).Default("1GB").Bytes()
 	cacheSize              = kingpin.Flag("cache-size", `max size of the cache`).Default("8GB").Bytes()
-	mappingPath            = kingpin.Flag("mapping", `path to mapping file`).Required().ExistingFile()
+	mappingPath            = kingpin.Flag("mapping", `path to mapping file`).String()
 	storeMode              = kingpin.Flag("store-mode", `store operation mode`).Default("").HintOptions("", storeapi.StoreModeCold, storeapi.StoreModeHot).String()
 	queryRateLimit         = kingpin.Flag("query-rate-limit", `max requests per second`).Default("2.0").Float()
 	logSearchThresholdMs   = kingpin.Flag("log-search-threshold-ms", `threshold for logging search queries, ms`).Default("3000").Int()
@@ -138,19 +138,7 @@ func main() {
 	kingpin.Parse()
 	kingpin.Version(buildinfo.Version)
 
-	mappingProvider, err := mappingprovider.New(
-		*mappingPath,
-		mappingprovider.WithUpdatePeriod(*mappingUpdatePeriod),
-	)
-	if err != nil {
-		logger.Fatal("load mapping error", zap.Error(err))
-	}
-	if *enableMappingUpdates {
-		mappingProvider.WatchUpdates(ctx)
-	}
-
 	runtime.SetMutexProfileFraction(5)
-
 	_, _ = maxprocs.Set(maxprocs.Logger(func(tpl string, args ...interface{}) {
 		logger.Info(fmt.Sprintf(tpl, args...))
 	}))
@@ -177,6 +165,19 @@ func main() {
 
 	if err := tracing.Start(*tracingProbability); err != nil {
 		logger.Error("error initializing tracing", zap.Error(err))
+	}
+
+	mappingProvider, err := mappingprovider.New(
+		*mappingPath,
+		mappingprovider.WithUpdatePeriod(*mappingUpdatePeriod),
+		mappingprovider.WithIndexAllFields(enableIndexing(*mode, *mappingPath)),
+	)
+	if err != nil {
+		logger.Fatal("load mapping error", zap.Error(err))
+	}
+
+	if *enableMappingUpdates {
+		mappingProvider.WatchUpdates(ctx)
 	}
 
 	switch *mode {
@@ -357,4 +358,8 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 	}
 
 	return store
+}
+
+func enableIndexing(mode string, mappingPath string) bool {
+	return mappingPath == "" || mode == appModeSingle
 }

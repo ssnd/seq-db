@@ -1,3 +1,4 @@
+BIN := ./bin/amd64
 SHELL := /bin/bash
 VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags)
 TIME := $(shell date '+%Y-%m-%d_%H:%M:%S')
@@ -16,6 +17,13 @@ build-image: build-binaries
 	docker buildx build --platform linux/amd64 \
 		-t ghcr.io/ozontech/seq-db:${VERSION} \
 		.
+
+.PHONY: run
+run: build-binaries
+	@$(eval DATA_DIR := $(shell mktemp -d))
+	${BIN}/seq-db --mode single \
+		--data-dir ${DATA_DIR} \
+		--mapping tests/data/mappings/logging-new.yaml
 
 .PHONY: push-image
 push-image: build-image

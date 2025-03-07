@@ -441,7 +441,7 @@ func (s *SingleTestSuite) TestIndexingAllFields() {
 	}(s.Config.Mapping, s.Config.IndexAllFields)
 
 	// Reset mappings and explicitly set all fields indexing option.
-	// We need to restart both stores and ingestores as well to apply new config.
+	// We need to restart both store and ingestor to apply new config.
 	s.Config.Mapping = nil
 	s.Config.IndexAllFields = true
 

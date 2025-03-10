@@ -53,7 +53,7 @@ var (
 	fracSize               = kingpin.Flag("frac-size", `size of one fraction`).Default("128MB").Bytes()
 	totalSize              = kingpin.Flag("total-size", `max size of all data`).Default("1GB").Bytes()
 	cacheSize              = kingpin.Flag("cache-size", `max size of the cache`).Default("8GB").Bytes()
-	mappingPath            = kingpin.Flag("mapping", `path to mapping file`).String()
+	mappingPath            = kingpin.Flag("mapping", `path to mapping file or 'auto' to index all fields`).Required().String()
 	storeMode              = kingpin.Flag("store-mode", `store operation mode`).Default("").HintOptions("", storeapi.StoreModeCold, storeapi.StoreModeHot).String()
 	queryRateLimit         = kingpin.Flag("query-rate-limit", `max requests per second`).Default("2.0").Float()
 	logSearchThresholdMs   = kingpin.Flag("log-search-threshold-ms", `threshold for logging search queries, ms`).Default("3000").Int()
@@ -170,7 +170,7 @@ func main() {
 	mappingProvider, err := mappingprovider.New(
 		*mappingPath,
 		mappingprovider.WithUpdatePeriod(*mappingUpdatePeriod),
-		mappingprovider.WithIndexAllFields(enableIndexingForAllFields(*mode, *mappingPath)),
+		mappingprovider.WithIndexAllFields(enableIndexingForAllFields(*mappingPath)),
 	)
 	if err != nil {
 		logger.Fatal("load mapping error", zap.Error(err))
@@ -360,6 +360,6 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 	return store
 }
 
-func enableIndexingForAllFields(mode, mappingPath string) bool {
-	return mappingPath == "" && mode == appModeSingle
+func enableIndexingForAllFields(mappingPath string) bool {
+	return mappingPath == "auto"
 }

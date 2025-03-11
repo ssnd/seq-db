@@ -79,7 +79,7 @@ ci-tests-race:
 .lint:
 	$(info Running lint...)
 	GOBIN=$(LOCAL_BIN) go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0 run \
-		--config=.golangci.pipeline.yaml ./...
+		--config=.golangci.yaml ./...
 
 .PHONY: lint
 lint: .lint

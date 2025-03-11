@@ -17,6 +17,14 @@ build-image: build-binaries
 		-t ghcr.io/ozontech/seq-db:${VERSION} \
 		.
 
+.PHONY: run
+run: build-binaries
+	@$(eval DATA_DIR := $(shell mktemp -d))
+	${LOCAL_BIN}/amd64/seq-db \
+		--mode=single \
+		--mapping=auto \
+		--data-dir=${DATA_DIR}
+
 .PHONY: push-image
 push-image: build-image
 	docker push ghcr.io/ozontech/seq-db:${VERSION}

@@ -19,18 +19,17 @@ seq-db can be quickly launched in a docker container. Pull seq-db image from Doc
 
 ```bash
 docker run --rm \
-  -p 9002:9002 \ 
-  -p 9004:9004 \ 
-  -p 9200:9200 \
-  -it ghcr.io/ozontech/seq-db:latest --mapping ./default.yaml --mode single
+  -p 9002:9002 \ # Default HTTP port
+  -p 9004:9004 \ # Default gRPC port
+  -p 9200:9200 \ # Default debug port
+  -it ghcr.io/ozontech/seq-db:latest --mapping auto --mode single
 ```
 
-Note that in this example we use a default mapping file (built into the docker image) as seq-db doesn't index any fields
-by default.
-The example uses the `--mode single` flag to run both seq-db in a single binary, rather than in cluster mode.
+Note that in this example we use a default mapping file (built into the docker image) as seq-db doesn't index any fields by default.
+The example uses the `--mode single` flag to run both seq-db in a single binary, rather than in cluster mode and `--mapping auto` to index all fields as `keyword`.
 
-Read more about [mappings and how we index fields](03-index-types.md) and seq-db architecture and operating modes (
-single/cluster).
+Be aware that we set `--mapping` to `auto` for easier quickstart but this option is not production friendly.
+So we encourage you to read more about [mappings and how we index fields](03-index-types.md) and seq-db architecture and operating modes (single/cluster).
 
 ## Write documents to seq-db
 

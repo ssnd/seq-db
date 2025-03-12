@@ -3,6 +3,7 @@ package storeapi
 import (
 	"context"
 	"io"
+	"slices"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -19,6 +20,9 @@ func NewClient(store *Store) storeapi.StoreApiClient {
 }
 
 func (i inMemoryAPIClient) Bulk(ctx context.Context, in *storeapi.BulkRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	// NOTE: We copy `Metas` to prevent dataraces because `store` might work
+	// with this memory even when it returned response to client.
+	in.Metas = slices.Clone(in.Metas)
 	return i.store.GrpcV1().Bulk(ctx, in)
 }
 

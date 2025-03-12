@@ -1,4 +1,4 @@
-FROM gitlab-registry.***REMOVED***/docker/ubuntu-minbase:bionic
+FROM gitlab-registry.***REMOVED***/docker/ubuntu-minbase:jammy
 
 WORKDIR /seq-db
 

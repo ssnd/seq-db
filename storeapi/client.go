@@ -3,6 +3,7 @@ package storeapi
 import (
 	"context"
 	"io"
+	"slices"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -19,11 +20,14 @@ func NewClient(store *Store) storeapi.StoreApiClient {
 }
 
 func (i inMemoryAPIClient) Bulk(ctx context.Context, in *storeapi.BulkRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return i.store.GrpcV1().Bulk(ctx, in.CloneVT())
+	// NOTE: We copy `Metas` to prevent dataraces because `store` might work
+	// with this memory even when it returned response to client.
+	in.Metas = slices.Clone(in.Metas)
+	return i.store.GrpcV1().Bulk(ctx, in)
 }
 
 func (i inMemoryAPIClient) Search(ctx context.Context, in *storeapi.SearchRequest, _ ...grpc.CallOption) (*storeapi.SearchResponse, error) {
-	return i.store.GrpcV1().Search(ctx, in.CloneVT())
+	return i.store.GrpcV1().Search(ctx, in)
 }
 
 type storeAPIFetchServer struct {
@@ -68,12 +72,12 @@ func (x *storeAPIFetchClient) Recv() (*storeapi.BinaryData, error) {
 
 func (i inMemoryAPIClient) Fetch(ctx context.Context, in *storeapi.FetchRequest, _ ...grpc.CallOption) (storeapi.StoreApi_FetchClient, error) {
 	s := newStoreAPIFetchServer(ctx)
-	if err := i.store.GrpcV1().Fetch(in.CloneVT(), s); err != nil {
+	if err := i.store.GrpcV1().Fetch(in, s); err != nil {
 		return nil, err
 	}
 	return newStoreAPIFetchClient(s.buf), nil
 }
 
 func (i inMemoryAPIClient) Status(ctx context.Context, in *storeapi.StatusRequest, _ ...grpc.CallOption) (*storeapi.StatusResponse, error) {
-	return i.store.GrpcV1().Status(ctx, in.CloneVT())
+	return i.store.GrpcV1().Status(ctx, in)
 }

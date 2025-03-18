@@ -1413,12 +1413,10 @@ const configBasic = "Basic"
 
 func TestBasicIntegration(t *testing.T) {
 	cfg := setup.TestingEnvConfig{
-		Name:              configBasic,
-		IngestorCount:     1,
-		HotShards:         1,
-		HotFactor:         1,
-		StartStorePort:    common.StorePortStart + 1000,
-		StartIngestorPort: common.IngestorPortStart + 1000,
+		Name:          configBasic,
+		IngestorCount: 1,
+		HotShards:     1,
+		HotFactor:     1,
 	}
 	t.Parallel()
 	dd := &IntegrationTestSuite{Base: *suites.NewBase(&cfg)}
@@ -1427,15 +1425,13 @@ func TestBasicIntegration(t *testing.T) {
 
 func TestColdStoreIntegration(t *testing.T) {
 	cfg := setup.TestingEnvConfig{
-		Name:              "WithColdStore",
-		IngestorCount:     1,
-		ColdShards:        1,
-		ColdFactor:        1,
-		HotShards:         1,
-		HotFactor:         1,
-		HotModeEnabled:    false,
-		StartStorePort:    common.StorePortStart + 2000,
-		StartIngestorPort: common.IngestorPortStart + 2000,
+		Name:           "WithColdStore",
+		IngestorCount:  1,
+		ColdShards:     1,
+		ColdFactor:     1,
+		HotShards:      1,
+		HotFactor:      1,
+		HotModeEnabled: false,
 	}
 	t.Parallel()
 	dd := &IntegrationTestSuite{Base: *suites.NewBase(&cfg)}
@@ -1444,15 +1440,13 @@ func TestColdStoreIntegration(t *testing.T) {
 
 func TestColdHotStoreIntegration(t *testing.T) {
 	cfg := setup.TestingEnvConfig{
-		Name:              "WithColdAndHotStoreEnabled",
-		IngestorCount:     2,
-		ColdShards:        1,
-		ColdFactor:        1,
-		HotShards:         1,
-		HotFactor:         1,
-		HotModeEnabled:    true,
-		StartStorePort:    common.StorePortStart + 3000,
-		StartIngestorPort: common.IngestorPortStart + 3000,
+		Name:           "WithColdAndHotStoreEnabled",
+		IngestorCount:  2,
+		ColdShards:     1,
+		ColdFactor:     1,
+		HotShards:      1,
+		HotFactor:      1,
+		HotModeEnabled: true,
 	}
 	t.Parallel()
 	dd := &IntegrationTestSuite{Base: *suites.NewBase(&cfg)}
@@ -1461,15 +1455,13 @@ func TestColdHotStoreIntegration(t *testing.T) {
 
 func TestBigWithReplicasIntegration(t *testing.T) {
 	cfg := setup.TestingEnvConfig{
-		Name:              "BigWithReplicas",
-		IngestorCount:     2,
-		ColdShards:        4,
-		ColdFactor:        1,
-		HotShards:         4,
-		HotFactor:         1,
-		HotModeEnabled:    true,
-		StartStorePort:    common.StorePortStart + 4000,
-		StartIngestorPort: common.IngestorPortStart + 4000,
+		Name:           "BigWithReplicas",
+		IngestorCount:  2,
+		ColdShards:     4,
+		ColdFactor:     1,
+		HotShards:      4,
+		HotFactor:      1,
+		HotModeEnabled: true,
 	}
 	t.Parallel()
 	dd := &IntegrationTestSuite{Base: *suites.NewBase(&cfg)}

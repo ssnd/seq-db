@@ -1,7 +1,6 @@
 package suites
 
 import (
-	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -57,12 +56,19 @@ func (s *Single) SearchDocs(query string, size int, order seq.DocsOrder) []strin
 func (s *Single) AssertDocsEqual(originalDocs []string, indexes []int, foundDocs []string) {
 	if !s.Assert().Equal(len(indexes), len(foundDocs)) {
 		if len(indexes) < len(foundDocs) {
-			fmt.Printf("foundDocs:\n%v\n", strings.Join(foundDocs, "\n"))
+			s.T().Log(
+				"foundDocs:\n",
+				strings.Join(foundDocs, "\n"),
+			)
 		} else {
-			fmt.Println("expectedDocs:")
+			var docs []string
 			for _, ind := range indexes {
-				fmt.Println(originalDocs[ind])
+				docs = append(docs, originalDocs[ind])
 			}
+			s.T().Log(
+				"expectedDocs:\n",
+				strings.Join(docs, "\n"),
+			)
 		}
 	}
 	for i, doc := range foundDocs {
@@ -106,6 +112,7 @@ func (s *Single) RunFracEnvs(envs map[FractionEnv]bool, stopOnFail bool, f func(
 	}
 	if envs[RestartedEnv] {
 		s.RestartStore()
+		s.RestartIngestor()
 		if !stopOnFail || !s.T().Failed() {
 			f()
 		}
@@ -121,7 +128,7 @@ func (s *Single) RestartStore() {
 func (s *Single) RestartIngestor() {
 	// if ingestor is already stopped will just start
 	s.Env.StopIngestor()
-	s.Env.Ingestors = setup.MakeIngestors(s.Config, s.Env.Ingestor().Config.Search.HotStores.Shards, nil)
+	s.Env.Ingestors = setup.MakeIngestors(s.Config, [][]string{{s.Store().GrpcAddr()}}, nil)
 }
 
 // -- setup --

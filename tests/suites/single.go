@@ -111,15 +111,16 @@ func (s *Single) RunFracEnvs(envs map[FractionEnv]bool, stopOnFail bool, f func(
 		}
 	}
 	if envs[RestartedEnv] {
-		s.RestartStore()
-		s.RestartIngestor()
+		s.Restart()
 		if !stopOnFail || !s.T().Failed() {
 			f()
 		}
 	}
 }
 
-func (s *Single) RestartStore() {
+// restartStore restarts store.
+// In order to save system consistent one must restart ingestor as well.
+func (s *Single) restartStore() {
 	// if store is already stopped will just start
 	s.Env.StopStore()
 	s.Env.HotStores, _ = setup.MakeStores(s.Config, 1, false)
@@ -129,6 +130,11 @@ func (s *Single) RestartIngestor() {
 	// if ingestor is already stopped will just start
 	s.Env.StopIngestor()
 	s.Env.Ingestors = setup.MakeIngestors(s.Config, [][]string{{s.Store().GrpcAddr()}}, nil)
+}
+
+func (s *Single) Restart() {
+	s.restartStore()
+	s.RestartIngestor()
 }
 
 // -- setup --

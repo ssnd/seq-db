@@ -443,9 +443,7 @@ func (s *SingleTestSuite) TestIndexingAllFields() {
 	// We need to restart both store and ingestor to apply new config.
 	s.Config.Mapping = nil
 	s.Config.IndexAllFields = true
-
-	s.RestartStore()
-	s.RestartIngestor()
+	s.Restart()
 
 	var (
 		docsCount = 5

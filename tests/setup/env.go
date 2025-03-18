@@ -159,20 +159,22 @@ func NewTestingEnv(cfg *TestingEnvConfig) *TestingEnv {
 		hotStoresAccessCounter:  new(atomic.Uint64),
 		coldStoresAccessCounter: new(atomic.Uint64),
 
-		hotStoresList:  straighten(hotStores),
-		coldStoresList: straighten(coldStores),
+		hotStoresList:  flatten(hotStores),
+		coldStoresList: flatten(coldStores),
 		Config:         cfg,
 	}
 }
 
-func straighten(storesList Stores) []*storeapi.Store {
+func flatten(storesList Stores) []*storeapi.Store {
 	if len(storesList) == 0 {
 		return nil
 	}
-	list := make([]*storeapi.Store, 0)
+
+	var list []*storeapi.Store
 	for _, replicas := range storesList {
 		list = append(list, replicas...)
 	}
+
 	rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
 	return list
 }
@@ -343,13 +345,15 @@ func (t *TestingEnv) Ingestor() *Ingestor {
 // Store returns random store managed by TestingEnv
 // but guarantees that each store will return at least once
 func (t *TestingEnv) Store(hot bool) *storeapi.Store {
-	storesList := t.coldStoresList
+	stores := flatten(t.ColdStores)
 	counter := t.coldStoresAccessCounter
+
 	if hot {
-		storesList = t.hotStoresList
+		stores = flatten(t.HotStores)
 		counter = t.hotStoresAccessCounter
 	}
-	return storesList[int(counter.Inc())%len(storesList)]
+
+	return stores[int(counter.Inc())%len(stores)]
 }
 
 func (t *TestingEnv) IngestorAddr() string {

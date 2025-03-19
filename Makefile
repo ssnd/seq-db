@@ -2,7 +2,6 @@ SHELL := /bin/bash
 
 OS ?= $(shell uname -s | awk '{print tolower($0)}')
 ARCH ?= $(shell uname -m)
-OUTPUT := ${OS}-${ARCH}
 
 VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags)
 TIME := $(shell date '+%Y-%m-%d_%H:%M:%S')
@@ -14,10 +13,12 @@ build-binaries:
       -trimpath \
       -ldflags "-X github.com/ozontech/seq-db/buildinfo.Version=${VERSION} \
                 -X github.com/ozontech/seq-db/buildinfo.BuildTime=${TIME}" \
-      -o ./bin/${OUTPUT}/ \
+      -o ./bin/${OS}-${ARCH}/ \
       ./cmd/...
 
 .PHONY: build-image
+build-image: OS = linux
+build-image: ARCH = amd64
 build-image: build-binaries
 	docker buildx build --platform linux/amd64 \
 		-t ghcr.io/ozontech/seq-db:${VERSION} \
@@ -26,7 +27,7 @@ build-image: build-binaries
 .PHONY: run
 run: build-binaries
 	@$(eval DATA_DIR := $(shell mktemp -d))
-	${LOCAL_BIN}/${OUTPUT}/seq-db \
+	${LOCAL_BIN}/${OS}-${ARCH}/seq-db \
 		--mode=single \
 		--mapping=auto \
 		--data-dir=${DATA_DIR}

@@ -1,14 +1,20 @@
 SHELL := /bin/bash
+
+OS ?= $(shell uname -s | awk '{print tolower($0)}')
+ARCH ?= $(shell uname -m)
+OUTPUT := ${OS}-${ARCH}
+
 VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags)
 TIME := $(shell date '+%Y-%m-%d_%H:%M:%S')
 
 LOCAL_BIN:=$(CURDIR)/bin
 .PHONY: build-binaries
 build-binaries:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	CGO_ENABLED=0 GOOS=${OS} GOARCH=${ARCH} go build \
       -trimpath \
-      -ldflags "-X github.com/ozontech/seq-db/buildinfo.Version=${VERSION} -X github.com/ozontech/seq-db/buildinfo.BuildTime=${TIME}" \
-      -o ./bin/amd64/ \
+      -ldflags "-X github.com/ozontech/seq-db/buildinfo.Version=${VERSION} \
+                -X github.com/ozontech/seq-db/buildinfo.BuildTime=${TIME}" \
+      -o ./bin/${OUTPUT}/ \
       ./cmd/...
 
 .PHONY: build-image
@@ -20,7 +26,7 @@ build-image: build-binaries
 .PHONY: run
 run: build-binaries
 	@$(eval DATA_DIR := $(shell mktemp -d))
-	${LOCAL_BIN}/amd64/seq-db \
+	${LOCAL_BIN}/${OUTPUT}/seq-db \
 		--mode=single \
 		--mapping=auto \
 		--data-dir=${DATA_DIR}

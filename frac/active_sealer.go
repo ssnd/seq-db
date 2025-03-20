@@ -57,10 +57,6 @@ func seal(f *Active, params SealParams) *os.File {
 		logger.Fatal("can't sync tmp index file", zap.String("file", indexFile.Name()), zap.Error(err))
 	}
 
-	if err = indexFile.Close(); err != nil {
-		logger.Fatal("can't close file", zap.String("file", indexFile.Name()), zap.Error(err))
-	}
-
 	f.close(false, "seal")
 
 	newFileName := f.BaseFileName + consts.IndexFileSuffix

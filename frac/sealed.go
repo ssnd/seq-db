@@ -261,9 +261,14 @@ func (dp *SealedDataProvider) getDocPosByLIDs(localIDs []seq.LID) []DocPos {
 }
 
 type Sealed struct {
-	Base
+	frac
 
-	docsReader  *disk.DocsReader
+	docsFile   *os.File
+	docsCache  *cache.Cache[[]byte]
+	docsReader *disk.DocsReader
+
+	indexFile   *os.File
+	indexCache  *IndexCache
 	indexReader *disk.IndexReader
 
 	idsTable      IDsTable
@@ -274,8 +279,6 @@ type Sealed struct {
 	isLoaded bool
 
 	readLimiter *disk.ReadLimiter
-	indexCache  *IndexCache
-	docsCache   *cache.Cache[[]byte]
 
 	// shit for testing
 	PartialSuicideMode PSD
@@ -297,7 +300,7 @@ func NewSealed(baseFile string, readLimiter *disk.ReadLimiter, indexCache *Index
 		docsCache:   docsCache,
 		indexCache:  indexCache,
 
-		Base: Base{
+		frac: frac{
 			info:         fracInfoCache,
 			BaseFileName: baseFile,
 		},
@@ -317,23 +320,25 @@ func NewSealed(baseFile string, readLimiter *disk.ReadLimiter, indexCache *Index
 
 func (f *Sealed) openIndex() {
 	if f.indexReader == nil {
+		var err error
 		name := f.BaseFileName + consts.IndexFileSuffix
-		indexFile, err := os.Open(name)
+		f.indexFile, err = os.Open(name)
 		if err != nil {
 			logger.Fatal("can't open index file", zap.String("file", name), zap.Error(err))
 		}
-		f.indexReader = disk.NewIndexReader(f.readLimiter, indexFile, f.indexCache.Registry)
+		f.indexReader = disk.NewIndexReader(f.readLimiter, f.indexFile, f.indexCache.Registry)
 	}
 }
 
 func (f *Sealed) openDocs() {
 	if f.docsReader == nil {
+		var err error
 		name := f.BaseFileName + consts.DocsFileSuffix
-		docsFile, err := os.Open(name)
+		f.docsFile, err = os.Open(name)
 		if err != nil {
 			logger.Fatal("can't open docs file", zap.String("file", name), zap.Error(err))
 		}
-		f.docsReader = disk.NewDocsReader(f.readLimiter, docsFile, f.docsCache)
+		f.docsReader = disk.NewDocsReader(f.readLimiter, f.docsFile, f.docsCache)
 	}
 }
 
@@ -344,17 +349,20 @@ func NewSealedFromActive(active *Active, readLimiter *disk.ReadLimiter, indexFil
 		lidsTable:     active.lidsTable,
 		BlocksOffsets: active.DocBlocks.GetVals(),
 
-		docsReader:  active.docsReader,
+		docsFile:   active.docsFile,
+		docsCache:  active.docsCache,
+		docsReader: active.docsReader,
+
+		indexFile:   indexFile,
+		indexCache:  indexCache,
 		indexReader: disk.NewIndexReader(readLimiter, indexFile, indexCache.Registry),
 
 		loadMu:   &sync.RWMutex{},
 		isLoaded: true,
 
 		readLimiter: readLimiter,
-		indexCache:  indexCache,
-		docsCache:   active.docsReader.Cache,
 
-		Base: Base{
+		frac: frac{
 			info:         &infoCopy,
 			BaseFileName: active.BaseFileName,
 		},
@@ -385,14 +393,14 @@ func (f *Sealed) loadHeader() *Info {
 		logger.Panic("todo")
 	}
 	if len(block) < 4 || string(block[:4]) != seqDBMagic {
-		logger.Fatal("seq-db index file header corrupted", zap.String("file", f.indexReader.File.Name()))
+		logger.Fatal("seq-db index file header corrupted", zap.String("file", f.indexFile.Name()))
 	}
 	info := &Info{}
 	info.Load(block[4:])
 
-	stat, err := f.indexReader.File.Stat()
+	stat, err := f.indexFile.Stat()
 	if err != nil {
-		logger.Fatal("can't stat index file", zap.String("file", f.indexReader.File.Name()), zap.Error(err))
+		logger.Fatal("can't stat index file", zap.String("file", f.indexFile.Name()), zap.Error(err))
 	}
 
 	info.MetaOnDisk = 0        // todo: make this correction on sealing
@@ -526,13 +534,13 @@ func (f *Sealed) close(hint string) {
 		return
 	}
 
-	if f.docsReader.File != nil { // docs file may not be opened since it's loaded lazily
-		if err := f.docsReader.File.Close(); err != nil {
+	if f.docsFile != nil { // docs file may not be opened since it's loaded lazily
+		if err := f.docsFile.Close(); err != nil {
 			logger.Error("can't close docs file", f.closeLogArgs("sealed", hint, err)...)
 		}
 	}
 
-	if err := f.indexReader.File.Close(); err != nil {
+	if err := f.indexFile.Close(); err != nil {
 		logger.Error("can't close index file", f.closeLogArgs("sealed", hint, err)...)
 	}
 }

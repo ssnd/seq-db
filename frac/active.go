@@ -134,7 +134,7 @@ func (dp *ActiveDataProvider) Fetch(ids []seq.ID) ([][]byte, error) {
 }
 
 type Active struct {
-	Base
+	frac
 
 	MIDs *UInt64s
 	RIDs *UInt64s
@@ -146,6 +146,7 @@ type Active struct {
 	DocsPositions *DocsPositions
 
 	docsReader *disk.DocsReader
+	docsCache  *cache.Cache[[]byte]
 
 	docsFile *os.File
 	metaFile *os.File
@@ -182,10 +183,11 @@ func NewActive(baseFileName string, metaRemove bool, indexWorkers *IndexWorkers,
 		docsFile:   docsFile,
 		metaFile:   metaFile,
 		docsReader: disk.NewDocsReader(readLimiter, docsFile, docsCache),
+		docsCache:  docsCache,
 
 		appender: StartAppender(docsFile, metaFile, conf.IndexWorkers, conf.SkipFsync, indexWorkers),
 
-		Base: Base{
+		frac: frac{
 			BaseFileName: baseFileName,
 			info:         NewInfo(baseFileName, uint64(docsStats.Size()), uint64(metaStats.Size())),
 		},

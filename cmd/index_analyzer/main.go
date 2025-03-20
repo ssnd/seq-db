@@ -83,7 +83,7 @@ func analyzeIndex(
 		data, _, err := indexReader.ReadIndexBlock(blockIndex, nil)
 		blockIndex++
 		if err != nil {
-			logger.Fatal("error reading block", zap.String("file", indexReader.File.Name()), zap.Error(err))
+			logger.Fatal("error reading block", zap.String("file", f.Name()), zap.Error(err))
 		}
 		return data
 	}

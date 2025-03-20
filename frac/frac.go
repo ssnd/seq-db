@@ -11,7 +11,7 @@ import (
 	"github.com/ozontech/seq-db/seq"
 )
 
-type Base struct {
+type frac struct {
 	statsMu sync.Mutex
 
 	info *Info
@@ -22,11 +22,11 @@ type Base struct {
 	suicided bool
 }
 
-func (f *Base) Contains(id seq.MID) bool {
+func (f *frac) Contains(id seq.MID) bool {
 	return f.IsIntersecting(id, id)
 }
 
-func (f *Base) IsIntersecting(from, to seq.MID) bool {
+func (f *frac) IsIntersecting(from, to seq.MID) bool {
 	info := f.Info()
 	if info.DocsTotal == 0 { // don't include fresh active fraction
 		return false
@@ -44,7 +44,7 @@ func (f *Base) IsIntersecting(from, to seq.MID) bool {
 	return info.Distribution.IsIntersecting(from, to)
 }
 
-func (f *Base) Info() *Info {
+func (f *frac) Info() *Info {
 	f.statsMu.Lock()
 	defer f.statsMu.Unlock()
 	info := *f.info
@@ -52,21 +52,21 @@ func (f *Base) Info() *Info {
 	return &info
 }
 
-func (f *Base) setInfoSealingTime(newTime uint64) {
+func (f *frac) setInfoSealingTime(newTime uint64) {
 	f.statsMu.Lock()
 	defer f.statsMu.Unlock()
 
 	f.info.SealingTime = newTime
 }
 
-func (f *Base) setInfoIndexOnDisk(newSize uint64) {
+func (f *frac) setInfoIndexOnDisk(newSize uint64) {
 	f.statsMu.Lock()
 	defer f.statsMu.Unlock()
 
 	f.info.IndexOnDisk = newSize
 }
 
-func (f *Base) toString(fracType string) string {
+func (f *frac) toString(fracType string) string {
 	stats := f.Info()
 	s := fmt.Sprintf(
 		"%s fraction name=%s, creation time=%s, from=%s, to=%s, %s",
@@ -84,7 +84,7 @@ func (f *Base) toString(fracType string) string {
 }
 
 // logArgs returns slice of zap.Field for frac close log.
-func (f *Base) closeLogArgs(fracType, hint string, err error) []zap.Field {
+func (f *frac) closeLogArgs(fracType, hint string, err error) []zap.Field {
 	return []zap.Field{
 		zap.String("frac", f.BaseFileName),
 		zap.String("type", fracType),

@@ -41,37 +41,41 @@ func getAllFracs(dataDir string) []string {
 	return files
 }
 
-func getReader(path string) *disk.IndexReader {
+func getReader(path string) (*disk.IndexReader, *os.File) {
 	c := cache.NewCache[[]byte](nil, nil)
 	f, err := os.Open(path)
 	if err != nil {
 		panic(err)
 	}
-	return disk.NewIndexReader(readLimiter, f, c)
+	return disk.NewIndexReader(readLimiter, f, c), f
 }
 
-func readBlock(reader *disk.IndexReader, blockIndex uint32) []byte {
+func readBlock(reader *disk.IndexReader, blockIndex uint32) ([]byte, error) {
 	data, _, err := reader.ReadIndexBlock(blockIndex, nil)
 	if err != nil {
-		logger.Fatal("error reading block", zap.String("file", reader.File.Name()), zap.Error(err))
+		return nil, err
 	}
-	return data
+	return data, nil
 }
 
 func loadInfo(path string) *frac.Info {
-	indexReader := getReader(path)
-	result := readBlock(indexReader, 0)
+	indexReader, f := getReader(path)
+	result, err := readBlock(indexReader, 0)
+	if err != nil {
+		logger.Fatal("error reading block", zap.String("file", path), zap.Error(err))
+	}
+
 	if len(result) < 4 {
-		logger.Fatal("seq-db index file header corrupted", zap.String("file", indexReader.File.Name()))
+		logger.Fatal("seq-db index file header corrupted", zap.String("file", path))
 	}
 
 	info := &frac.Info{}
 	info.Load(result[4:])
 	info.MetaOnDisk = 0
 
-	stat, err := indexReader.File.Stat()
+	stat, err := f.Stat()
 	if err != nil {
-		logger.Fatal("can't stat index file", zap.String("file", indexReader.File.Name()), zap.Error(err))
+		logger.Fatal("can't stat index file", zap.String("file", path), zap.Error(err))
 	}
 	info.IndexOnDisk = uint64(stat.Size())
 
@@ -79,7 +83,7 @@ func loadInfo(path string) *frac.Info {
 }
 
 func buildDist(dist *seq.MIDsDistribution, path string, _ *frac.Info) {
-	blocksReader := getReader(path)
+	blocksReader, _ := getReader(path)
 
 	// skip tokens
 	blockIndex := uint32(1)
@@ -110,7 +114,11 @@ func buildDist(dist *seq.MIDsDistribution, path string, _ *frac.Info) {
 
 	cnt := 0
 	for {
-		bytes := readBlock(blocksReader, blockIndex)
+		bytes, err := readBlock(blocksReader, blockIndex)
+		if err != nil {
+			logger.Fatal("error reading block", zap.String("file", path), zap.Error(err))
+		}
+
 		if len(bytes) == 0 { // empty
 			break
 		}

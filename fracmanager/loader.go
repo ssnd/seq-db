@@ -180,7 +180,7 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 			continue
 		}
 
-		if t.noValidDoc(info) { // todo do not delete just log and skip
+		if t.noValidDoc(info) {
 			metric.FractionLoadErrors.Inc()
 			logger.Error("fraction has .docs file without .meta and could not be read, deleting as invalid",
 				zap.String("fraction_id", id),
@@ -210,7 +210,6 @@ func (t *loader) noValidDoc(info *fracInfo) (invalid bool) {
 		}
 	}()
 
-	// todo do not check here, check on fraction demand only
 	docsReader := disk.NewDocsReader(t.readLimiter, docFile, nil)
 	_, _, err = docsReader.ReadDocBlockPayload(0)
 	return err != nil

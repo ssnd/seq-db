@@ -1,6 +1,7 @@
 package storeapi
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -180,4 +181,16 @@ func tracerSpanToExplainEntry(span *querytracer.Span) *storeapi.ExplainEntry {
 	}
 
 	return ee
+}
+
+func parseStoreError(e error) (storeapi.SearchErrorCode, bool) {
+	if errors.Is(e, consts.ErrTooManyUniqValues) {
+		return storeapi.SearchErrorCode_TOO_MANY_UNIQ_VALUES, true
+	}
+
+	if errors.Is(e, consts.ErrTooManyFractionsHit) {
+		return storeapi.SearchErrorCode_TOO_MANY_FRACTIONS_HIT, true
+	}
+
+	return 0, false
 }

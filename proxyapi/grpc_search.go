@@ -23,6 +23,9 @@ func (g *grpcV1) Search(
 	if err != nil {
 		return nil, err
 	}
+	if sResp.err != nil && !shouldHaveResponse(sResp.err.Code) {
+		return &seqproxyapi.SearchResponse{Error: sResp.err}, nil
+	}
 
 	resp := &seqproxyapi.SearchResponse{
 		Docs:  makeProtoDocs(sResp.qpr, sResp.docsStream),

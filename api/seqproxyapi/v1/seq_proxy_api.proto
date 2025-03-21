@@ -75,9 +75,10 @@ service SeqProxyApi {
 
 // Custom error code, returned by seq-db proxy.
 enum ErrorCode {
-  ERROR_CODE_UNSPECIFIED = 0;      // Unknown/undefined code.
-  ERROR_CODE_NO = 1;               // No error code. Returned when there were no problems during the request handling.
-  ERROR_CODE_PARTIAL_RESPONSE = 2; // Partial response code. Returned when some of the seq-stores returned an error.
+  ERROR_CODE_UNSPECIFIED = 0;            // Unknown/undefined code.
+  ERROR_CODE_NO = 1;                     // No error code. Returned when there were no problems during the request handling.
+  ERROR_CODE_PARTIAL_RESPONSE = 2;       // Partial response code. Returned when some of the seq-stores returned an error.
+  ERROR_CODE_TOO_MANY_FRACTIONS_HIT = 3; // Too many fractions hit code. Returned when too many fractions were hit during search exceeded limit.
 }
 
 // Additional details provided if an error during request handling occurred.

@@ -2,6 +2,7 @@ package proxyapi
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -49,6 +50,9 @@ func (g *grpcV1) Export(req *seqproxyapi.ExportRequest, stream seqproxyapi.SeqPr
 	sResp, err := g.doSearch(ctx, proxyReq, true, nil)
 	if err != nil {
 		return err
+	}
+	if sResp.err != nil && !shouldHaveResponse(sResp.err.Code) {
+		return errors.New(sResp.err.Message)
 	}
 
 	wrapped := metricStream{SeqProxyApi_ExportServer: stream}

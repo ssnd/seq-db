@@ -444,6 +444,9 @@ func (si *Ingestor) searchStores(
 				// At least one hot store doesn't have such old data
 				return nil, err
 			}
+			if errors.Is(err, consts.ErrTooManyFractionsHit) {
+				return nil, err
+			}
 			errs = append(errs, err)
 			continue
 		}
@@ -569,6 +572,8 @@ func (si *Ingestor) searchShard(
 			return nil, source, fmt.Errorf("hot store refuses: %w", consts.ErrIngestorQueryWantsOldData)
 		case storeapi.SearchErrorCode_TOO_MANY_UNIQ_VALUES:
 			return nil, source, fmt.Errorf("store forbids aggregation request: %w", consts.ErrTooManyUniqValues)
+		case storeapi.SearchErrorCode_TOO_MANY_FRACTIONS_HIT:
+			return nil, source, fmt.Errorf("store forbids request: %w", consts.ErrTooManyFractionsHit)
 		}
 
 		return resp, source, nil

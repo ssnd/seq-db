@@ -22,10 +22,13 @@ func (g *grpcV1) ComplexSearch(
 	}
 
 	tr := querytracer.New(req.Query.Explain, "proxy/ComplexSearch")
-
 	sResp, err := g.doSearch(ctx, req, true, tr)
 	if err != nil {
 		return nil, err
+	}
+
+	if sResp.err != nil && !shouldHaveResponse(sResp.err.Code) {
+		return &seqproxyapi.ComplexSearchResponse{Error: sResp.err}, nil
 	}
 
 	resp := &seqproxyapi.ComplexSearchResponse{

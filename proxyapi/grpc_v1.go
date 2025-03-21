@@ -169,12 +169,13 @@ func (g *grpcV1) doSearch(
 	metric.SearchOverall.Add(1)
 
 	span := trace.FromContext(ctx)
+	defer span.End()
 
 	if req.Query == nil {
 		return nil, status.Error(codes.InvalidArgument, "search query must be provided")
 	}
 	if req.Query.From == nil || req.Query.To == nil {
-		return nil, status.Error(codes.InvalidArgument, "search query \"from\" and \"to\" fields must be provided")
+		return nil, status.Error(codes.InvalidArgument, `search query "from" and "to" fields must be provided`)
 	}
 
 	fromTime := req.Query.From.AsTime()
@@ -255,6 +256,11 @@ func (g *grpcV1) doSearch(
 	psr := &proxySearchResponse{
 		qpr:        qpr,
 		docsStream: docsStream,
+	}
+
+	if e, ok := parseProxyError(err); ok {
+		psr.err = e
+		return psr, nil
 	}
 
 	if errors.Is(err, consts.ErrInvalidArgument) {
@@ -348,4 +354,19 @@ func tracerSpanToExplainEntry(span *querytracer.Span) *seqproxyapi.ExplainEntry 
 	}
 
 	return ee
+}
+
+func parseProxyError(e error) (*seqproxyapi.Error, bool) {
+	if errors.Is(e, consts.ErrTooManyFractionsHit) {
+		return &seqproxyapi.Error{
+			Code:    seqproxyapi.ErrorCode_ERROR_CODE_TOO_MANY_FRACTIONS_HIT,
+			Message: e.Error(),
+		}, true
+	}
+
+	return nil, false
+}
+
+func shouldHaveResponse(code seqproxyapi.ErrorCode) bool {
+	return code == seqproxyapi.ErrorCode_ERROR_CODE_NO || code == seqproxyapi.ErrorCode_ERROR_CODE_PARTIAL_RESPONSE
 }

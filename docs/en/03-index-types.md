@@ -194,7 +194,7 @@ If `size` is not set, the [default](#configuration-parameters) will be used.
 
 ## Indexing internals
 
-Let's write a document using [mapping](#mapping-example) (ID of document will be ```id = N```):
+Let's write a document using [mapping](#illustrated-mapping-example) (ID of document will be ```id = N```):
 
 ```json
 {

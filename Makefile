@@ -1,7 +1,11 @@
 SHELL := /bin/bash
 
-OS ?= $(shell uname -s | awk '{print tolower($0)}')
-ARCH ?= $(shell uname -m)
+OS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+ARCH ?= $(shell uname -m | tr '[:upper:]' '[:lower:]')
+
+ifeq ($(ARCH), x86_64)
+ARCH := amd64
+endif
 
 VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags)
 TIME := $(shell date '+%Y-%m-%d_%H:%M:%S')

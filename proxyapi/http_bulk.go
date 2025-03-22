@@ -270,7 +270,12 @@ func writeBulkResponse(w io.Writer, took time.Duration, total int) {
 	const maxPrefixLen = 256
 	bufferSize := maxPrefixLen + len(itemCreated)*total
 	response := bytespool.AcquireWriterSize(w, bufferSize)
-	defer bytespool.FlushReleaseWriter(response)
+	defer func(response *bytespool.Writer) {
+		err := bytespool.FlushReleaseWriter(response)
+		if err != nil {
+			logger.Error("failed to flush response writer", zap.Error(err))
+		}
+	}(response)
 
 	_, _ = response.WriteString(`{"took":`)
 	response.Buf.B = strconv.AppendInt(response.Buf.B, took.Milliseconds(), 10)

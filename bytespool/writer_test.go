@@ -127,7 +127,12 @@ func TestWriter(t *testing.T) {
 
 			output := bytes.NewBuffer(nil)
 			w := AcquireWriterSize(output, tc.WriterSize)
-			defer FlushReleaseWriter(w)
+			defer func(w *Writer) {
+				err := FlushReleaseWriter(w)
+				if err != nil {
+					panic(fmt.Errorf("BUG: can't flush writer: %s", err))
+				}
+			}(w)
 
 			if len(tc.Payload) != len(tc.Expect) && len(tc.Payload) != len(tc.Flush) {
 				panic(fmt.Errorf("BUG: invalid test case"))

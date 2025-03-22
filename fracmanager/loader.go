@@ -240,6 +240,8 @@ func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 			info.hasIndexDel = true
 		case consts.MetaFileSuffix:
 			info.hasMeta = true
+		case consts.SortedDocsFileSuffix:
+			// todo
 		default:
 			logger.Fatal("unknown file", zap.String("file", file))
 		}

@@ -5,12 +5,13 @@ import (
 	"os"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/frac/lids"
+	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
+	"go.uber.org/zap"
 )
 
 type SealParams struct {
@@ -19,6 +20,11 @@ type SealParams struct {
 	TokenListZstdLevel     int
 	DocsPositionsZstdLevel int
 	TokenTableZstdLevel    int
+
+	// DocsZstdLevel is zstd compress level for sorted docs of sealed fraction.
+	DocsZstdLevel int
+	// RawBlockSize is block size after decompress.
+	RawBlockSize int
 }
 
 func seal(f *Active, params SealParams) {
@@ -91,52 +97,80 @@ func seal(f *Active, params SealParams) {
 func writeAllBlocks(f *Active, ws io.WriteSeeker, params SealParams) error {
 	var err error
 
+	allLids := f.GetAllDocuments()
+	sortedIDs, oldToNewLIDsIndex := sortSeqIDs(allLids, f.MIDs.GetVals(), f.RIDs.GetVals())
+
+	producer := NewDiskBlocksProducer()
 	writer := NewSealedBlockWriter(ws)
-	producer := NewDiskBlocksProducer(f)
-
-	logger.Info("sealing frac stats...")
-	if err = writer.writeInfoBlock(producer.getInfoBlock()); err != nil {
-		logger.Error("seal info error", zap.Error(err))
-		return err
+	{
+		logger.Info("sealing frac stats...")
+		f.BuildInfoDistribution(sortedIDs)
+		fracInfo := f.Info()
+		if err = writer.writeInfoBlock(producer.getInfoBlock(fracInfo)); err != nil {
+			logger.Error("seal info error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing tokens...")
-	tokenTable, err := writer.writeTokensBlocks(params.TokenListZstdLevel, producer.getTokensBlocksGenerator())
-	if err != nil {
-		logger.Error("sealing tokens error", zap.Error(err))
-		return err
+	var tokenTable token.Table
+	{
+		logger.Info("sealing tokens...")
+		generator := producer.getTokensBlocksGenerator(f.TokenList)
+		tokenTable, err = writer.writeTokensBlocks(params.TokenListZstdLevel, generator)
+		if err != nil {
+			logger.Error("sealing tokens error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing tokens table...")
-	if err = writer.writeTokenTableBlocks(params.TokenTableZstdLevel, producer.getTokenTableBlocksGenerator(tokenTable)); err != nil {
-		logger.Error("sealing tokens table error", zap.Error(err))
-		return err
+	{
+		logger.Info("sealing tokens table...")
+		generator := producer.getTokenTableBlocksGenerator(f.TokenList, tokenTable)
+		if err = writer.writeTokenTableBlocks(params.TokenTableZstdLevel, generator); err != nil {
+			logger.Error("sealing tokens table error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("writing document positions block...")
-	if err = writer.writePositionsBlock(params.DocsPositionsZstdLevel, producer.getPositionBlock()); err != nil {
-		logger.Error("document positions block error", zap.Error(err))
-		return err
+	{
+		logger.Info("writing document positions block...")
+		idsLen := f.MIDs.Len()
+		positions := f.DocBlocks.GetVals()
+		generator := producer.getPositionBlock(idsLen, positions)
+		if err = writer.writePositionsBlock(params.DocsPositionsZstdLevel, generator); err != nil {
+			logger.Error("document positions block error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing ids...")
-	minBlockIDs, err := writer.writeIDsBlocks(params.IDsZstdLevel, producer.getIDsBlocksGenerator(consts.IDsBlockSize))
-	if err != nil {
-		logger.Error("seal ids error", zap.Error(err))
-		return err
+	var minBlockIDs []seq.ID
+	{
+		logger.Info("sealing ids...")
+		generator := producer.getIDsBlocksGenerator(sortedIDs, f.DocsPositions, consts.IDsBlockSize)
+		minBlockIDs, err = writer.writeIDsBlocks(params.IDsZstdLevel, generator)
+		if err != nil {
+			logger.Error("seal ids error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing lids...")
-	lidsTable, err := writer.writeLIDsBlocks(params.LIDsZstdLevel, producer.getLIDsBlockGenerator(consts.LIDBlockCap))
-	if err != nil {
-		logger.Error("seal lids error", zap.Error(err))
-		return err
+	var lidsTable *lids.Table
+	{
+		logger.Info("sealing lids...")
+		generator := producer.getLIDsBlockGenerator(f.TokenList, oldToNewLIDsIndex, f.MIDs, f.RIDs, consts.LIDBlockCap)
+		lidsTable, err = writer.writeLIDsBlocks(params.LIDsZstdLevel, generator)
+		if err != nil {
+			logger.Error("seal lids error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("write registry...")
-	if err = writer.WriteRegistryBlock(); err != nil {
-		logger.Error("write registry error", zap.Error(err))
-		return err
+	{
+		logger.Info("write registry...")
+		if err = writer.WriteRegistryBlock(); err != nil {
+			logger.Error("write registry error", zap.Error(err))
+			return err
+		}
 	}
 
 	// these fields actually aren't not used as intended: the data of these three fields will actually be read

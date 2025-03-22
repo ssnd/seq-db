@@ -164,6 +164,16 @@ type Active struct {
 	sealed Fraction
 }
 
+const (
+	systemMID = math.MaxUint64
+	systemRID = math.MaxUint64
+)
+
+var systemSeqID = seq.ID{
+	MID: systemMID,
+	RID: systemRID,
+}
+
 func NewActive(baseFileName string, metaRemove bool, indexWorkers *IndexWorkers, reader *disk.Reader, docBlockCache *cache.Cache[[]byte]) *Active {
 	mids := NewIDs()
 	rids := NewIDs()
@@ -196,8 +206,8 @@ func NewActive(baseFileName string, metaRemove bool, indexWorkers *IndexWorkers,
 	}
 
 	// use of 0 as keys in maps is prohibited – it's system key, so add first element
-	f.MIDs.Append(math.MaxUint64)
-	f.RIDs.Append(math.MaxUint64)
+	f.MIDs.Append(systemMID)
+	f.RIDs.Append(systemRID)
 
 	logger.Info("active fraction created", zap.String("fraction", baseFileName))
 

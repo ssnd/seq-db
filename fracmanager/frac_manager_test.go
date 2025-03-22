@@ -42,7 +42,7 @@ func TestProvideLimit(t *testing.T) {
 
 func addDummyDoc(t *testing.T, fm *FracManager, dp *frac.DocProvider, seqID seq.ID) {
 	doc := []byte("document")
-	dp.Append(doc, nil, seqID, seq.Tokens("service:100500", "k8s_pod"))
+	dp.Append(doc, nil, seqID, seq.Tokens("_all_:", "service:100500", "k8s_pod"))
 	docs, metas := dp.Provide()
 	err := fm.Append(context.Background(), docs, metas, atomic.NewUint64(0))
 	assert.NoError(t, err)

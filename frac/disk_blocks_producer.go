@@ -244,7 +244,7 @@ func reassignLIDs(lIDs, oldToNewLIDsIndex []uint32) []uint32 {
 	return lIDs
 }
 
-func sortSeqIDs(lids []uint32, mids, rids []uint64) ([]seq.ID, []uint32) {
+func sortSeqIDs(f *Active, mids, rids []uint64) ([]seq.ID, []uint32) {
 	seqIDs := make([]seq.ID, len(mids))
 	index := make([]uint32, len(mids))
 
@@ -256,7 +256,7 @@ func sortSeqIDs(lids []uint32, mids, rids []uint64) ([]seq.ID, []uint32) {
 
 	subSeqIDs := seqIDs[1:]
 
-	for i, lid := range lids {
+	for i, lid := range f.GetAllDocuments() {
 		subSeqIDs[i] = seq.ID{
 			MID: seq.MID(mids[lid]),
 			RID: seq.RID(rids[lid]),

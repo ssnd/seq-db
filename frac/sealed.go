@@ -2,6 +2,7 @@ package frac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -285,7 +286,7 @@ func NewSealed(baseFile string, reader *disk.Reader, sealedIndexCache *SealedInd
 	return f
 }
 
-func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *SealedIndexCache) *Sealed {
+func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *SealedIndexCache, docBlocksCache *cache.Cache[[]byte]) *Sealed {
 	indexFileName := active.BaseFileName + consts.IndexFileSuffix
 	blocksReader := disk.NewBlocksReader(sealedIndexCache.Registry, indexFileName, metric.StoreBytesRead)
 
@@ -300,9 +301,9 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 		loadMu:       &sync.RWMutex{},
 		cache:        sealedIndexCache,
 		frac: frac{
-			docBlockCache: active.frac.docBlockCache,
+			docBlockCache: docBlocksCache,
 			reader:        reader,
-			docsFile:      active.docsFile,
+			docsFile:      active.sortedDocsFile,
 			info:          &infoCopy,
 			BaseFileName:  active.BaseFileName,
 		},
@@ -437,6 +438,17 @@ func (f *Sealed) Suicide() {
 		)
 	}
 
+	oldPath = f.BaseFileName + consts.SortedDocsFileSuffix
+	newPath = f.BaseFileName + consts.SortedDocsDelFileSuffix
+	err = os.Rename(oldPath, newPath)
+	if err != nil {
+		logger.Error("can't rename sdocs file",
+			zap.String("old_path", oldPath),
+			zap.String("new_path", newPath),
+			zap.Error(err),
+		)
+	}
+
 	if f.PartialSuicideMode == HalfRename {
 		return
 	}
@@ -453,6 +465,15 @@ func (f *Sealed) Suicide() {
 	}
 
 	rmPath := f.BaseFileName + consts.DocsDelFileSuffix
+	err = os.Remove(rmPath)
+	if err != nil {
+		logger.Error("can't remove docs file",
+			zap.String("file", rmPath),
+			zap.Error(err),
+		)
+	}
+
+	rmPath = f.BaseFileName + consts.SortedDocsDelFileSuffix
 	err = os.Remove(rmPath)
 	if err != nil {
 		logger.Error("can't remove docs file",
@@ -546,4 +567,49 @@ func (f *Sealed) DataProvider(ctx context.Context) (DataProvider, func(), bool) 
 		dp.ridCache.Release()
 		f.useLock.RUnlock()
 	}, true
+}
+
+func (f *Sealed) readDocs(blockPos uint64, docPos []uint64) ([][]byte, error) {
+	block, err := f.docBlockCache.GetWithError(uint32(blockPos), func() ([]byte, int, error) {
+		f.tryOpenSortedDocsFile()
+		block, _, err := f.reader.ReadDocBlockPayload(f.docsFile, int64(blockPos))
+		if err != nil {
+			return nil, 0, fmt.Errorf("can't fetch doc at pos %d: %w", blockPos, err)
+		}
+		return block, cap(block), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return extractDocsFromBlock(block, docPos), nil
+}
+
+// todo: avoid copy-paste
+func (f *Sealed) tryOpenSortedDocsFile() {
+	f.docsFileMu.Lock()
+	defer f.docsFileMu.Unlock()
+
+	if f.docsFile != nil {
+		return
+	}
+
+	docsFile, err := os.Open(f.BaseFileName + consts.SortedDocsFileSuffix)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			logger.Fatal("can't open sdocs file",
+				zap.String("frac", f.BaseFileName),
+				zap.Error(err))
+		}
+		// Fallback to unsorted docs file.
+		docsFile, err = os.Open(f.BaseFileName + consts.DocsFileSuffix)
+		if err != nil {
+			logger.Fatal("can't open docs file",
+				zap.String("frac", f.BaseFileName),
+				zap.Error(err))
+		}
+	}
+
+	f.docsFile = docsFile
 }

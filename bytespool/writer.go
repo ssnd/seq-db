@@ -8,7 +8,8 @@ import (
 
 var writerPool = sync.Pool{}
 
-// Writer can be used with given byte slice, which bufio.Writer cannot do.
+// Writer is a buffered writer that can use a provided byte slice, unlike bufio.Writer.
+// This can be useful directly appending to an existing byte slice (for example strconv.AppendUint).
 type Writer struct {
 	Buf *Buffer
 	out io.Writer

@@ -370,7 +370,10 @@ func (fm *FracManager) seal(active activeRef) {
 	if err := active.frac.Seal(fm.config.SealParams); err != nil {
 		logger.Panic("sealing error", zap.Error(err))
 	}
-	sealed := frac.NewSealedFromActive(active.frac, fm.reader, fm.cacheMaintainer.CreateSealedIndexCache())
+
+	indexCache := fm.cacheMaintainer.CreateSealedIndexCache()
+	docsCache := fm.cacheMaintainer.CreateDocBlockCache()
+	sealed := frac.NewSealedFromActive(active.frac, fm.reader, indexCache, docsCache)
 
 	stats := sealed.Info()
 	fm.fracCache.AddFraction(stats.Name(), stats)
@@ -379,7 +382,9 @@ func (fm *FracManager) seal(active activeRef) {
 	active.ref.instance = sealed
 	fm.fracMu.Unlock()
 
-	active.frac.Release(sealed)
+	if err := active.frac.Release(sealed, fm.config.ShouldRemoveMeta); err != nil {
+		logger.Fatal("failed to release active fraction", zap.Error(err))
+	}
 }
 
 func (fm *FracManager) rotate() activeRef {
@@ -392,7 +397,7 @@ func (fm *FracManager) rotate() activeRef {
 
 	prev := fm.active
 
-	active := frac.NewActive(baseFilePath, fm.config.ShouldRemoveMeta, fm.indexWorkers, fm.reader, fm.cacheMaintainer.CreateDocBlockCache())
+	active := frac.NewActive(baseFilePath, fm.indexWorkers, fm.reader, fm.cacheMaintainer.CreateDocBlockCache())
 	fm.active.frac = active
 	fm.active.ref = &fracRef{instance: active}
 	fm.fracs = append(fm.fracs, fm.active.ref)
@@ -407,7 +412,6 @@ func (fm *FracManager) shouldSealOnExit(active *frac.Active) bool {
 
 func (fm *FracManager) Stop() {
 	fm.indexWorkers.Stop()
-	fm.reader.Stop()
 	fm.stopFn()
 
 	fm.statWG.Wait()
@@ -423,6 +427,8 @@ func (fm *FracManager) Stop() {
 	} else {
 		logger.Info("frac too small to be sealed on exit", zap.String("frac", n), zap.Uint64("fill_size_mb", s))
 	}
+
+	fm.reader.Stop()
 }
 
 func (fm *FracManager) GetActiveFrac() *frac.Active {

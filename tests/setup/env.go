@@ -88,6 +88,8 @@ func (cfg *TestingEnvConfig) GetFracManagerConfig(replicaID string) fracmanager.
 				TokenListZstdLevel:     fastestZstdLevel,
 				DocsPositionsZstdLevel: fastestZstdLevel,
 				TokenTableZstdLevel:    fastestZstdLevel,
+				DocBlocksZstdLevel:     fastestZstdLevel,
+				DocBlockSize:           consts.MB * 4,
 			},
 		})
 	}

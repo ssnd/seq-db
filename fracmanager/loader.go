@@ -18,12 +18,14 @@ import (
 )
 
 type fracInfo struct {
-	base        string
-	hasDocs     bool
-	hasDocsDel  bool
-	hasIndex    bool
-	hasIndexDel bool
-	hasMeta     bool
+	base             string
+	hasMeta          bool
+	hasDocs          bool
+	hasDocsDel       bool
+	hasIndex         bool
+	hasIndexDel      bool
+	hasSortedDocs    bool
+	hasSortedDocsDel bool
 }
 
 type loader struct {
@@ -73,21 +75,32 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	ts := time.Now()
 
 	for i, info := range infosList {
-		if info.hasMeta {
-			actives = append(actives, frac.NewActive(info.base, t.config.ShouldRemoveMeta, t.indexWorkers, t.reader, t.cacheMaintainer.CreateDocBlockCache()))
-		} else {
-			cachedFracInfo, ok := diskFracCache.GetFracInfo(filepath.Base(info.base))
-			if ok {
+		if info.hasSortedDocs && info.hasIndex {
+			if info.hasMeta {
+				removeFile(info.base + consts.MetaFileSuffix)
+			}
+			if info.hasDocs {
+				removeFile(info.base + consts.DocsFileSuffix)
+			}
+			infoCached, sealed := t.loadSealedFrac(diskFracCache, info)
+			fracs = append(fracs, &fracRef{instance: sealed})
+			if infoCached {
 				cachedFracs++
 			} else {
 				uncachedFracs++
 			}
-
-			sealed := frac.NewSealed(info.base, t.reader, t.cacheMaintainer.CreateSealedIndexCache(), t.cacheMaintainer.CreateDocBlockCache(), cachedFracInfo)
-			fracs = append(fracs, &fracRef{instance: sealed})
-
-			stats := sealed.Info()
-			t.fracCache.AddFraction(stats.Name(), stats)
+		} else {
+			if info.hasMeta {
+				actives = append(actives, frac.NewActive(info.base, t.indexWorkers, t.reader, t.cacheMaintainer.CreateDocBlockCache()))
+			} else {
+				infoCached, sealed := t.loadSealedFrac(diskFracCache, info)
+				fracs = append(fracs, &fracRef{instance: sealed})
+				if infoCached {
+					cachedFracs++
+				} else {
+					uncachedFracs++
+				}
+			}
 		}
 
 		if time.Since(ts) >= time.Second || i == len(infosList)-1 {
@@ -125,6 +138,16 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	return fracs, notSealed, nil
 }
 
+func (t *loader) loadSealedFrac(diskFracCache *sealedFracCache, info *fracInfo) (bool, *frac.Sealed) {
+	cachedFracInfo, ok := diskFracCache.GetFracInfo(filepath.Base(info.base))
+
+	sealed := frac.NewSealed(info.base, t.reader, t.cacheMaintainer.CreateSealedIndexCache(), t.cacheMaintainer.CreateDocBlockCache(), cachedFracInfo)
+
+	stats := sealed.Info()
+	t.fracCache.AddFraction(stats.Name(), stats)
+	return ok, sealed
+}
+
 func (t *loader) getFileList() []string {
 	filePatten := fmt.Sprintf("%s*", fileBasePattern)
 	pattern := filepath.Join(t.config.DataDir, filePatten)
@@ -140,9 +163,11 @@ func removeFractionFiles(base string) {
 	removeFile(base + consts.IndexFileSuffix) // first delete files without del suffix
 	removeFile(base + consts.DocsFileSuffix)  // to preserve the info about fractions
 	removeFile(base + consts.MetaFileSuffix)  // that should be deleted
+	removeFile(base + consts.SortedDocsFileSuffix)
 
 	removeFile(base + consts.IndexDelFileSuffix)
 	removeFile(base + consts.DocsDelFileSuffix)
+	removeFile(base + consts.SortedDocsDelFileSuffix)
 }
 
 func removeFile(file string) {
@@ -162,14 +187,14 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 			logger.Panic("frac loader has gone crazy")
 		}
 
-		if info.hasDocsDel || info.hasIndexDel {
+		if info.hasDocsDel || info.hasIndexDel || info.hasSortedDocsDel {
 			// storage has terminated in the middle of fraction deletion so continue this process
 			logger.Info("cleaning up partially deleted fraction files", zap.String("file", info.base))
 			removeFractionFiles(info.base)
 			continue
 		}
 
-		if !info.hasDocs {
+		if !info.hasDocs && !info.hasSortedDocs {
 			metric.FractionLoadErrors.Inc()
 			logger.Error("fraction doesn't have .docs file, skipping", zap.Any("frac_info", info))
 			continue
@@ -180,12 +205,13 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 			continue
 		}
 
-		if t.noValidDoc(info) {
+		if t.noValidDoc(info.base+consts.DocsFileSuffix) || t.noValidDoc(info.base+consts.SortedDocsFileSuffix) {
 			metric.FractionLoadErrors.Inc()
-			logger.Error("fraction has .docs file without .meta and could not be read, deleting as invalid",
+			logger.Error("fraction has .docs/.sdocs file without .meta and could not be read, deleting as invalid",
 				zap.String("fraction_id", id),
 			)
 			_ = os.Remove(info.base + consts.DocsFileSuffix)
+			_ = os.Remove(info.base + consts.SortedDocsFileSuffix)
 			continue
 		}
 
@@ -196,8 +222,8 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 
 // noValidDoc return true if disk.Reader.ReadDocBlock fails
 // this captures cases when doc file size is zero, or doc file header is invalid
-func (t *loader) noValidDoc(info *fracInfo) (invalid bool) {
-	docFile, err := os.Open(info.base + consts.DocsFileSuffix)
+func (t *loader) noValidDoc(path string) (invalid bool) {
+	docFile, err := os.Open(path)
 	defer docFile.Close()
 
 	if err != nil {
@@ -218,7 +244,7 @@ func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 	infos := make(map[string]*fracInfo)
 	for _, file := range files {
 		base, suffix, fracID := t.extractInfo(file)
-		if suffix == consts.IndexTmpFileSuffix {
+		if suffix == consts.IndexTmpFileSuffix || suffix == consts.SortedDocsTmpFileSuffix {
 			continue
 		}
 
@@ -230,18 +256,20 @@ func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 		}
 
 		switch suffix {
-		case consts.DocsFileSuffix:
-			info.hasDocs = true
-		case consts.IndexFileSuffix:
-			info.hasIndex = true
-		case consts.DocsDelFileSuffix:
-			info.hasDocsDel = true
-		case consts.IndexDelFileSuffix:
-			info.hasIndexDel = true
 		case consts.MetaFileSuffix:
 			info.hasMeta = true
+		case consts.DocsFileSuffix:
+			info.hasDocs = true
+		case consts.DocsDelFileSuffix:
+			info.hasDocsDel = true
+		case consts.IndexFileSuffix:
+			info.hasIndex = true
+		case consts.IndexDelFileSuffix:
+			info.hasIndexDel = true
 		case consts.SortedDocsFileSuffix:
-			// todo
+			info.hasSortedDocs = true
+		case consts.SortedDocsDelFileSuffix:
+			info.hasSortedDocsDel = true
 		default:
 			logger.Fatal("unknown file", zap.String("file", file))
 		}

@@ -75,17 +75,14 @@ func Warn(msg string, args ...zap.Field) {
 
 func Error(msg string, args ...zap.Field) {
 	logger.Error(msg, args...)
-
 }
 
 func Panic(msg string, args ...zap.Field) {
 	logger.Panic(msg, args...)
-
 }
 
 func Fatal(msg string, args ...zap.Field) {
 	logger.Fatal(msg, args...)
-
 }
 
 // Handler returns http handler to view/change log level in runtime,

@@ -151,14 +151,14 @@ type Active struct {
 	appendQueueSize atomic.Uint32
 	appender        ActiveAppender
 
-	sealingMu        sync.RWMutex
-	isSealed         bool
-	shouldRemoveMeta bool
+	sealingMu sync.RWMutex
+	isSealed  bool
 
 	// to transfer data to sealed frac
-	lidsTable  *lids.Table
-	tokenTable token.Table
-	sealedIDs  *SealedIDs
+	lidsTable      *lids.Table
+	tokenTable     token.Table
+	sealedIDs      *SealedIDs
+	sortedDocsFile *os.File
 
 	// derivative fraction
 	sealed Fraction
@@ -174,19 +174,18 @@ var systemSeqID = seq.ID{
 	RID: systemRID,
 }
 
-func NewActive(baseFileName string, metaRemove bool, indexWorkers *IndexWorkers, reader *disk.Reader, docBlockCache *cache.Cache[[]byte]) *Active {
+func NewActive(baseFileName string, indexWorkers *IndexWorkers, reader *disk.Reader, docBlockCache *cache.Cache[[]byte]) *Active {
 	mids := NewIDs()
 	rids := NewIDs()
 
 	creationTime := uint64(time.Now().UnixMilli())
 
 	f := &Active{
-		shouldRemoveMeta: metaRemove,
-		TokenList:        NewActiveTokenList(conf.IndexWorkers),
-		DocsPositions:    NewSyncDocsPositions(),
-		MIDs:             mids,
-		RIDs:             rids,
-		DocBlocks:        NewIDs(),
+		TokenList:     NewActiveTokenList(conf.IndexWorkers),
+		DocsPositions: NewSyncDocsPositions(),
+		MIDs:          mids,
+		RIDs:          rids,
+		DocBlocks:     NewIDs(),
 		frac: frac{
 			docBlockCache: docBlockCache,
 			BaseFileName:  baseFileName,
@@ -448,7 +447,7 @@ func (f *Active) Type() string {
 	return TypeActive
 }
 
-func (f *Active) Release(sealed Fraction) {
+func (f *Active) Release(sealed Fraction, removeMeta bool) error {
 	f.useLock.Lock()
 	f.sealed = sealed
 	f.useLock.Unlock()
@@ -459,6 +458,32 @@ func (f *Active) Release(sealed Fraction) {
 	f.MIDs = nil
 	f.TokenList = nil
 	f.DocsPositions = nil
+
+	// Once frac is released, it is safe to remove the docs file,
+	// since search queries will use the sealed implementation.
+
+	if err := f.frac.docsFile.Close(); err != nil {
+		return fmt.Errorf("closing docs file: %w", err)
+	}
+
+	f.docBlockCache.Release()
+	f.docBlockCache = nil
+
+	rmFileName := f.frac.BaseFileName + consts.DocsFileSuffix
+	if err := os.Remove(rmFileName); err != nil {
+		logger.Error("error removing docs file",
+			zap.String("file", rmFileName),
+			zap.Error(err))
+	}
+
+	if removeMeta {
+		rmFileName := f.frac.BaseFileName + consts.MetaFileSuffix
+		if err := os.Remove(rmFileName); err != nil {
+			logger.Error("can't delete metas file", zap.String("file", rmFileName), zap.Error(err))
+		}
+	}
+
+	return nil
 }
 
 func (f *Active) UpdateDiskStats(docsLen, metaLen uint64) uint64 {
@@ -555,6 +580,14 @@ func (f *Active) Suicide() { // it seams we never call this method (of Active fr
 	if err != nil {
 		logger.Error("error removing file",
 			zap.String("file", f.BaseFileName+consts.DocsFileSuffix),
+			zap.Error(err),
+		)
+	}
+
+	err = os.Remove(f.BaseFileName + consts.SortedDocsFileSuffix)
+	if err != nil {
+		logger.Error("error removing file",
+			zap.String("file", f.BaseFileName+consts.SortedDocsFileSuffix),
 			zap.Error(err),
 		)
 	}

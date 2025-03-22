@@ -10,6 +10,7 @@ import (
 
 	insaneJSON "github.com/ozontech/insane-json"
 	"github.com/stretchr/testify/assert"
+	"github.com/ozontech/seq-db/consts"
 	"go.uber.org/atomic"
 
 	"github.com/ozontech/seq-db/disk"
@@ -80,9 +81,11 @@ func BenchmarkSealing(b *testing.B) {
 		TokenListZstdLevel:     minZstdLevel,
 		DocsPositionsZstdLevel: minZstdLevel,
 		TokenTableZstdLevel:    minZstdLevel,
+		DocBlocksZstdLevel:     minZstdLevel,
+		DocBlockSize:           consts.MB * 4,
 	}
 	for i := 0; i < b.N; i++ {
-		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), true, indexWorkers, dr, nil)
+		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), indexWorkers, dr, nil)
 		err := fillActiveFraction(active)
 		assert.NoError(b, err)
 

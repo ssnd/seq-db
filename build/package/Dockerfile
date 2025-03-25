@@ -20,8 +20,9 @@ ENV GOOS linux
 ENV GOARCH ${TARGETARCH:-amd64}
 
 RUN go build -trimpath \
-    -ldflags "-X github.com/ozontech/seqdb/buildinfo.Version=${VERSION}" \
-    -ldflags "-X github.com/ozontech/seqdb/buildinfo.Version=${BUILD_TIME}" \
+    -ldflags "-w -s  \
+    -X github.com/ozontech/seq-db/buildinfo.Version=${VERSION}  \
+    -X github.com/ozontech/seq-db/buildinfo.BuildTime=${BUILD_TIME}" \
     -o seq-db ./cmd/seq-db
 
 # Deploy

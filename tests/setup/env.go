@@ -8,7 +8,6 @@ import (
 	"net"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"time"
 
 	"go.uber.org/atomic"
@@ -44,9 +43,6 @@ type TestingEnvConfig struct {
 
 	Mapping        seq.Mapping
 	IndexAllFields bool
-
-	StartStorePort    int
-	StartIngestorPort int
 }
 
 type Stores [][]*storeapi.Store
@@ -60,9 +56,7 @@ type TestingEnv struct {
 	HotStores  Stores
 	ColdStores Stores
 
-	hotStoresList  []*storeapi.Store
-	coldStoresList []*storeapi.Store
-	Config         *TestingEnvConfig
+	Config *TestingEnvConfig
 }
 
 func (cfg *TestingEnvConfig) GetColdFactor() int {
@@ -79,7 +73,7 @@ func (cfg *TestingEnvConfig) GetHotFactor() int {
 	return cfg.HotFactor
 }
 
-func (cfg *TestingEnvConfig) GetFracManagerConfig(port int) fracmanager.Config {
+func (cfg *TestingEnvConfig) GetFracManagerConfig(replicaID string) fracmanager.Config {
 	config := cfg.FracManagerConfig
 	if config == nil {
 		// Fastest zstd compression, see: https://github.com/facebook/zstd/releases/tag/v1.3.4.
@@ -97,17 +91,17 @@ func (cfg *TestingEnvConfig) GetFracManagerConfig(port int) fracmanager.Config {
 			},
 		})
 	}
-	config.DataDir = filepath.Join(cfg.DataDir, strconv.Itoa(port))
+	config.DataDir = filepath.Join(cfg.DataDir, replicaID)
 	return *config
 }
 
-func (cfg *TestingEnvConfig) GetStoreConfig(port int, cold bool) storeapi.StoreConfig {
+func (cfg *TestingEnvConfig) GetStoreConfig(replicaID string, cold bool) storeapi.StoreConfig {
 	mode := storeapi.StoreModeHot
 	if cold {
 		mode = storeapi.StoreModeCold
 	}
 	return storeapi.StoreConfig{
-		FracManager: cfg.GetFracManagerConfig(port),
+		FracManager: cfg.GetFracManagerConfig(replicaID),
 		API: storeapi.APIConfig{
 			StoreMode: mode,
 			Search: storeapi.SearchConfig{
@@ -163,63 +157,57 @@ func NewTestingEnv(cfg *TestingEnvConfig) *TestingEnv {
 		hotStoresAccessCounter:  new(atomic.Uint64),
 		coldStoresAccessCounter: new(atomic.Uint64),
 
-		hotStoresList:  straighten(hotStores),
-		coldStoresList: straighten(coldStores),
-		Config:         cfg,
+		Config: cfg,
 	}
 }
 
-func straighten(storesList Stores) []*storeapi.Store {
+func flatten(storesList Stores) []*storeapi.Store {
 	if len(storesList) == 0 {
 		return nil
 	}
-	list := make([]*storeapi.Store, 0)
+
+	var list []*storeapi.Store
 	for _, replicas := range storesList {
 		list = append(list, replicas...)
 	}
+
 	rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
 	return list
 }
 
-func (cfg *TestingEnvConfig) GetHotStoresConfs() ([]storeapi.StoreConfig, []int) {
-	ports := make([]int, 0)
+func (cfg *TestingEnvConfig) GetHotStoresConfs() []storeapi.StoreConfig {
 	cfgs := make([]storeapi.StoreConfig, 0)
 
-	portStart := cfg.StartStorePort
 	for i := 0; i < cfg.HotShards; i++ {
 		for j := 0; j < cfg.HotFactor; j++ {
-			port := portStart + i*10 + j
-			cfgs = append(cfgs, cfg.GetStoreConfig(port, false))
-			ports = append(ports, port)
+			replicaID := fmt.Sprintf("%d-%d", i, j)
+			cfgs = append(cfgs, cfg.GetStoreConfig(replicaID, false))
 		}
 	}
-	return cfgs, ports
+
+	return cfgs
 }
 
-func (cfg *TestingEnvConfig) GetColdStoresConfs() ([]storeapi.StoreConfig, []int) {
-	ports := make([]int, 0)
+func (cfg *TestingEnvConfig) GetColdStoresConfs() []storeapi.StoreConfig {
 	cfgs := make([]storeapi.StoreConfig, 0)
 
-	portStart := cfg.StartStorePort + 100
 	for i := 0; i < cfg.ColdShards; i++ {
 		for j := 0; j < cfg.ColdFactor; j++ {
-			port := portStart + i*10 + j
-			cfgs = append(cfgs, cfg.GetStoreConfig(port, true))
-			ports = append(ports, port)
+			replicaID := fmt.Sprintf("%d-%d", i, j)
+			cfgs = append(cfgs, cfg.GetStoreConfig(replicaID, true))
 		}
 	}
-	return cfgs, ports
+
+	return cfgs
 }
 
-func (cfg *TestingEnvConfig) MakeStores(confs []storeapi.StoreConfig, ports []int, replicas int) (Stores, [][]string) {
+func (cfg *TestingEnvConfig) MakeStores(confs []storeapi.StoreConfig, replicas int) (Stores, [][]string) {
 	replicaSets := len(confs) / replicas
 	storesList := make(Stores, replicaSets)
 	storesAddrs := make([][]string, replicaSets)
 
-	for i := 0; i < len(confs); i++ {
+	for i := range confs {
 		k := i / replicas
-		addr := giveAddr(ports[i])
-
 		common.CreateDir(confs[i].FracManager.DataDir)
 
 		mappingProvider, err := mappingprovider.New(
@@ -236,12 +224,9 @@ func (cfg *TestingEnvConfig) MakeStores(confs []storeapi.StoreConfig, ports []in
 			panic(err)
 		}
 
-		lis, err := net.Listen("tcp", addr)
-		if err != nil {
-			logger.Fatal("store can't listen grpc addr", zap.Error(err))
-		}
-
+		lis := randomListener()
 		store.Start(lis)
+
 		storesList[k] = append(storesList[k], store)
 		storesAddrs[k] = append(storesAddrs[k], store.GrpcAddr())
 	}
@@ -251,12 +236,12 @@ func (cfg *TestingEnvConfig) MakeStores(confs []storeapi.StoreConfig, ports []in
 
 func MakeStores(cfg *TestingEnvConfig, replicas int, cold bool) (Stores, [][]string) {
 	if cold {
-		confs, ports := cfg.GetColdStoresConfs()
-		return cfg.MakeStores(confs, ports, replicas)
+		confs := cfg.GetColdStoresConfs()
+		return cfg.MakeStores(confs, replicas)
 	}
 
-	confs, ports := cfg.GetHotStoresConfs()
-	return cfg.MakeStores(confs, ports, replicas)
+	confs := cfg.GetHotStoresConfs()
+	return cfg.MakeStores(confs, replicas)
 }
 
 func newNetworkStores(ips [][]string) *stores.Stores {
@@ -277,11 +262,13 @@ type Ingestor struct {
 
 func MakeIngestors(cfg *TestingEnvConfig, hot, cold [][]string) []*Ingestor {
 	ingestors := make([]*Ingestor, cfg.IngestorCount)
+
 	coldStores := newNetworkStores(cold)
 	hotStores := newNetworkStores(hot)
-	for i := 0; i < cfg.IngestorCount; i++ {
-		addr := giveAddr(cfg.StartIngestorPort + i)
-		grpcAddr := giveAddr(cfg.StartIngestorPort + i + cfg.IngestorCount)
+
+	for i := range cfg.IngestorCount {
+		httpLis := randomListener()
+		grpcLis := randomListener()
 
 		mappingProvider, err := mappingprovider.New(
 			"",
@@ -299,7 +286,7 @@ func MakeIngestors(cfg *TestingEnvConfig, hot, cold [][]string) []*Ingestor {
 					ExportTimeout:  10 * time.Minute, // the same (debugging purposes)
 					QueryRateLimit: 0,
 					EsVersion:      "test",
-					GatewayAddr:    grpcAddr,
+					GatewayAddr:    grpcLis.Addr().String(),
 				},
 				Bulk: bulk.IngestorConfig{
 					HotStores:   hotStores,
@@ -333,22 +320,14 @@ func MakeIngestors(cfg *TestingEnvConfig, hot, cold [][]string) []*Ingestor {
 			logger.Fatal("error during ingestor init", zap.Error(err))
 		}
 
-		httpListener, err := net.Listen("tcp", addr)
-		if err != nil {
-			logger.Fatal("ingestor can't listen http addr", zap.Error(err))
-		}
-		grpcListener, err := net.Listen("tcp", grpcAddr)
-		if err != nil {
-			logger.Fatal("ingestor can't listen grpc addr", zap.Error(err))
-		}
-
 		ingestors[i] = &Ingestor{
 			Ingestor: proxyIngestor,
-			HTTPAddr: httpListener.Addr().String(),
+			HTTPAddr: httpLis.Addr().String(),
 		}
 
-		ingestors[i].Start(httpListener, grpcListener)
+		ingestors[i].Start(httpLis, grpcLis)
 	}
+
 	return ingestors
 }
 
@@ -362,13 +341,15 @@ func (t *TestingEnv) Ingestor() *Ingestor {
 // Store returns random store managed by TestingEnv
 // but guarantees that each store will return at least once
 func (t *TestingEnv) Store(hot bool) *storeapi.Store {
-	storesList := t.coldStoresList
+	stores := flatten(t.ColdStores)
 	counter := t.coldStoresAccessCounter
+
 	if hot {
-		storesList = t.hotStoresList
+		stores = flatten(t.HotStores)
 		counter = t.hotStoresAccessCounter
 	}
-	return storesList[int(counter.Inc())%len(storesList)]
+
+	return stores[int(counter.Inc())%len(stores)]
 }
 
 func (t *TestingEnv) IngestorAddr() string {
@@ -391,8 +372,12 @@ func (t *TestingEnv) IngestorFetchAddr() string {
 	return t.IngestorAddr() + "/fetch"
 }
 
-func giveAddr(port int) string {
-	return fmt.Sprintf("%s:%d", common.Localhost, port)
+func randomListener() (lis net.Listener) {
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:0", common.Localhost))
+	if err != nil {
+		panic(err)
+	}
+	return lis
 }
 
 type storeCallback func(*storeapi.Store)

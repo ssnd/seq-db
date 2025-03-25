@@ -139,7 +139,7 @@ func main() {
 	kingpin.Version(buildinfo.Version)
 
 	runtime.SetMutexProfileFraction(5)
-	_, _ = maxprocs.Set(maxprocs.Logger(func(tpl string, args ...interface{}) {
+	_, _ = maxprocs.Set(maxprocs.Logger(func(tpl string, args ...any) {
 		logger.Info(fmt.Sprintf(tpl, args...))
 	}))
 	numCPU := runtime.GOMAXPROCS(0)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
 	"net/http"
 	"os"
 	"testing"
@@ -38,8 +37,6 @@ func NewReplicaEnv(t *testing.T, config setup.TestingEnvConfig) ReplicasEnv {
 	}
 	config.DataDir = dir
 	config.IngestorCount = 1
-	config.StartStorePort = 1025 + rand.Intn(math.MaxInt16-1025)
-	config.StartIngestorPort = 1025 + rand.Intn(math.MaxInt16-1025)
 
 	env := ReplicasEnv{setup.NewTestingEnv(&config)}
 

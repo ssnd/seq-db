@@ -20,14 +20,6 @@ type Base struct {
 }
 
 func NewBase(config *setup.TestingEnvConfig) *Base {
-	if config != nil {
-		if config.StartIngestorPort == 0 {
-			config.StartIngestorPort = common.IngestorPortStart
-		}
-		if config.StartStorePort == 0 {
-			config.StartStorePort = common.StorePortStart
-		}
-	}
 	return &Base{Config: config}
 }
 

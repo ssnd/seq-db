@@ -248,18 +248,17 @@ func (s *SingleTestSuite) TestFetchHints() {
 	origIDs := qpr.IDs
 
 	s.RunFracEnvs(suites.AllFracEnvs, true, func() {
-
 		ids := make(seq.IDSources, len(origIDs))
 		copy(ids, origIDs)
 
 		docsStreamWithHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false, search.FetchFieldsFilter{})
-		s.Assert().NoError(err)
+		s.Require().NoError(err)
 
-		fetched := []string{}
+		var fetched []string
 		for doc, err := docsStreamWithHints.Next(); err == nil; doc, err = docsStreamWithHints.Next() {
 			fetched = append(fetched, string(doc.Data))
 		}
-		s.Assert().Equal(docStrs, fetched)
+		s.Require().Equal(docStrs, fetched)
 
 		// no hints:
 		for i := range ids {
@@ -267,13 +266,13 @@ func (s *SingleTestSuite) TestFetchHints() {
 		}
 
 		docsStreamNoHints, err := s.Ingestor().SearchIngestor.FetchDocsStream(context.TODO(), ids, false, search.FetchFieldsFilter{})
-		s.Assert().NoError(err)
+		s.Require().NoError(err)
 
 		fetched = []string{}
 		for doc, err := docsStreamNoHints.Next(); err == nil; doc, err = docsStreamNoHints.Next() {
 			fetched = append(fetched, string(doc.Data))
 		}
-		s.Assert().Equal(docStrs, fetched)
+		s.Require().Equal(docStrs, fetched)
 
 		// break hints:
 		for i := range ids {
@@ -444,9 +443,7 @@ func (s *SingleTestSuite) TestIndexingAllFields() {
 	// We need to restart both store and ingestor to apply new config.
 	s.Config.Mapping = nil
 	s.Config.IndexAllFields = true
-
-	s.RestartStore()
-	s.RestartIngestor()
+	s.Restart()
 
 	var (
 		docsCount = 5

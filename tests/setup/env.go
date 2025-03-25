@@ -56,9 +56,7 @@ type TestingEnv struct {
 	HotStores  Stores
 	ColdStores Stores
 
-	hotStoresList  []*storeapi.Store
-	coldStoresList []*storeapi.Store
-	Config         *TestingEnvConfig
+	Config *TestingEnvConfig
 }
 
 func (cfg *TestingEnvConfig) GetColdFactor() int {
@@ -159,9 +157,7 @@ func NewTestingEnv(cfg *TestingEnvConfig) *TestingEnv {
 		hotStoresAccessCounter:  new(atomic.Uint64),
 		coldStoresAccessCounter: new(atomic.Uint64),
 
-		hotStoresList:  flatten(hotStores),
-		coldStoresList: flatten(coldStores),
-		Config:         cfg,
+		Config: cfg,
 	}
 }
 

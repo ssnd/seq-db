@@ -228,7 +228,7 @@ func (cfg *TestingEnvConfig) MakeStores(confs []storeapi.StoreConfig, replicas i
 			panic(err)
 		}
 
-		lis, _ := randomListener()
+		lis := randomListener()
 		store.Start(lis)
 
 		storesList[k] = append(storesList[k], store)
@@ -271,8 +271,8 @@ func MakeIngestors(cfg *TestingEnvConfig, hot, cold [][]string) []*Ingestor {
 	hotStores := newNetworkStores(hot)
 
 	for i := range cfg.IngestorCount {
-		httpLis, _ := randomListener()
-		grpcLis, _ := randomListener()
+		httpLis := randomListener()
+		grpcLis := randomListener()
 
 		mappingProvider, err := mappingprovider.New(
 			"",
@@ -376,12 +376,12 @@ func (t *TestingEnv) IngestorFetchAddr() string {
 	return t.IngestorAddr() + "/fetch"
 }
 
-func randomListener() (lis net.Listener, port int) {
+func randomListener() (lis net.Listener) {
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:0", common.Localhost))
 	if err != nil {
 		panic(err)
 	}
-	return lis, lis.Addr().(*net.TCPAddr).Port
+	return lis
 }
 
 type storeCallback func(*storeapi.Store)

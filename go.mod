@@ -8,12 +8,12 @@ require (
 	github.com/cep21/circuit/v3 v3.2.2
 	github.com/golang/mock v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1
-	github.com/klauspost/compress v1.17.11
+	github.com/klauspost/compress v1.18.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/ozontech/insane-json v0.1.9
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
-	github.com/prometheus/client_golang v1.20.5
+	github.com/prometheus/client_golang v1.21.1
 	github.com/stretchr/testify v1.10.0
 	github.com/valyala/fastrand v1.1.0
 	go.opencensus.io v0.24.0
@@ -40,7 +40,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.55.0 // indirect
+	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/uber/jaeger-client-go v2.25.0+incompatible // indirect
 	golang.org/x/net v0.33.0 // indirect

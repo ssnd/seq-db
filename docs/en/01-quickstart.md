@@ -83,4 +83,4 @@ seq-db offers many more useful features for working with logs. Here's a couple:
 - A custom query language - [seq-ql](05-seq-ql.md) - that supports pipes, range queries, wildcards and more.
 - Built-in support for various types of aggregations: sum, avg, quantiles etc. TODO add aggregation doc?
 - The ability to combine multiple aggregations into a single request using complex-search TODO add link
-- Document-ID based retrieval can be [fetched](06-ingestor-api.md#fetch)
+- Document-ID based retrieval can be [fetched](10-public-api.md#fetch)

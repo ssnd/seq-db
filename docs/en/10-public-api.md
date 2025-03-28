@@ -4,19 +4,45 @@
 
 seq-db consists of 2 components - proxy and store:
 
-- seq-db proxy and seq-db store communicate via *internal* [seq-db store gRPC API](https://github.com/ozontech/seq-db/tree/main/api/storeapi).
-- To search, clients should use [seq-db proxy gRPC API](https://github.com/ozontech/seq-db/tree/main/api/seqproxyapi/v1).
-- To bulk, clients should
-  use [HTTP API elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html)
-- To debug search API, we have `seq-db proxy HTTP API`.
+- seq-db proxy and seq-db store communicate via
+  *internal* [seq-db store gRPC API](https://github.com/ozontech/seq-db/tree/main/api/storeapi).
+- Querying logs is done via [seq-db proxy gRPC API](https://github.com/ozontech/seq-db/tree/main/api/seqproxyapi/v1).
+- Ingesting logs is done via [Elasticsearch compatible HTTP API](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html)
+- For debugging purposes, seq-db proxy has `HTTP API` similar to `gRPC API`
 
-This document describes `seq-db proxy gRPC API` in details
+This document describes `seq-db ingestion API` and `seq-db search API`
 
 ## Bulk HTTP API
 
-seq-db compatible with bulk API elasticsearch
+seq-db is compatible with Elasticsearch bulk API
 
-Example request:
+### `/`
+
+Returns a hardcoded ES response that specifies the Elasticsearch version used. This feature allows the usage of seq-db
+as an Elasticsearch output for logstash, filebeat, and other log shippers.
+
+#### Example request:
+
+```bash
+curl -X GET http://localhost:9002/
+```
+
+#### Example successful response:
+
+```json
+{
+  "cluster_name": "seq-db",
+  "version": {
+    "number": "8.9.0"
+  }
+}
+```
+
+### `/_bulk`
+
+Receives body, parses it to docs and metas and writes to stores via internal API.
+
+#### Example request:
 
 ```bash
 curl -X POST http://localhost:9002/_bulk -d '
@@ -43,36 +69,53 @@ curl -X POST http://localhost:9002/_bulk -d '
 '
 ```
 
-Example response:
+#### Example successful response:
 
 ```json
 {
   "took": 11,
   "errors": false,
   "items": [
-    {
-      "create": {
-        "status": 201
-      }
-    },
-    {
-      "create": {
-        "status": 201
-      }
-    },
-    ...
-    {
-      "create": {
-        "status": 201
-      }
-    }
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } },
+    { "create": { "status": 201 } }
   ]
 }
-
 ```
 
-You can notice that service field `index` is left empty. seq-db ignores data passed in this field, since it uses mapping
-for field indexing. More information about mapping in [relevant document](03-index-types.md)
+One can notice that `index` field is left empty. seq-db ignores data passed in this field, since it uses mapping
+for field indexing. You can find more information about mapping in [relevant document](03-index-types.md)
+
+#### Example rate-limited response
+
+There should not be more than `consts.IngestorMaxInflightBulks` requests at the same time (32 by default), otherwise
+request is rate-limited and seq-db will response with [`429`](https://developer.mozilla.org/ru/docs/Web/HTTP/Reference/Status/429) status code.
+
+#### Example error response
+
+In case of error seq-db returns `500` status code and the error message.
+E.g. if we try to ingest corrupted json
+
+```bash
+curl -v -X POST http://localhost:9002/_bulk -d '
+{"index":""}
+{"k8s_pod":"seq-proxy", "request_time": "123}
+'
+```
+
+We get
+
+```
+processing doc: unexpected end of string near `", "request_time": "123`
+                                                  ^
+```
 
 ## Search gRPC API
 

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,6 +183,43 @@ func (s *SingleTestSuite) TestSearchNestedIndexOneFraction() {
 
 	s.Assert().Equal(0, len(s.SearchDocs(`spans.span_id:*`, 0, seq.DocsOrderAsc)))
 	s.Assert().Equal(numDocs, len(s.SearchDocs(`spans.span_id:*`, numDocs+1, seq.DocsOrderAsc)))
+}
+
+// Test AND tree (sorting issue)
+func (s *SingleTestSuite) TestSearchNestedWithAND() {
+	const (
+		numSpans  = 10
+		numTraces = 50000 // here it is important to have a large enough number of documents to reproduce the sorting problem
+		span      = `{"span_id": "%d"}`
+		doc       = `{"timestamp":%q, "trace_id": "%d", "spans": [%s]}`
+	)
+	docs := make([]string, 0, numTraces)
+	getNextTs := getAutoTsGenerator(time.Now(), time.Second)
+	for i := range numTraces {
+		spans := make([]string, 0, numSpans)
+		for j := range numSpans {
+			spans = append(spans, fmt.Sprintf(span, j))
+		}
+		docs = append(docs, fmt.Sprintf(doc, getNextTs(), i, strings.Join(spans, ", ")))
+	}
+
+	tmp := docs
+	bulkSize := len(docs) / 5
+	for len(tmp) > 0 {
+		l := min(bulkSize, len(tmp))
+		chunk := tmp[:l]
+		tmp = tmp[l:]
+		s.Bulk(chunk)
+	}
+
+	s.RunFracEnvs(suites.AllFracEnvs, true, func() {
+		for i := 0; i < 20; i++ {
+			traceID := rand.IntN(numTraces)
+			spanID := rand.IntN(numSpans)
+			q := fmt.Sprintf("trace_id:%d AND spans.span_id:%d", traceID, spanID)
+			s.Assert().Equal(docs[traceID:traceID+1], s.SearchDocs(q, 10, seq.DocsOrderDesc), q)
+		}
+	})
 }
 
 func (s *SingleTestSuite) TestSearchNot() {

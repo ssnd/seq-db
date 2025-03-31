@@ -15,6 +15,9 @@ type queueIDs struct {
 func (p *queueIDs) Len() int { return len(p.lids) }
 func (p *queueIDs) Less(i, j int) bool {
 	if p.mids[p.lids[i]] == p.mids[p.lids[j]] {
+		if p.rids[p.lids[i]] == p.rids[p.lids[j]] {
+			return p.lids[i] > p.lids[j]
+		}
 		return p.rids[p.lids[i]] > p.rids[p.lids[j]]
 	}
 	return p.mids[p.lids[i]] > p.mids[p.lids[j]]
@@ -76,6 +79,14 @@ func (c *SeqIDCmp) compare(a, b uint32) int {
 
 	if ridA < ridB {
 		return -1
+	}
+
+	if a < b {
+		return -1
+	}
+
+	if a > b {
+		return 1
 	}
 
 	return 0

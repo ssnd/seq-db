@@ -149,20 +149,12 @@ func (si *SealedIDs) getIDBlockIndexByLID(lid seq.LID) int64 {
 	return int64(lid) / consts.IDsPerBlock
 }
 
-func (si *SealedIDs) GetDocPosByLID(lid seq.LID) DocPos {
-	index := si.getIDBlockIndexByLID(lid)
-	positions := si.GetParamsBlock(uint32(index))
-	startLID := index * consts.IDsPerBlock
-	i := lid - seq.LID(startLID)
-	return DocPos(positions[i])
-}
-
 // GetDocPosByLIDs returns a slice of DocPos for the corresponding LIDs.
 // Passing sorted LIDs (asc or desc) will improve the performance of this method.
 // For LID with zero value will return DocPos with `DocPosNotFound` value
 func (si *SealedIDs) GetDocPosByLIDs(lids []seq.LID) []DocPos {
 	var (
-		prevIndex int64
+		prevIndex int64 = -1
 		positions []uint64
 		startLID  seq.LID
 	)
@@ -175,9 +167,10 @@ func (si *SealedIDs) GetDocPosByLIDs(lids []seq.LID) []DocPos {
 		}
 
 		index := si.getIDBlockIndexByLID(lid)
-		if positions == nil || prevIndex != index {
+		if prevIndex != index {
 			positions = si.GetParamsBlock(uint32(index))
 			startLID = seq.LID(index * consts.IDsPerBlock)
+			prevIndex = index
 		}
 
 		res[i] = DocPos(positions[lid-startLID])

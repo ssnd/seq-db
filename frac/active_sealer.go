@@ -53,6 +53,10 @@ func seal(f *Active, params SealParams) {
 	}
 	f.setInfoIndexOnDisk(uint64(stat.Size()))
 
+	if err := file.Sync(); err != nil {
+		logger.Fatal("can't sync tmp index file", zap.String("file", file.Name()), zap.Error(err))
+	}
+
 	if err = file.Close(); err != nil {
 		logger.Fatal("can't close file", zap.String("file", file.Name()), zap.Error(err))
 	}

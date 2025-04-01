@@ -49,6 +49,14 @@ func getAutoTsGenerator(start time.Time, step time.Duration) func() string {
 	}
 }
 
+func getAutoTimeGenerator(start time.Time, step time.Duration) func() time.Time {
+	return func() time.Time {
+		cur := start
+		start = start.Add(step)
+		return cur
+	}
+}
+
 func (s *IntegrationTestSuite) TestSearchOne() {
 	origDocs := []string{
 		`{"service":"a", "xxxx":"yyyy"}`,

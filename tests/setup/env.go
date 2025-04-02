@@ -180,7 +180,7 @@ func (cfg *TestingEnvConfig) GetHotStoresConfs() []storeapi.StoreConfig {
 
 	for i := 0; i < cfg.HotShards; i++ {
 		for j := 0; j < cfg.HotFactor; j++ {
-			replicaID := fmt.Sprintf("%d-%d", i, j)
+			replicaID := fmt.Sprintf("hot-%d-%d", i, j)
 			cfgs = append(cfgs, cfg.GetStoreConfig(replicaID, false))
 		}
 	}
@@ -193,7 +193,7 @@ func (cfg *TestingEnvConfig) GetColdStoresConfs() []storeapi.StoreConfig {
 
 	for i := 0; i < cfg.ColdShards; i++ {
 		for j := 0; j < cfg.ColdFactor; j++ {
-			replicaID := fmt.Sprintf("%d-%d", i, j)
+			replicaID := fmt.Sprintf("cold-%d-%d", i, j)
 			cfgs = append(cfgs, cfg.GetStoreConfig(replicaID, true))
 		}
 	}

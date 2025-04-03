@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
@@ -88,13 +89,16 @@ func (m *MetaData) unmarshalVersion1(b []byte) error {
 	b = b[4:]
 
 	// Decode tokens.
-	m.Tokens = make([]MetaToken, toksLen)
+	m.Tokens = m.Tokens[:0]
+	m.Tokens = slices.Grow(m.Tokens, int(toksLen))
 	var err error
 	for i := uint32(0); i < toksLen; i++ {
-		b, err = m.Tokens[i].UnmarshalBinary(b)
+		var token MetaToken
+		b, err = token.UnmarshalBinary(b)
 		if err != nil {
 			return err
 		}
+		m.Tokens = append(m.Tokens, token)
 	}
 	return nil
 }

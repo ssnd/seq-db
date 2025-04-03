@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"sync"
 
+	"github.com/ozontech/seq-db/bytespool"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
@@ -104,9 +105,6 @@ var metaDataPool = sync.Pool{
 }
 
 func (w *IndexWorkers) appendWorker(index int) {
-	// just a reusable buffer for unpacking
-	var metasPayload []byte
-
 	// collector of bulk meta data
 	collector := newMetaDataCollector()
 
@@ -116,9 +114,12 @@ func (w *IndexWorkers) appendWorker(index int) {
 		sw := stopwatch.New()
 		total := sw.Start("total_indexing")
 
-		if metasPayload, err = disk.DocBlock(task.Metas).DecompressTo(metasPayload); err != nil {
+		metaBuf := bytespool.AcquireReset(int(task.Metas.RawLen()))
+
+		if metaBuf.B, err = task.Metas.DecompressTo(metaBuf.B); err != nil {
 			logger.Panic("error decompressing meta", zap.Error(err)) // TODO: error handling
 		}
+		metasPayload := metaBuf.B
 
 		active := task.Frac
 		blockIndex := active.DocBlocks.Append(task.Pos)
@@ -138,6 +139,7 @@ func (w *IndexWorkers) appendWorker(index int) {
 			collector.AppendMeta(*meta)
 		}
 		metaDataPool.Put(meta)
+		bytespool.Release(metaBuf)
 		parsingMetric.Stop()
 
 		m := sw.Start("doc_params_set")

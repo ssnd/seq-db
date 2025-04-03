@@ -1,7 +1,7 @@
 ARG APP_IMAGE=ubuntu:latest
 
 # Build
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
+FROM golang:1.24 AS build
 
 ARG VERSION
 ARG BUILD_TIME
@@ -15,7 +15,7 @@ RUN go mod download
 
 COPY . .
 
-ENV CGO_ENABLED 0
+ENV CGO_ENABLED 1
 ENV GOOS linux
 ENV GOARCH ${TARGETARCH:-amd64}
 

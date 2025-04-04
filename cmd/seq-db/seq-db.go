@@ -34,7 +34,6 @@ import (
 	"github.com/ozontech/seq-db/proxy/search"
 	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/proxyapi"
-	storesearcher "github.com/ozontech/seq-db/searcher"
 	"github.com/ozontech/seq-db/storeapi"
 	"github.com/ozontech/seq-db/tracing"
 )
@@ -324,6 +323,15 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 				DocsPositionsZstdLevel: *sealCompressLevel,
 				TokenTableZstdLevel:    *sealCompressLevel,
 			},
+			Fraction: frac.Config{
+				Search: frac.SearchConfig{
+					AggLimits: frac.AggLimits{
+						MaxFieldTokens:     *aggMaxFieldTokens,
+						MaxGroupTokens:     *aggMaxGroupTokens,
+						MaxTIDsPerFraction: *aggMaxTIDsPerFraction,
+					},
+				},
+			},
 		},
 		API: storeapi.APIConfig{
 			StoreMode: configMode,
@@ -337,12 +345,7 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 				FractionsPerIteration: runtime.GOMAXPROCS(0),
 				RequestsLimit:         *searchRequestsLimit,
 				LogThreshold:          time.Millisecond * time.Duration(*logSearchThresholdMs),
-				Aggregation: storeapi.AggregationsConfig{
-					MaxGroupTokens:     *aggMaxGroupTokens,
-					MaxFieldTokens:     *aggMaxFieldTokens,
-					MaxTIDsPerFraction: *aggMaxTIDsPerFraction,
-				},
-				Async: storesearcher.AsyncSearcherConfig{
+				Async: fracmanager.AsyncSearcherConfig{
 					DataDir:     *asyncSearchesDataDir,
 					Parallelism: *asyncSearchesConcurrency,
 				},

@@ -99,12 +99,13 @@ type GrpcV1 struct {
 	fracManager     *fracmanager.FracManager
 	mappingProvider MappingProvider
 
-	bulkData   bulkData
-	searchData searchData
-	fetchData  fetchData
+	bulkData      bulkData
+	searchData    searchData
+	fetchData     fetchData
+	asyncSearcher *search.AsyncSearcher
 }
 
-func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *GrpcV1 {
+func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, searcher *search.WorkerPool, asyncSearcher *search.AsyncSearcher, mappingProvider MappingProvider) *GrpcV1 {
 	g := &GrpcV1{
 		config:          config,
 		fracManager:     fracManager,
@@ -114,11 +115,12 @@ func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingPr
 			writeQueue:  atomic.NewUint64(0),
 		},
 		searchData: searchData{
-			workerPool: search.NewWorkerPool(config.Search.WorkersCount),
+			workerPool: searcher,
 		},
 		fetchData: fetchData{
 			docFetcher: fetch.New(conf.FetchWorkers),
 		},
+		asyncSearcher: asyncSearcher,
 	}
 
 	go g.bulkStats()

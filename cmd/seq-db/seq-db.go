@@ -34,6 +34,7 @@ import (
 	"github.com/ozontech/seq-db/proxy/search"
 	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/proxyapi"
+	storesearch "github.com/ozontech/seq-db/search"
 	"github.com/ozontech/seq-db/storeapi"
 	"github.com/ozontech/seq-db/tracing"
 )
@@ -102,6 +103,9 @@ var (
 	mappingUpdatePeriod  = kingpin.Flag("mapping-update-period", "the amount of time to pass for the mappings to be reloaded").Default("30s").Duration()
 
 	useSeqQLByDefault = kingpin.Flag("use-seq-ql-by-default", "enable seq-ql as default query language").Default("false").Bool()
+
+	asyncSearchesDataDir     = kingpin.Flag("data-dir-async-searches", "data dir that contains async searches, default is subfolder in --data-dir").String()
+	asyncSearchesParallelism = kingpin.Flag("async-searches-parallelism", "the maximum concurrent async search requests").Int()
 )
 
 const (
@@ -321,6 +325,10 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 				DocsPositionsZstdLevel: *sealCompressLevel,
 				TokenTableZstdLevel:    *sealCompressLevel,
 			},
+		},
+		AsyncSearch: storesearch.AsyncSearcherConfig{
+			DataDir:     *asyncSearchesDataDir,
+			Parallelism: *asyncSearchesParallelism,
 		},
 		API: storeapi.APIConfig{
 			StoreMode: configMode,

@@ -30,6 +30,14 @@ func (i inMemoryAPIClient) Search(ctx context.Context, in *storeapi.SearchReques
 	return i.store.GrpcV1().Search(ctx, in)
 }
 
+func (i inMemoryAPIClient) StartAsyncSearch(ctx context.Context, in *storeapi.StartAsyncSearchRequest, _ ...grpc.CallOption) (*storeapi.StartAsyncSearchResponse, error) {
+	return i.store.GrpcV1().StartAsyncSearch(ctx, in)
+}
+
+func (i inMemoryAPIClient) FetchAsyncSearchResult(ctx context.Context, in *storeapi.FetchAsyncSearchResultRequest, _ ...grpc.CallOption) (*storeapi.FetchAsyncSearchResultResponse, error) {
+	return i.store.GrpcV1().FetchAsyncSearchResult(ctx, in)
+}
+
 type storeAPIFetchServer struct {
 	grpc.ServerStream
 	ctx context.Context

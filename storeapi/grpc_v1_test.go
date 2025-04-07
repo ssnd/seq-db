@@ -8,6 +8,7 @@ import (
 
 	insaneJSON "github.com/ozontech/insane-json"
 	"github.com/stretchr/testify/assert"
+	"github.com/ozontech/seq-db/search"
 
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/frac"
@@ -96,7 +97,9 @@ func getTestGrpc(t *testing.T) (*GrpcV1, func(), func()) {
 	mappingProvider, err := mappingprovider.New("", mappingprovider.WithMapping(seq.TestMapping))
 	assert.NoError(t, err)
 
-	g := NewGrpcV1(config, fm, mappingProvider)
+	searcher := search.NewWorkerPool(config.Search.WorkersCount)
+
+	g := NewGrpcV1(config, fm, searcher, nil, mappingProvider)
 
 	release := func() {
 		fm.Stop()

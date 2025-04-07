@@ -28,7 +28,7 @@ type AggQuery struct {
 }
 
 type Params struct {
-	AST *parser.ASTNode
+	AST *parser.ASTNode `json:"-"`
 
 	AggQ         []AggQuery
 	AggLimits    AggLimits

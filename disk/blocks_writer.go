@@ -24,7 +24,7 @@ func NewBlocksWriter(ws io.WriteSeeker) *BlocksWriter {
 	}
 }
 
-func (w *BlocksWriter) appendBlocksRegistry(entry BlocksRegistryEntry) {
+func (w *BlocksWriter) appendBlocksRegistry(entry IndexBlockHeader) {
 	w.blocksRegistry = append(w.blocksRegistry, entry...)
 	w.curIndex++
 }
@@ -34,7 +34,7 @@ func (w *BlocksWriter) GetBlockIndex() uint32 {
 }
 
 func (w *BlocksWriter) WriteEmptyBlock() {
-	header := NewEmptyBlocksRegistryEntry()
+	header := NewEmptyIndexBlockHeader()
 	w.appendBlocksRegistry(header)
 }
 
@@ -57,7 +57,7 @@ func (w *BlocksWriter) WriteBlock(blockType string, data []byte, compress bool, 
 		return 0, err
 	}
 
-	w.appendBlocksRegistry(NewBlocksRegistryEntry(pos, ext1, ext2, data, finalData, codec))
+	w.appendBlocksRegistry(NewIndexBlockHeader(pos, ext1, ext2, data, finalData, codec))
 	if _, err = w.writeSeeker.Write(finalData); err != nil {
 		return 0, err
 	}

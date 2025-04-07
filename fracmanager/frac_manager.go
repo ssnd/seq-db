@@ -41,7 +41,7 @@ type FracManager struct {
 	fracs  []*fracRef
 	active activeRef
 
-	reader       *disk.Reader
+	readLimiter  *disk.ReadLimiter
 	indexWorkers *frac.IndexWorkers
 
 	OldestCT atomic.Uint64
@@ -84,7 +84,7 @@ func NewFracManager(config *Config) *FracManager {
 		config:       config,
 		mature:       atomic.Bool{},
 		indexWorkers: indexWorkers,
-		reader:       disk.NewReader(metric.StoreBytesRead),
+		readLimiter:  disk.NewReadLimiter(conf.ReaderWorkers, metric.StoreBytesRead),
 		ulidEntropy:  ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0),
 		cacheMaintainer: NewCacheMaintainer(config.CacheSize, &CacheMaintainerMetrics{
 			HitsTotal:       metric.CacheHitsTotal,
@@ -297,7 +297,7 @@ func (fm *FracManager) Load(ctx context.Context) error {
 	var err error
 	var notSealed []activeRef
 
-	l := NewLoader(fm.config, fm.reader, fm.cacheMaintainer, fm.indexWorkers, fm.fracCache)
+	l := NewLoader(fm.config, fm.readLimiter, fm.cacheMaintainer, fm.indexWorkers, fm.fracCache)
 	if fm.fracs, notSealed, err = l.load(ctx); err != nil {
 		return err
 	}
@@ -366,20 +366,21 @@ func (fm *FracManager) Append(ctx context.Context, docs, metas disk.DocBlock, wr
 	return nil
 }
 
-func (fm *FracManager) seal(active activeRef) {
-	if err := active.frac.Seal(fm.config.SealParams); err != nil {
+func (fm *FracManager) seal(activeRef activeRef) {
+	indexFile, err := activeRef.frac.Seal(fm.config.SealParams)
+	if err != nil {
 		logger.Panic("sealing error", zap.Error(err))
 	}
-	sealed := frac.NewSealedFromActive(active.frac, fm.reader, fm.cacheMaintainer.CreateSealedIndexCache())
+	sealed := frac.NewSealedFromActive(activeRef.frac, fm.readLimiter, indexFile, fm.cacheMaintainer.CreateIndexCache())
 
 	stats := sealed.Info()
 	fm.fracCache.AddFraction(stats.Name(), stats)
 
 	fm.fracMu.Lock()
-	active.ref.instance = sealed
+	activeRef.ref.instance = sealed
 	fm.fracMu.Unlock()
 
-	active.frac.Release(sealed)
+	activeRef.frac.Release(sealed)
 }
 
 func (fm *FracManager) rotate() activeRef {
@@ -392,7 +393,7 @@ func (fm *FracManager) rotate() activeRef {
 
 	prev := fm.active
 
-	active := frac.NewActive(baseFilePath, fm.config.ShouldRemoveMeta, fm.indexWorkers, fm.reader, fm.cacheMaintainer.CreateDocBlockCache())
+	active := frac.NewActive(baseFilePath, fm.config.ShouldRemoveMeta, fm.indexWorkers, fm.readLimiter, fm.cacheMaintainer.CreateDocBlockCache())
 	fm.active.frac = active
 	fm.active.ref = &fracRef{instance: active}
 	fm.fracs = append(fm.fracs, fm.active.ref)
@@ -407,7 +408,6 @@ func (fm *FracManager) shouldSealOnExit(active *frac.Active) bool {
 
 func (fm *FracManager) Stop() {
 	fm.indexWorkers.Stop()
-	fm.reader.Stop()
 	fm.stopFn()
 
 	fm.statWG.Wait()

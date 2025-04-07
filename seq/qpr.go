@@ -19,6 +19,10 @@ const (
 	DocsOrderAsc  DocsOrder = 1
 )
 
+func (o DocsOrder) IsDesc() bool {
+	return o == DocsOrderDesc
+}
+
 func (o DocsOrder) IsReverse() bool {
 	return o == DocsOrderAsc
 }

@@ -13,34 +13,114 @@ import (
 	"github.com/ozontech/seq-db/parser"
 )
 
-func (f *SimpleFetcher) isSorted() bool {
-	for i := 0; i < len(f.Data)-1; i++ {
-		if f.Data[i] > f.Data[i+1] {
+type testTokenProvider struct {
+	ordered  *simpleTokenProvider
+	shuffled *simpleTokenProvider
+}
+
+func newTestTokenProvider(data []string) testTokenProvider {
+	if len(data) < 2 {
+		return testTokenProvider{ // empty provider
+			ordered:  &simpleTokenProvider{data: data, ordered: true},
+			shuffled: &simpleTokenProvider{data: data, ordered: false},
+		}
+	}
+
+	// prepare shuffled
+	shuffled := simpleTokenProvider{
+		data:    make([]string, len(data)),
+		ordered: true,
+	}
+	copy(shuffled.data, data)
+	for i := 0; i < 100 && shuffled.ordered; i++ {
+		rand.Shuffle(len(shuffled.data), func(i int, j int) {
+			shuffled.data[i], shuffled.data[j] = shuffled.data[j], shuffled.data[i]
+		})
+		shuffled.ordered = isOrdered(shuffled.data)
+	}
+
+	ordered := simpleTokenProvider{
+		data:    make([]string, len(data)),
+		ordered: true,
+	}
+	copy(ordered.data, data)
+	sort.Strings(ordered.data)
+	ordered.data = uniq(ordered.data)
+
+	return testTokenProvider{
+		ordered:  &ordered,
+		shuffled: &shuffled,
+	}
+}
+
+func uniq(data []string) []string {
+	var prev string
+	i := 0
+	for _, v := range data {
+		if v == prev {
+			continue
+		}
+		prev = v
+		data[i] = v
+		i++
+	}
+	return data[:i]
+}
+
+func isOrdered(data []string) bool {
+	for i := 0; i < len(data)-1; i++ {
+		if data[i] > data[i+1] {
 			return false
 		}
 	}
 	return true
 }
 
-func search(t *testing.T, fetcher *SimpleFetcher, narrow bool, req string, expect []string) {
+type simpleTokenProvider struct {
+	data    []string
+	ordered bool
+}
+
+func (tp *simpleTokenProvider) GetToken(i uint32) []byte {
+	return []byte(tp.data[i-1])
+}
+
+func (tp *simpleTokenProvider) FirstTID() uint32 {
+	return 1
+}
+
+func (tp *simpleTokenProvider) LastTID() uint32 {
+	return uint32(len(tp.data))
+}
+
+func (tp *simpleTokenProvider) Ordered() bool {
+	return tp.ordered
+}
+
+func searchAll(t *testing.T, tp testTokenProvider, req string, expect []string) {
+	sort.Strings(expect)
+	assert.False(t, tp.shuffled.Ordered(), "data is sorted")
+	search(t, tp.shuffled, req, expect)
+
+	assert.True(t, tp.ordered.Ordered(), "data is not sorted")
+	search(t, tp.ordered, req, uniq(expect))
+}
+
+func search(t *testing.T, tp *simpleTokenProvider, req string, expect []string) {
 	searchType := "full"
-	if narrow {
+	if tp.Ordered() {
 		searchType = "narrow"
 	}
 
 	token, err := parser.ParseSingleTokenForTests("m", req)
 	require.NoError(t, err)
-	var s Searcher
-	if narrow {
-		s = NewSearcher(token, fetcher, len(fetcher.Data))
-	} else {
-		s = NewSearcher(token, nil, len(fetcher.Data))
-	}
+	s := newSearcher(token, tp)
+
 	res := []string{}
-	for i := s.Begin(); i <= s.End(); i++ {
-		val := fetcher.FetchToken(i)
-		if s.Check(val) {
-			res = append(res, fetcher.Data[i])
+	for i := s.firstTID(); i <= s.lastTID(); i++ {
+		val := tp.GetToken(i)
+		if s.check(val) {
+			res = append(res, string(val))
 		}
 	}
 	sort.Strings(res)
@@ -48,335 +128,263 @@ func search(t *testing.T, fetcher *SimpleFetcher, narrow bool, req string, expec
 	assert.Equal(t, expect, res, "%s search request %q failed", searchType, req)
 }
 
-func searchAll(t *testing.T, fetch *SimpleFetcher, req string, expect []string) {
-	search(t, fetch, false, req, expect)
-	search(t, fetch, true, req, expect)
-}
-
 func TestPatternSimple(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"ab",
-			"abc",
-			"bcfg",
-			"bd",
-			"efg",
-			"lka",
-			"lkk",
-			"x",
-			"zaaa",
-		},
-	}
+	tp := newTestTokenProvider([]string{
+		"ab",
+		"abc",
+		"bcfg",
+		"bd",
+		"efg",
+		"lka",
+		"lkk",
+		"x",
+		"x",
+		"zaaa",
+	})
 
-	assert.True(t, fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, "b*", []string{"bcfg", "bd"})
-	searchAll(t, fetch, "f*", []string{})
-	searchAll(t, fetch, "efg", []string{"efg"})
-	searchAll(t, fetch, "ef", []string{})
-	searchAll(t, fetch, "lk*", []string{"lka", "lkk"})
-	searchAll(t, fetch, "x", []string{"x"})
-	searchAll(t, fetch, "a*", []string{"ab", "abc"})
-	searchAll(t, fetch, "z*", []string{"zaaa"})
-	searchAll(t, fetch, "ab", []string{"ab"})
-	searchAll(t, fetch, "aa", []string{})
-	searchAll(t, fetch, "zz", []string{})
-	searchAll(t, fetch, "zaaa", []string{"zaaa"})
-}
-
-func TestPatternShuffled(t *testing.T) {
-	for i := 0; i < 10000; i++ {
-		fetch := &SimpleFetcher{
-			Data: []string{
-				"ab",
-				"abc",
-				"bcfg",
-				"bd",
-				"efg",
-				"lka",
-				"lkk",
-				"x",
-				"x",
-				"zaaa",
-			},
-		}
-
-		rand.Shuffle(len(fetch.Data), func(i int, j int) {
-			fetch.Data[i], fetch.Data[j] = fetch.Data[j], fetch.Data[i]
-		})
-
-		search(t, fetch, false, "b*", []string{"bcfg", "bd"})
-		search(t, fetch, false, "b*g", []string{"bcfg"})
-		search(t, fetch, false, "b*d", []string{"bd"})
-		search(t, fetch, false, "f*", []string{})
-		search(t, fetch, false, "efg", []string{"efg"})
-		search(t, fetch, false, "ef", []string{})
-		search(t, fetch, false, "lk*", []string{"lka", "lkk"})
-		search(t, fetch, false, "x", []string{"x", "x"})
-		search(t, fetch, false, "a*", []string{"ab", "abc"})
-		search(t, fetch, false, "z*", []string{"zaaa"})
-		search(t, fetch, false, "z*a", []string{"zaaa"})
-		search(t, fetch, false, "ab", []string{"ab"})
-		search(t, fetch, false, "aa", []string{})
-		search(t, fetch, false, "zz", []string{})
-	}
+	searchAll(t, tp, "b*", []string{"bcfg", "bd"})
+	searchAll(t, tp, "f*", []string{})
+	searchAll(t, tp, "efg", []string{"efg"})
+	searchAll(t, tp, "ef", []string{})
+	searchAll(t, tp, "lk*", []string{"lka", "lkk"})
+	searchAll(t, tp, "a*", []string{"ab", "abc"})
+	searchAll(t, tp, "z*", []string{"zaaa"})
+	searchAll(t, tp, "ab", []string{"ab"})
+	searchAll(t, tp, "aa", []string{})
+	searchAll(t, tp, "zz", []string{})
+	searchAll(t, tp, "zaaa", []string{"zaaa"})
+	searchAll(t, tp, "b*g", []string{"bcfg"})
+	searchAll(t, tp, "b*d", []string{"bd"})
+	searchAll(t, tp, "z*a", []string{"zaaa"})
+	searchAll(t, tp, "x", []string{"x", "x"})
 }
 
 func TestPatternPrefix(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"a",
-			"aa",
-			"aba",
-			"abc",
-			"abc",
-			"aca",
-			"acb",
-			"acba",
-			"acbb",
-			"acbccc",
-			"acbz",
-			"acdd",
-			"ace",
-			"acff",
-			"ad",
-			"az",
-		},
+	data := []string{
+		"a",
+		"aa",
+		"aba",
+		"abc",
+		"abc",
+		"aca",
+		"acb",
+		"acba",
+		"acbb",
+		"acbccc",
+		"acbz",
+		"acdd",
+		"ace",
+		"acff",
+		"ad",
+		"az",
 	}
+	tp := newTestTokenProvider(data)
 
-	assert.True(t, fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, "a*", fetch.Data)
-	searchAll(t, fetch, "ab*", []string{"aba", "abc", "abc"})
-	searchAll(t, fetch, "ac*", []string{"aca", "acb", "acba", "acbb", "acbccc", "acbz", "acdd", "ace", "acff"})
-	searchAll(t, fetch, "acb*", []string{"acb", "acba", "acbb", "acbccc", "acbz"})
-	searchAll(t, fetch, "acb", []string{"acb"})
-	searchAll(t, fetch, "acba*", []string{"acba"})
-	searchAll(t, fetch, "acc*", []string{})
-	searchAll(t, fetch, "acc", []string{})
-	searchAll(t, fetch, "acz*", []string{})
+	searchAll(t, tp, "a*", data)
+	searchAll(t, tp, "ab*", []string{"aba", "abc", "abc"})
+	searchAll(t, tp, "ac*", []string{"aca", "acb", "acba", "acbb", "acbccc", "acbz", "acdd", "ace", "acff"})
+	searchAll(t, tp, "acb*", []string{"acb", "acba", "acbb", "acbccc", "acbz"})
+	searchAll(t, tp, "acb", []string{"acb"})
+	searchAll(t, tp, "acba*", []string{"acba"})
+	searchAll(t, tp, "acc*", []string{})
+	searchAll(t, tp, "acc", []string{})
+	searchAll(t, tp, "acz*", []string{})
 }
 
 func TestPatternEmpty(t *testing.T) {
-	a := assert.New(t)
-	fetch := &SimpleFetcher{}
+	tp := newTestTokenProvider([]string{})
 
-	a.True(fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, "a", []string{})
-	searchAll(t, fetch, "abc", []string{})
-	searchAll(t, fetch, "*", []string{})
+	searchAll(t, tp, "a", []string{})
+	searchAll(t, tp, "abc", []string{})
+	searchAll(t, tp, "*", []string{})
 }
 
 func TestPatternSingle(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{"abacaba"},
-	}
+	tp := newTestTokenProvider([]string{"abacaba"})
 
-	assert.True(t, fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, "abacaba", []string{"abacaba"})
-	searchAll(t, fetch, "*", []string{"abacaba"})
-	searchAll(t, fetch, "a*", []string{"abacaba"})
-	searchAll(t, fetch, "a", []string{})
-	searchAll(t, fetch, "abc", []string{})
+	searchAll(t, tp, "abacaba", []string{"abacaba"})
+	searchAll(t, tp, "*", []string{"abacaba"})
+	searchAll(t, tp, "a*", []string{"abacaba"})
+	searchAll(t, tp, "a", []string{})
+	searchAll(t, tp, "abc", []string{})
 }
 
 func TestPatternSuffix(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"abc",
-			"acd",
-			"acdc:suf",
-			"acdd",
-			"acdd",
-			"acdfg:suf",
-			"acg",
-			"add:suf",
-		},
-	}
+	tp := newTestTokenProvider([]string{
+		"abc",
+		"acd",
+		"acdc:suf",
+		"acdd",
+		"acdd",
+		"acdfg:suf",
+		"acg",
+		"add:suf",
+	})
 
-	assert.True(t, fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, `acd*\:suf`, []string{`acdc:suf`, `acdfg:suf`})
-	searchAll(t, fetch, `acd*`, []string{`acd`, `acdc:suf`, `acdd`, `acdd`, `acdfg:suf`})
-	searchAll(t, fetch, `ac*\:suf`, []string{`acdc:suf`, `acdfg:suf`})
-	searchAll(t, fetch, `ac*f`, []string{`acdc:suf`, `acdfg:suf`})
-	searchAll(t, fetch, `ac*d`, []string{`acd`, `acdd`, `acdd`})
-	searchAll(t, fetch, `acdc\:suf`, []string{`acdc:suf`})
-	searchAll(t, fetch, `*\:suf`, []string{`acdc:suf`, `acdfg:suf`, `add:suf`})
+	searchAll(t, tp, `acd*\:suf`, []string{`acdc:suf`, `acdfg:suf`})
+	searchAll(t, tp, `acd*`, []string{`acd`, `acdc:suf`, `acdd`, `acdd`, `acdfg:suf`})
+	searchAll(t, tp, `ac*\:suf`, []string{`acdc:suf`, `acdfg:suf`})
+	searchAll(t, tp, `ac*f`, []string{`acdc:suf`, `acdfg:suf`})
+	searchAll(t, tp, `ac*d`, []string{`acd`, `acdd`, `acdd`})
+	searchAll(t, tp, `acdc\:suf`, []string{`acdc:suf`})
+	searchAll(t, tp, `*\:suf`, []string{`acdc:suf`, `acdfg:suf`, `add:suf`})
 }
 
 func TestPatternSuffix2(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"aba",
-			"abac",
-			"abacaba",
-			"caba",
-		},
-	}
+	tp := newTestTokenProvider([]string{
+		"aba",
+		"abac",
+		"abacaba",
+		"caba",
+	})
 
-	assert.True(t, fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, "*", []string{"aba", "abac", "abacaba", "caba"})
-	searchAll(t, fetch, "aba*", []string{"aba", "abac", "abacaba"})
-	searchAll(t, fetch, "aba*aba", []string{"abacaba"})
-	searchAll(t, fetch, "abac*aba", []string{"abacaba"})
-	searchAll(t, fetch, "aba*caba", []string{"abacaba"})
-	searchAll(t, fetch, "abac*caba", []string{})
-	searchAll(t, fetch, "*caba", []string{"abacaba", "caba"})
+	searchAll(t, tp, "*", []string{"aba", "abac", "abacaba", "caba"})
+	searchAll(t, tp, "aba*", []string{"aba", "abac", "abacaba"})
+	searchAll(t, tp, "aba*aba", []string{"abacaba"})
+	searchAll(t, tp, "abac*aba", []string{"abacaba"})
+	searchAll(t, tp, "aba*caba", []string{"abacaba"})
+	searchAll(t, tp, "abac*caba", []string{})
+	searchAll(t, tp, "*caba", []string{"abacaba", "caba"})
 }
 
 func TestPatternMiddle(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"a:b:a",
-			"aba",
-			"abacaba",
-			"abracadabra",
-			"some:Data:hey",
-		},
-	}
+	tp := newTestTokenProvider([]string{
+		"a:b:a",
+		"aba",
+		"abacaba",
+		"abracadabra",
+		"some:Data:hey",
+	})
 
-	assert.True(t, fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, `ab*c*ba`, []string{`abacaba`})
-	searchAll(t, fetch, `a*b*a`, []string{`a:b:a`, `aba`, `abacaba`, `abracadabra`})
-	searchAll(t, fetch, `a*c*a`, []string{`abacaba`, `abracadabra`})
-	searchAll(t, fetch, `a*\:b\:*a`, []string{`a:b:a`})
-	searchAll(t, fetch, `*acada*`, []string{`abracadabra`})
-	searchAll(t, fetch, `*aba*`, []string{`aba`, `abacaba`})
-	searchAll(t, fetch, `*ac*ca*`, []string{})
+	searchAll(t, tp, `ab*c*ba`, []string{`abacaba`})
+	searchAll(t, tp, `a*b*a`, []string{`a:b:a`, `aba`, `abacaba`, `abracadabra`})
+	searchAll(t, tp, `a*c*a`, []string{`abacaba`, `abracadabra`})
+	searchAll(t, tp, `a*\:b\:*a`, []string{`a:b:a`})
+	searchAll(t, tp, `*acada*`, []string{`abracadabra`})
+	searchAll(t, tp, `*aba*`, []string{`aba`, `abacaba`})
+	searchAll(t, tp, `*ac*ca*`, []string{})
 }
 
 func TestRange(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"1",
-			"34",
-			"12",
-			"-3",
-			"15",
-			"44",
-			"45",
-			"46",
-			"120481",
-			"-12",
-			"-15",
-		},
-	}
+	tp := newTestTokenProvider([]string{
+		"1",
+		"34",
+		"12",
+		"-3",
+		"15",
+		"44",
+		"45",
+		"46",
+		"120481",
+		"-12",
+		"-15",
+	})
 
-	searchAll(t, fetch, "[2 to 16]", []string{"12", "15"})
-	searchAll(t, fetch, "[1 to 1]", []string{"1"})
-	searchAll(t, fetch, "{1 to 1}", []string{})
-	searchAll(t, fetch, "{44 to 46}", []string{"45"})
-	searchAll(t, fetch, "[44 to 46}", []string{"44", "45"})
-	searchAll(t, fetch, "{44 to 46]", []string{"45", "46"})
-	searchAll(t, fetch, "[44 to 46]", []string{"44", "45", "46"})
-	searchAll(t, fetch, "[-16 to -10]", []string{"-12", "-15"})
+	searchAll(t, tp, "[2 to 16]", []string{"12", "15"})
+	searchAll(t, tp, "[1 to 1]", []string{"1"})
+	searchAll(t, tp, "{1 to 1}", []string{})
+	searchAll(t, tp, "{44 to 46}", []string{"45"})
+	searchAll(t, tp, "[44 to 46}", []string{"44", "45"})
+	searchAll(t, tp, "{44 to 46]", []string{"45", "46"})
+	searchAll(t, tp, "[44 to 46]", []string{"44", "45", "46"})
+	searchAll(t, tp, "[-16 to -10]", []string{"-12", "-15"})
+
 	// result is sorted as strings in test function. actual result is not sorted
-	searchAll(t, fetch, "[1 to 34]", []string{"1", "12", "15", "34"})
-	searchAll(t, fetch, "[16 to 2]", []string{})
+	searchAll(t, tp, "[1 to 34]", []string{"1", "12", "15", "34"})
+	searchAll(t, tp, "[16 to 2]", []string{})
 }
 
 func TestRangeNumberWildcard(t *testing.T) {
 	maxInt64 := strconv.Itoa(math.MaxInt64)
 	minInt64 := strconv.Itoa(math.MinInt64)
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"-4",
-			"-8",
-			"13",
-			"3",
-			"402.0",
-			"Inf",
-			"+Inf",
-			"-Inf",
-			"NaN",
-			maxInt64,
-			minInt64,
-			"0",
-			"сорок два",
-			"",
-			" ",
-			"a",
-		},
-	}
 
-	searchAll(t, fetch, "[* to -8]", []string{"-8", minInt64})
-	searchAll(t, fetch, "{* to -8]", []string{"-8", minInt64})
-	searchAll(t, fetch, "[* to -8}", []string{minInt64})
-	searchAll(t, fetch, "[* to 3]", []string{"-4", "-8", minInt64, "0", "3"})
-	searchAll(t, fetch, "[* to 3}", []string{"-4", "-8", minInt64, "0"})
-	searchAll(t, fetch, "[13 to *]", []string{"13", "402.0", maxInt64})
-	searchAll(t, fetch, "{13 to *]", []string{"402.0", maxInt64})
-	searchAll(t, fetch, "[402 to *]", []string{"402.0", maxInt64})
-	searchAll(t, fetch, "[402 to *}", []string{"402.0", maxInt64})
-	searchAll(t, fetch, "{402 to *]", []string{maxInt64})
-	searchAll(t, fetch, "[* to *]", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
-	searchAll(t, fetch, "{* to *]", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
-	searchAll(t, fetch, "[* to *}", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
-	searchAll(t, fetch, "{* to *}", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
-	searchAll(t, fetch, "[402.0 to 402.0]", []string{"402.0"})
+	tp := newTestTokenProvider([]string{
+		"-4",
+		"-8",
+		"13",
+		"3",
+		"402.0",
+		"Inf",
+		"+Inf",
+		"-Inf",
+		"NaN",
+		maxInt64,
+		minInt64,
+		"0",
+		"сорок два",
+		"",
+		" ",
+		"a",
+	})
+
+	searchAll(t, tp, "[* to -8]", []string{"-8", minInt64})
+	searchAll(t, tp, "{* to -8]", []string{"-8", minInt64})
+	searchAll(t, tp, "[* to -8}", []string{minInt64})
+	searchAll(t, tp, "[* to 3]", []string{"-4", "-8", minInt64, "0", "3"})
+	searchAll(t, tp, "[* to 3}", []string{"-4", "-8", minInt64, "0"})
+	searchAll(t, tp, "[13 to *]", []string{"13", "402.0", maxInt64})
+	searchAll(t, tp, "{13 to *]", []string{"402.0", maxInt64})
+	searchAll(t, tp, "[402 to *]", []string{"402.0", maxInt64})
+	searchAll(t, tp, "[402 to *}", []string{"402.0", maxInt64})
+	searchAll(t, tp, "{402 to *]", []string{maxInt64})
+	searchAll(t, tp, "[* to *]", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
+	searchAll(t, tp, "{* to *]", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
+	searchAll(t, tp, "[* to *}", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
+	searchAll(t, tp, "{* to *}", []string{"-4", "-8", minInt64, "0", "13", "3", "402.0", maxInt64})
+	searchAll(t, tp, "[402.0 to 402.0]", []string{"402.0"})
 }
 
 func TestRangeText(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"ab",
-			"abc",
-			"bcfg",
-			"bd",
-			"efg",
-			"lka",
-			"lkk",
-			"x",
-			"zaaa",
-		},
-	}
 
-	searchAll(t, fetch, "[bd to efg]", []string{"bd", "efg"})
-	searchAll(t, fetch, "[bd to efg}", []string{"bd"})
-	searchAll(t, fetch, "{bd to efg}", []string{})
-	searchAll(t, fetch, "{bd to efg]", []string{"efg"})
-	searchAll(t, fetch, "[bb to efg]", []string{"bcfg", "bd", "efg"})
-	searchAll(t, fetch, "{bb to efg]", []string{"bcfg", "bd", "efg"})
-	searchAll(t, fetch, "[bb to efh]", []string{"bcfg", "bd", "efg"})
-	searchAll(t, fetch, "[bb to efh}", []string{"bcfg", "bd", "efg"})
+	tp := newTestTokenProvider([]string{
+		"ab",
+		"abc",
+		"bcfg",
+		"bd",
+		"efg",
+		"lka",
+		"lkk",
+		"x",
+		"zaaa",
+	})
 
-	searchAll(t, fetch, "[* to ab]", []string{"ab"})
-	searchAll(t, fetch, "{* to ab]", []string{"ab"})
-	searchAll(t, fetch, "[* to ab}", []string{})
-	searchAll(t, fetch, "[* to bd]", []string{"ab", "abc", "bcfg", "bd"})
-	searchAll(t, fetch, "[* to bd}", []string{"ab", "abc", "bcfg"})
-	searchAll(t, fetch, "[lkk to *]", []string{"lkk", "x", "zaaa"})
-	searchAll(t, fetch, "{lkk to *]", []string{"x", "zaaa"})
-	searchAll(t, fetch, "[zaaa to *]", []string{"zaaa"})
-	searchAll(t, fetch, "[zaaa to *}", []string{"zaaa"})
-	searchAll(t, fetch, "{zaaa to *]", []string{})
+	searchAll(t, tp, "[bd to efg]", []string{"bd", "efg"})
+	searchAll(t, tp, "[bd to efg}", []string{"bd"})
+	searchAll(t, tp, "{bd to efg}", []string{})
+	searchAll(t, tp, "{bd to efg]", []string{"efg"})
+	searchAll(t, tp, "[bb to efg]", []string{"bcfg", "bd", "efg"})
+	searchAll(t, tp, "{bb to efg]", []string{"bcfg", "bd", "efg"})
+	searchAll(t, tp, "[bb to efh]", []string{"bcfg", "bd", "efg"})
+	searchAll(t, tp, "[bb to efh}", []string{"bcfg", "bd", "efg"})
+
+	searchAll(t, tp, "[* to ab]", []string{"ab"})
+	searchAll(t, tp, "{* to ab]", []string{"ab"})
+	searchAll(t, tp, "[* to ab}", []string{})
+	searchAll(t, tp, "[* to bd]", []string{"ab", "abc", "bcfg", "bd"})
+	searchAll(t, tp, "[* to bd}", []string{"ab", "abc", "bcfg"})
+	searchAll(t, tp, "[lkk to *]", []string{"lkk", "x", "zaaa"})
+	searchAll(t, tp, "{lkk to *]", []string{"x", "zaaa"})
+	searchAll(t, tp, "[zaaa to *]", []string{"zaaa"})
+	searchAll(t, tp, "[zaaa to *}", []string{"zaaa"})
+	searchAll(t, tp, "{zaaa to *]", []string{})
 
 }
 
 func TestPatternSymbols(t *testing.T) {
-	fetch := &SimpleFetcher{
-		Data: []string{
-			"*",
-			"**",
-			"****",
-			"val=*",
-			"val=***",
-		},
-	}
+	tp := newTestTokenProvider([]string{
+		"*",
+		"**",
+		"****",
+		"val=*",
+		"val=***",
+	})
 
-	assert.True(t, fetch.isSorted(), "data is not sorted")
-
-	searchAll(t, fetch, `\*`, []string{"*"})
-	searchAll(t, fetch, `\**`, []string{"*", "**", "****"})
-	searchAll(t, fetch, `\*\*`, []string{"**"})
-	searchAll(t, fetch, `\*\**`, []string{"**", "****"})
-	searchAll(t, fetch, `val=*`, []string{"val=*", "val=***"})
-	searchAll(t, fetch, `val=\*`, []string{"val=*"})
-	searchAll(t, fetch, `val=\**`, []string{"val=*", "val=***"})
-	searchAll(t, fetch, `val=\*\*\*`, []string{"val=***"})
+	searchAll(t, tp, `\*`, []string{"*"})
+	searchAll(t, tp, `\**`, []string{"*", "**", "****"})
+	searchAll(t, tp, `\*\*`, []string{"**"})
+	searchAll(t, tp, `\*\**`, []string{"**", "****"})
+	searchAll(t, tp, `val=*`, []string{"val=*", "val=***"})
+	searchAll(t, tp, `val=\*`, []string{"val=*"})
+	searchAll(t, tp, `val=\**`, []string{"val=*", "val=***"})
+	searchAll(t, tp, `val=\*\*\*`, []string{"val=***"})
 }

@@ -112,43 +112,15 @@ func (dp *SealedDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) 
 	tokenTable := dp.tokenTableLoader.Load()
 	entries := tokenTable.SelectEntries(field, searchStr)
 	if len(entries) == 0 {
-		return tids, nil
+		return nil, nil
 	}
 
-	fetcher := token.NewFetcher(dp.tokenBlockLoader, entries)
-	searcher := pattern.NewSearcher(t, fetcher, fetcher.GetTokensCount())
+	tp := token.NewProvider(dp.tokenBlockLoader, entries)
 
-	begin := searcher.Begin()
-	end := searcher.End()
-	if begin > end {
-		return tids, nil
+	tids, err := pattern.Search(dp.ctx, t, tp)
+	if err != nil {
+		return nil, fmt.Errorf("search error: %s field: %s, query: %s", err, field, searchStr)
 	}
-
-	blockIndex := fetcher.GetBlockIndex(begin)
-	lastTID := fetcher.GetTIDFromIndex(end)
-
-	entry := entries[blockIndex]
-	tokensBlock := dp.tokenBlockLoader.Load(entry)
-	entryLastTID := entry.GetLastTID()
-
-	for tid := fetcher.GetTIDFromIndex(begin); tid <= lastTID; tid++ {
-		if tid > entryLastTID {
-			if util.IsCancelled(dp.ctx) {
-				err := fmt.Errorf("search cancelled when matching tokens: reason=%s field=%s, query=%s", dp.ctx.Err(), field, searchStr)
-				return nil, err
-			}
-			blockIndex++
-			entry = entries[blockIndex]
-			tokensBlock = dp.tokenBlockLoader.Load(entry)
-			entryLastTID = entry.GetLastTID()
-		}
-
-		val := tokensBlock.GetValByTID(tid)
-		if searcher.Check(val) {
-			tids = append(tids, tid)
-		}
-	}
-
 	return tids, nil
 }
 

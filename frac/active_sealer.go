@@ -141,7 +141,7 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 	writer := NewSealedBlockWriter(indexFile)
 	{
 		logger.Info("sealing frac stats...")
-		f.BuildInfoDistribution(sortedIDs)
+		f.buildInfoDistribution(sortedIDs)
 		fracInfo := f.Info()
 		if err := writer.writeInfoBlock(producer.getInfoBlock(fracInfo)); err != nil {
 			logger.Error("seal info error", zap.Error(err))

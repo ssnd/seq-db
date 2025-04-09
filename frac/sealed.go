@@ -222,7 +222,7 @@ func (di *SealedDocsIndex) findLIDs(ids []seq.ID) []seq.LID {
 // For LID with zero value will return DocPos with `DocPosNotFound` value
 func (di *SealedDocsIndex) getDocPosByLIDs(localIDs []seq.LID) []DocPos {
 	var (
-		prevIndex int64
+		prevIndex int64 = -1
 		positions []uint64
 		startLID  seq.LID
 	)
@@ -235,9 +235,10 @@ func (di *SealedDocsIndex) getDocPosByLIDs(localIDs []seq.LID) []DocPos {
 		}
 
 		index := di.idsLoader.getIDBlockIndexByLID(lid)
-		if positions == nil || prevIndex != index {
+		if prevIndex != index {
 			positions = di.idsLoader.GetParamsBlock(uint32(index))
 			startLID = seq.LID(index * consts.IDsPerBlock)
+			prevIndex = index
 		}
 
 		res[i] = DocPos(positions[lid-startLID])

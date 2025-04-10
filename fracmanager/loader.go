@@ -2,6 +2,7 @@ package fracmanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,8 @@ type fracInfo struct {
 	hasIndex    bool
 	hasIndexDel bool
 	hasMeta     bool
+	hasSdocs    bool
+	hasSdocsDel bool
 }
 
 type loader struct {
@@ -139,10 +142,12 @@ func (t *loader) getFileList() []string {
 func removeFractionFiles(base string) {
 	removeFile(base + consts.IndexFileSuffix) // first delete files without del suffix
 	removeFile(base + consts.DocsFileSuffix)  // to preserve the info about fractions
-	removeFile(base + consts.MetaFileSuffix)  // that should be deleted
+	removeFile(base + consts.SdocsFileSuffix) // that should be deleted
+	removeFile(base + consts.MetaFileSuffix)
 
 	removeFile(base + consts.IndexDelFileSuffix)
 	removeFile(base + consts.DocsDelFileSuffix)
+	removeFile(base + consts.SdocsDelFileSuffix)
 }
 
 func removeFile(file string) {
@@ -162,16 +167,16 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 			logger.Panic("frac loader has gone crazy")
 		}
 
-		if info.hasDocsDel || info.hasIndexDel {
+		if info.hasDocsDel || info.hasIndexDel || info.hasSdocsDel {
 			// storage has terminated in the middle of fraction deletion so continue this process
 			logger.Info("cleaning up partially deleted fraction files", zap.String("file", info.base))
 			removeFractionFiles(info.base)
 			continue
 		}
 
-		if !info.hasDocs {
+		if !info.hasDocs && !info.hasSdocs {
 			metric.FractionLoadErrors.Inc()
-			logger.Error("fraction doesn't have .docs file, skipping", zap.Any("frac_info", info))
+			logger.Error("fraction doesn't have .docs/.sdocs file, skipping", zap.Any("frac_info", info))
 			continue
 		}
 
@@ -186,6 +191,7 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 				zap.String("fraction_id", id),
 			)
 			_ = os.Remove(info.base + consts.DocsFileSuffix)
+			_ = os.Remove(info.base + consts.SdocsFileSuffix)
 			continue
 		}
 
@@ -199,7 +205,13 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 func (t *loader) noValidDoc(info *fracInfo) (invalid bool) {
 	docFile, err := os.Open(info.base + consts.DocsFileSuffix)
 	if err != nil {
-		return true
+		if !errors.Is(err, os.ErrNotExist) {
+			return true
+		}
+		docFile, err = os.Open(info.base + consts.SdocsFileSuffix)
+		if err != nil {
+			return true
+		}
 	}
 
 	defer docFile.Close()
@@ -234,10 +246,14 @@ func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 		switch suffix {
 		case consts.DocsFileSuffix:
 			info.hasDocs = true
-		case consts.IndexFileSuffix:
-			info.hasIndex = true
 		case consts.DocsDelFileSuffix:
 			info.hasDocsDel = true
+		case consts.SdocsFileSuffix:
+			info.hasSdocs = true
+		case consts.SdocsDelFileSuffix:
+			info.hasSdocsDel = true
+		case consts.IndexFileSuffix:
+			info.hasIndex = true
 		case consts.IndexDelFileSuffix:
 			info.hasIndexDel = true
 		case consts.MetaFileSuffix:

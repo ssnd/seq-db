@@ -68,8 +68,10 @@ const (
 
 const (
 	DocsFileSuffix      = ".docs"
-	MetaFileSuffix      = ".meta"
 	DocsDelFileSuffix   = ".docs.del"
+	SdocsFileSuffix     = ".sdocs"
+	SdocsDelFileSuffix  = ".sdocs.del"
+	MetaFileSuffix      = ".meta"
 	IndexTmpFileSuffix  = "._index"
 	IndexFileSuffix     = ".index"
 	IndexDelFileSuffix  = ".index.del"

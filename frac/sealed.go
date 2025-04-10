@@ -2,6 +2,7 @@ package frac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -320,10 +321,15 @@ func (f *Sealed) openIndex() {
 func (f *Sealed) openDocs() {
 	if f.docsReader == nil {
 		var err error
-		name := f.BaseFileName + consts.DocsFileSuffix
-		f.docsFile, err = os.Open(name)
+		f.docsFile, err = os.Open(f.BaseFileName + consts.DocsFileSuffix)
 		if err != nil {
-			logger.Fatal("can't open docs file", zap.String("file", name), zap.Error(err))
+			if !errors.Is(err, os.ErrNotExist) {
+				logger.Fatal("can't open docs file", zap.String("frac", f.BaseFileName), zap.Error(err))
+			}
+			f.docsFile, err = os.Open(f.BaseFileName + consts.SdocsFileSuffix)
+			if err != nil {
+				logger.Fatal("can't open sdocs file", zap.String("frac", f.BaseFileName), zap.Error(err))
+			}
 		}
 		f.docsReader = disk.NewDocsReader(f.readLimiter, f.docsFile, f.docsCache)
 	}
@@ -461,9 +467,18 @@ func (f *Sealed) Suicide() {
 	// make some atomic magic, to be more stable on removing fractions
 	oldPath := f.BaseFileName + consts.DocsFileSuffix
 	newPath := f.BaseFileName + consts.DocsDelFileSuffix
-	err := os.Rename(oldPath, newPath)
-	if err != nil {
+	if err := os.Rename(oldPath, newPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		logger.Error("can't rename docs file",
+			zap.String("old_path", oldPath),
+			zap.String("new_path", newPath),
+			zap.Error(err),
+		)
+	}
+
+	oldPath = f.BaseFileName + consts.SdocsFileSuffix
+	newPath = f.BaseFileName + consts.SdocsDelFileSuffix
+	if err := os.Rename(oldPath, newPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.Error("can't rename sdocs file",
 			zap.String("old_path", oldPath),
 			zap.String("new_path", newPath),
 			zap.Error(err),
@@ -476,8 +491,7 @@ func (f *Sealed) Suicide() {
 
 	oldPath = f.BaseFileName + consts.IndexFileSuffix
 	newPath = f.BaseFileName + consts.IndexDelFileSuffix
-	err = os.Rename(oldPath, newPath)
-	if err != nil {
+	if err := os.Rename(oldPath, newPath); err != nil {
 		logger.Error("can't rename index file",
 			zap.String("old_path", oldPath),
 			zap.String("new_path", newPath),
@@ -486,9 +500,16 @@ func (f *Sealed) Suicide() {
 	}
 
 	rmPath := f.BaseFileName + consts.DocsDelFileSuffix
-	err = os.Remove(rmPath)
-	if err != nil {
+	if err := os.Remove(rmPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		logger.Error("can't remove docs file",
+			zap.String("file", rmPath),
+			zap.Error(err),
+		)
+	}
+
+	rmPath = f.BaseFileName + consts.SdocsDelFileSuffix
+	if err := os.Remove(rmPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.Error("can't remove sdocs file",
 			zap.String("file", rmPath),
 			zap.Error(err),
 		)
@@ -499,8 +520,7 @@ func (f *Sealed) Suicide() {
 	}
 
 	rmPath = f.BaseFileName + consts.IndexDelFileSuffix
-	err = os.Remove(rmPath)
-	if err != nil {
+	if err := os.Remove(rmPath); err != nil {
 		logger.Error("can't remove index file",
 			zap.String("file", rmPath),
 			zap.Error(err),

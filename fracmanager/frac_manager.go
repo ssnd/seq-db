@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-
-	"github.com/oklog/ulid/v2"
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
@@ -343,7 +344,26 @@ func (fm *FracManager) Append(ctx context.Context, docs, metas disk.DocBlock, wr
 	return nil
 }
 
+var (
+	sealsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "seq_db",
+		Subsystem: "main",
+		Name:      "seals_total",
+	})
+	sealsDoneSeconds = promauto.NewSummary(prometheus.SummaryOpts{
+		Namespace: "seq_db",
+		Subsystem: "main",
+		Name:      "seals_done_seconds",
+	})
+)
+
 func (fm *FracManager) seal(activeRef activeRef) {
+	sealsTotal.Inc()
+	now := time.Now()
+	defer func() {
+		sealsDoneSeconds.Observe(time.Since(now).Seconds())
+	}()
+
 	indexFile, err := activeRef.frac.Seal(fm.config.SealParams)
 	if err != nil {
 		logger.Panic("sealing error", zap.Error(err))

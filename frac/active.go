@@ -122,32 +122,6 @@ func (di *ActiveDocsIndex) ReadDocs(blockOffset uint64, docOffsets []uint64) ([]
 	return di.docsReader.ReadDocs(blockOffset, docOffsets)
 }
 
-func (dp *ActiveDataProvider) FetchFunc(ids []seq.ID, cb func([]byte) error) error {
-	defer dp.tracer.UpdateMetric(metric.FetchActiveStagesSeconds)
-
-	m := dp.tracer.Start("get_doc_params_by_id")
-	docsPos := make([]DocPos, len(ids))
-	for i, id := range ids {
-		docsPos[i] = dp.Active.DocsPositions.GetSync(id)
-	}
-	m.Stop()
-
-	m = dp.tracer.Start("unpack_offsets")
-	blocks, offsets, _ := GroupDocsOffsets(docsPos)
-	m.Stop()
-
-	m = dp.tracer.Start("read_doc")
-	blocksOffsets := dp.Active.DocBlocks.GetVals()
-	for i, docOffsets := range offsets {
-		err := dp.readDocsFunc(blocksOffsets[blocks[i]], docOffsets, cb)
-		if err != nil {
-			return err
-		}
-	}
-	m.Stop()
-	return nil
-}
-
 type Active struct {
 	frac
 

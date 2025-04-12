@@ -976,6 +976,16 @@ func (s *IntegrationTestSuite) TestAggStat() {
 			AggQuery:    search.AggQuery{Field: "v", Func: seq.AggFuncAvg},
 			Expected:    Expected{NotExists: 0, Buckets: []seq.AggregationBucket{{Name: "", Value: math.NaN(), NotExists: 1}}},
 		},
+		{
+			Name: "avg without group_by",
+			ToBulk: []string{
+				`{"v":200, "service":"avg_without_group_by"}`,
+				`{"v":500, "service":"avg_without_group_by"}`,
+			},
+			SearchQuery: `service:"avg_without_group_by"`,
+			AggQuery:    search.AggQuery{Field: "v", Func: seq.AggFuncAvg},
+			Expected:    Expected{NotExists: 0, Buckets: []seq.AggregationBucket{{Name: "", Value: 350, NotExists: 0}}},
+		},
 	}
 
 	for i := range tcs {

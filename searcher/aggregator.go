@@ -254,7 +254,6 @@ func (n *SingleSourceHistogramAggregator) Next(lid uint32) error {
 		return nil
 	}
 
-	n.histogram.Total++
 	field := n.field.ValueBySource(source)
 	num, err := parseNum(field)
 	if err != nil {

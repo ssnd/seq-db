@@ -13,15 +13,6 @@ import (
 	"github.com/ozontech/seq-db/tests/common"
 )
 
-type testFakeFrac struct {
-	frac.Fraction
-	counter atomic.Int64
-}
-
-func (t *testFakeFrac) IsIntersecting(_, _ seq.MID) bool {
-	return true
-}
-
 func addDummyDoc(t *testing.T, fm *FracManager, dp *frac.DocProvider, seqID seq.ID) {
 	doc := []byte("document")
 	dp.Append(doc, nil, seqID, seq.Tokens("service:100500", "k8s_pod"))

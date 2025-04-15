@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/proxy/search"
 	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/seq"
@@ -510,6 +511,33 @@ func (s *SingleTestSuite) TestIndexingAllFields() {
 		s.AssertSearch(`service:"service-*"`, docStrs, []int{4, 3, 2, 1, 0})
 		s.AssertSearch(`level:"4130134"`, docStrs, []int{4, 3, 2, 1, 0})
 		s.AssertSearch(`unknown:"foobarbaz"`, docStrs, nil)
+	})
+}
+
+func (s *SingleTestSuite) TestSealedMultiFetch() {
+	docs := make([]setup.ExampleDoc, 0, consts.IDsPerBlock*2)
+	nextTs := getAutoTimeGenerator(time.Now(), time.Millisecond*10)
+
+	// this docs LID will be in the first Params Block; index = 0
+	docs = append(docs, setup.ExampleDoc{Service: "service_a", Timestamp: nextTs()})
+	// fill first block with service_b
+	for len(docs) < consts.IDsPerBlock {
+		docs = append(docs, setup.ExampleDoc{Service: "service_b", Timestamp: nextTs()})
+	}
+	// this docs LID will be in the second Params Block; index = len(docs) - 1
+	docs = append(docs, setup.ExampleDoc{Service: "service_a", Timestamp: nextTs()})
+
+	docStrs := setup.DocsToStrings(docs)
+
+	s.Bulk(docStrs)
+
+	indexes := []int{
+		len(docs) - 1, // last service_a
+		0,             // first service_a
+	}
+	sealedOnly := map[suites.FractionEnv]bool{suites.SealedEnv: true}
+	s.RunFracEnvs(sealedOnly, true, func() {
+		s.AssertSearch(`service:service_a`, docStrs, indexes)
 	})
 }
 

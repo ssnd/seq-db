@@ -14,7 +14,6 @@ import (
 	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
-	"github.com/ozontech/seq-db/metric"
 )
 
 // Launch as:
@@ -29,8 +28,7 @@ func main() {
 	cm, stopFn := getCacheMaintainer()
 	defer stopFn()
 
-	reader := disk.NewReader(metric.StoreBytesRead)
-	defer reader.Stop()
+	readLimiter := disk.NewReadLimiter(1, nil)
 
 	mergedTokensUniq := map[string]map[string]int{}
 	mergedTokensValuesUniq := map[string]int{}
@@ -38,7 +36,7 @@ func main() {
 	stats := []Stats{}
 	for _, path := range os.Args[1:] {
 		fmt.Println(path)
-		stats = append(stats, analyzeIndex(path, cm, reader, mergedTokensUniq, mergedTokensValuesUniq))
+		stats = append(stats, analyzeIndex(path, cm, readLimiter, mergedTokensUniq, mergedTokensValuesUniq))
 	}
 
 	fmt.Println("\nUniq Tokens Stats")
@@ -67,19 +65,25 @@ func getCacheMaintainer() (*fracmanager.CacheMaintainer, func()) {
 func analyzeIndex(
 	path string,
 	cm *fracmanager.CacheMaintainer,
-	reader *disk.Reader,
+	reader *disk.ReadLimiter,
 	mergedTokensUniq map[string]map[string]int,
 	allTokensValuesUniq map[string]int,
 ) Stats {
 	var blockIndex uint32
-	cache := cm.CreateSealedIndexCache()
-	br := disk.NewBlocksReader(cache.Registry, path, nil)
+	cache := cm.CreateIndexCache()
+
+	f, err := os.Open(path)
+	if err != nil {
+		panic(err)
+	}
+
+	indexReader := disk.NewIndexReader(reader, f, cache.Registry)
 
 	readBlock := func() []byte {
-		data, _, err := reader.ReadIndexBlock(br, blockIndex, nil)
+		data, _, err := indexReader.ReadIndexBlock(blockIndex, nil)
 		blockIndex++
 		if err != nil {
-			logger.Fatal("error reading block", zap.String("file", br.GetFileName()), zap.Error(err))
+			logger.Fatal("error reading block", zap.String("file", f.Name()), zap.Error(err))
 		}
 		return data
 	}

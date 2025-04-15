@@ -13,7 +13,6 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
-	"github.com/ozontech/seq-db/buildinfo"
 	"github.com/ozontech/seq-db/cache"
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
@@ -22,34 +21,33 @@ import (
 	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
-	"github.com/ozontech/seq-db/metric/tracer"
 	"github.com/ozontech/seq-db/node"
 	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
 )
 
-type ActiveIDsProvider struct {
+type ActiveIDsIndex struct {
 	mids     []uint64
 	rids     []uint64
 	inverser *inverser
 }
 
-func (p *ActiveIDsProvider) GetMID(lid seq.LID) seq.MID {
+func (p *ActiveIDsIndex) GetMID(lid seq.LID) seq.MID {
 	restoredLID := p.inverser.Revert(uint32(lid))
 	return seq.MID(p.mids[restoredLID])
 }
 
-func (p *ActiveIDsProvider) GetRID(lid seq.LID) seq.RID {
+func (p *ActiveIDsIndex) GetRID(lid seq.LID) seq.RID {
 	restoredLID := p.inverser.Revert(uint32(lid))
 	return seq.RID(p.rids[restoredLID])
 }
 
-func (p *ActiveIDsProvider) Len() int {
+func (p *ActiveIDsIndex) Len() int {
 	return p.inverser.Len()
 }
 
-func (p *ActiveIDsProvider) LessOrEqual(lid seq.LID, id seq.ID) bool {
+func (p *ActiveIDsIndex) LessOrEqual(lid seq.LID, id seq.ID) bool {
 	checkedMID := p.GetMID(lid)
 	if checkedMID == id.MID {
 		return p.GetRID(lid) <= id.RID
@@ -59,79 +57,69 @@ func (p *ActiveIDsProvider) LessOrEqual(lid seq.LID, id seq.ID) bool {
 
 type ActiveDataProvider struct {
 	*Active
-	sc          *SearchCell
-	tracer      *tracer.Tracer
-	idsProvider *ActiveIDsProvider
+	ctx      context.Context
+	idsIndex *ActiveIDsIndex
 }
 
-// getIDsProvider creates on demand and returns ActiveIDsProvider.
-// Creation of inverser for ActiveIDsProvider is expensive operation
-func (dp *ActiveDataProvider) getIDsProvider() *ActiveIDsProvider {
-	if dp.idsProvider == nil {
-		m := dp.tracer.Start("get_all_documents")
+// getIDsIndex creates on demand and returns ActiveIDsIndex.
+// Creation of inverser for ActiveIDsIndex is expensive operation
+func (dp *ActiveDataProvider) getIDsIndex() *ActiveIDsIndex {
+	if dp.idsIndex == nil {
 		mapping := dp.GetAllDocuments() // creation order is matter
 		mids := dp.MIDs.GetVals()       // mids and rids should be created after mapping to ensure that
 		rids := dp.RIDs.GetVals()       // they contain all the ids that mapping contains.
-		m.Stop()
 
-		m = dp.tracer.Start("inverse")
 		inverser := newInverser(mapping, len(mids))
-		m.Stop()
 
-		dp.idsProvider = &ActiveIDsProvider{
+		dp.idsIndex = &ActiveIDsIndex{
 			inverser: inverser,
 			mids:     mids,
 			rids:     rids,
 		}
 	}
-	return dp.idsProvider
+	return dp.idsIndex
 }
 
-func (dp *ActiveDataProvider) Tracer() *tracer.Tracer {
-	return dp.tracer
-}
-
-func (dp *ActiveDataProvider) IDsProvider() IDsProvider {
-	return dp.getIDsProvider()
+func (dp *ActiveDataProvider) IDsIndex() IDsIndex {
+	return dp.getIDsIndex()
 }
 
 func (dp *ActiveDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) ([]uint32, error) {
-	return dp.Active.GetTIDsByTokenExpr(dp.sc, t, tids, dp.tracer)
+	return dp.Active.GetTIDsByTokenExpr(dp.ctx, t, tids)
 }
 
 func (dp *ActiveDataProvider) GetLIDsFromTIDs(tids []uint32, stats lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node {
-	return dp.Active.GetLIDsFromTIDs(tids, dp.getIDsProvider().inverser, stats, minLID, maxLID, dp.tracer, order)
+	return dp.Active.GetLIDsFromTIDs(tids, dp.getIDsIndex().inverser, stats, minLID, maxLID, order)
 }
 
-func (dp *ActiveDataProvider) Fetch(ids []seq.ID) ([][]byte, error) {
-	defer dp.tracer.UpdateMetric(metric.FetchActiveStagesSeconds)
+func (dp *ActiveDataProvider) DocsIndex() DocsIndex {
+	return &ActiveDocsIndex{
+		blocksOffsets: dp.Active.DocBlocks.GetVals(),
+		docsPositions: dp.Active.DocsPositions,
+		docsReader:    dp.Active.docsReader,
+	}
+}
 
-	m := dp.tracer.Start("get_doc_params_by_id")
+type ActiveDocsIndex struct {
+	blocksOffsets []uint64
+	docsPositions *DocsPositions
+	docsReader    *disk.DocsReader
+}
+
+func (di *ActiveDocsIndex) GetBlocksOffsets(num uint32) uint64 {
+	return di.blocksOffsets[num]
+}
+
+func (di *ActiveDocsIndex) GetDocPos(ids []seq.ID) []DocPos {
 	docsPos := make([]DocPos, len(ids))
 	for i, id := range ids {
-		docsPos[i] = dp.Active.DocsPositions.GetSync(id)
+		docsPos[i] = di.docsPositions.GetSync(id)
 	}
-	m.Stop()
+	return docsPos
+}
 
-	m = dp.tracer.Start("unpack_offsets")
-	blocks, offsets, index := GroupDocsOffsets(docsPos)
-	m.Stop()
-
-	m = dp.tracer.Start("read_doc")
-	res := make([][]byte, len(ids))
-	blocksOffsets := dp.Active.DocBlocks.GetVals()
-	for i, docOffsets := range offsets {
-		docs, err := dp.readDocs(blocksOffsets[blocks[i]], docOffsets)
-		if err != nil {
-			return nil, err
-		}
-		for i, j := range index[i] {
-			res[j] = docs[i]
-		}
-	}
-	m.Stop()
-
-	return res, nil
+func (di *ActiveDocsIndex) ReadDocs(blockOffset uint64, docOffsets []uint64) ([][]byte, error) {
+	return di.docsReader.ReadDocs(blockOffset, docOffsets)
 }
 
 type Active struct {
@@ -146,7 +134,11 @@ type Active struct {
 
 	DocsPositions *DocsPositions
 
-	metasFile *os.File
+	docsReader *disk.DocsReader
+	docsCache  *cache.Cache[[]byte]
+
+	docsFile *os.File
+	metaFile *os.File
 
 	appendQueueSize atomic.Uint32
 	appender        ActiveAppender
@@ -155,10 +147,11 @@ type Active struct {
 	isSealed  bool
 
 	// to transfer data to sealed frac
-	lidsTable      *lids.Table
-	tokenTable     token.Table
-	sealedIDs      *SealedIDs
-	sortedDocsFile *os.File
+	idsTable            IDsTable
+	lidsTable           *lids.Table
+	tokenTable          token.Table
+	sortedDocsFile      *os.File
+	sortedBlocksOffsets []uint64
 
 	// derivative fraction
 	sealed Fraction
@@ -174,33 +167,25 @@ var systemSeqID = seq.ID{
 	RID: systemRID,
 }
 
-func NewActive(baseFileName string, indexWorkers *IndexWorkers, reader *disk.Reader, docBlockCache *cache.Cache[[]byte]) *Active {
-	mids := NewIDs()
-	rids := NewIDs()
-
-	creationTime := uint64(time.Now().UnixMilli())
+func NewActive(baseFileName string, indexWorkers *IndexWorkers, readLimiter *disk.ReadLimiter, docsCache *cache.Cache[[]byte]) *Active {
+	docsFile, docsStats := openFile(baseFileName + consts.DocsFileSuffix)
+	metaFile, metaStats := openFile(baseFileName + consts.MetaFileSuffix)
 
 	f := &Active{
 		TokenList:     NewActiveTokenList(conf.IndexWorkers),
 		DocsPositions: NewSyncDocsPositions(),
-		MIDs:          mids,
-		RIDs:          rids,
+		MIDs:          NewIDs(),
+		RIDs:          NewIDs(),
 		DocBlocks:     NewIDs(),
+		docsFile:      docsFile,
+		metaFile:      metaFile,
+		docsReader:    disk.NewDocsReader(readLimiter, docsFile, docsCache),
+		docsCache:     docsCache,
+
+		appender: StartAppender(docsFile, metaFile, conf.IndexWorkers, conf.SkipFsync, indexWorkers),
 		frac: frac{
-			docBlockCache: docBlockCache,
-			BaseFileName:  baseFileName,
-			reader:        reader,
-			info: &Info{
-				Ver:                   buildinfo.Version,
-				BinaryDataVer:         BinaryDataV1,
-				Path:                  baseFileName,
-				From:                  math.MaxUint64,
-				To:                    0,
-				CreationTime:          creationTime,
-				ConstIDsPerBlock:      consts.IDsPerBlock,
-				ConstRegularBlockSize: consts.RegularBlockSize,
-				ConstLIDBlockCap:      consts.LIDBlockCap,
-			},
+			BaseFileName: baseFileName,
+			info:         NewInfo(baseFileName, uint64(docsStats.Size()), uint64(metaStats.Size())),
 		},
 	}
 
@@ -210,60 +195,35 @@ func NewActive(baseFileName string, indexWorkers *IndexWorkers, reader *disk.Rea
 
 	logger.Info("active fraction created", zap.String("fraction", baseFileName))
 
-	file, err := os.OpenFile(f.BaseFileName+consts.DocsFileSuffix, os.O_CREATE|os.O_RDWR, 0o776)
-	if err != nil {
-		logger.Fatal("can't create docs file", zap.Error(err))
-		panic("_")
-	}
-	f.docsFile = file
-
-	file, err = os.OpenFile(f.BaseFileName+consts.MetaFileSuffix, os.O_CREATE|os.O_RDWR, 0o776)
-	if err != nil {
-		logger.Fatal("can't create meta file", zap.Error(err))
-		panic("_")
-	}
-	f.metasFile = file
-
-	stat, err := f.docsFile.Stat()
-	if err != nil {
-		logger.Fatal("can't stat docs file",
-			zap.String("file", f.docsFile.Name()),
-			zap.Error(err),
-		)
-		panic("_")
-	}
-	f.info.DocsOnDisk = uint64(stat.Size())
-
-	stat, err = f.metasFile.Stat()
-	if err != nil {
-		logger.Fatal("can't stat metas file",
-			zap.String("file", f.metasFile.Name()),
-			zap.Error(err),
-		)
-		panic("_")
-	}
-	f.info.MetaOnDisk = uint64(stat.Size())
-
-	f.appender = StartAppender(f.docsFile, f.metasFile, conf.IndexWorkers, conf.SkipFsync, indexWorkers)
-
 	return f
 }
 
-func (f *Active) ReplayBlocks(ctx context.Context) error {
+func openFile(name string) (*os.File, os.FileInfo) {
+	file, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o776)
+	if err != nil {
+		logger.Fatal("can't create docs file", zap.String("file", name), zap.Error(err))
+	}
+	stat, err := file.Stat()
+	if err != nil {
+		logger.Fatal("can't stat docs file", zap.String("file", name), zap.Error(err))
+	}
+	return file, stat
+}
+
+func (f *Active) ReplayBlocks(ctx context.Context, reader *disk.ReadLimiter) error {
 	logger.Info("start replaying...")
 
 	if _, err := f.docsFile.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("can't seek docs file: filename=%s, err=%w", f.docsFile.Name(), err)
 	}
-	if _, err := f.metasFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("can't seek metas file: filename=%s, err=%w", f.metasFile.Name(), err)
+	if _, err := f.metaFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("can't seek metas file: filename=%s, err=%w", f.metaFile.Name(), err)
 	}
 
 	targetSize := f.info.MetaOnDisk
 	t := time.Now()
 
-	reader := disk.NewReader(metric.StoreBytesRead)
-	defer reader.Stop()
+	metaReader := disk.NewDocsReader(reader, f.metaFile, nil)
 
 	f.info.DocsOnDisk = 0
 	f.info.MetaOnDisk = 0
@@ -277,7 +237,7 @@ out:
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			result, n, err := reader.ReadDocBlock(f.metasFile, int64(metaPos))
+			result, n, err := metaReader.ReadDocBlock(int64(metaPos))
 			if err == io.EOF {
 				if n != 0 {
 					logger.Warn("last meta block is partially written, skipping it")
@@ -314,8 +274,8 @@ out:
 	if _, err := f.docsFile.Seek(int64(docsPos), io.SeekStart); err != nil {
 		return fmt.Errorf("can't seek docs file: file=%s, err=%w", f.docsFile.Name(), err)
 	}
-	if _, err := f.metasFile.Seek(int64(metaPos), io.SeekStart); err != nil {
-		return fmt.Errorf("can't seek meta file: file=%s, err=%w", f.metasFile.Name(), err)
+	if _, err := f.metaFile.Seek(int64(metaPos), io.SeekStart); err != nil {
+		return fmt.Errorf("can't seek meta file: file=%s, err=%w", f.metaFile.Name(), err)
 	}
 
 	tookSeconds := util.DurationToUnit(time.Since(t), "s")
@@ -384,9 +344,9 @@ func (f *Active) setSealed() error {
 	return nil
 }
 
-func (f *Active) Seal(params SealParams) error {
+func (f *Active) Seal(params SealParams) (*os.File, error) {
 	if err := f.setSealed(); err != nil {
-		return err
+		return nil, err
 	}
 
 	logger.Info("waiting fraction to stop write...")
@@ -394,34 +354,25 @@ func (f *Active) Seal(params SealParams) error {
 	f.WaitWriteIdle()
 	logger.Info("write is stopped", zap.Float64("time_wait_s", util.DurationToUnit(time.Since(start), "s")))
 
-	seal(f, params)
-	return nil
+	return seal(f, params), nil
 }
 
 func (f *Active) GetAllDocuments() []uint32 {
 	return f.TokenList.GetAllTokenLIDs().GetLIDs(f.MIDs, f.RIDs)
 }
 
-func (f *Active) GetTIDsByTokenExpr(sc *SearchCell, tk parser.Token, tids []uint32, tr *tracer.Tracer) ([]uint32, error) {
-	res, err := f.TokenList.FindPattern(sc.Context, tk, tids, tr)
+func (f *Active) GetTIDsByTokenExpr(ctx context.Context, tk parser.Token, tids []uint32) ([]uint32, error) {
+	res, err := f.TokenList.FindPattern(ctx, tk, tids)
 	return res, err
 }
 
-func (f *Active) GetLIDsFromTIDs(tids []uint32, inv *inverser, _ lids.Counter, minLID, maxLID uint32, tr *tracer.Tracer, order seq.DocsOrder) []node.Node {
+func (f *Active) GetLIDsFromTIDs(tids []uint32, inv *inverser, _ lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node {
 	nodes := make([]node.Node, 0, len(tids))
 	for _, tid := range tids {
-		m := tr.Start("provide")
 		tlids := f.TokenList.Provide(tid)
-		m.Stop()
-
-		m = tr.Start("LIDs")
 		unmapped := tlids.GetLIDs(f.MIDs, f.RIDs)
-		m.Stop()
-
-		m = tr.Start("inverse")
 		inverse := inverseLIDs(unmapped, inv, minLID, maxLID)
 		nodes = append(nodes, node.NewStatic(inverse, order.IsReverse()))
-		m.Stop()
 	}
 	return nodes
 }
@@ -462,12 +413,11 @@ func (f *Active) Release(sealed Fraction, removeMeta bool) error {
 	// Once frac is released, it is safe to remove the docs file,
 	// since search queries will use the sealed implementation.
 
-	if err := f.frac.docsFile.Close(); err != nil {
+	if err := f.docsFile.Close(); err != nil {
 		return fmt.Errorf("closing docs file: %w", err)
 	}
 
-	f.docBlockCache.Release()
-	f.docBlockCache = nil
+	f.docsCache.Release()
 
 	rmFileName := f.frac.BaseFileName + consts.DocsFileSuffix
 	if err := os.Remove(rmFileName); err != nil {
@@ -498,16 +448,14 @@ func (f *Active) UpdateDiskStats(docsLen, metaLen uint64) uint64 {
 func (f *Active) close(closeDocs bool, hint string) {
 	f.appender.Stop()
 	if closeDocs {
-		err := f.docsFile.Close()
-		if err != nil {
+		if err := f.docsFile.Close(); err != nil {
 			logger.Error("can't close docs file",
 				f.closeLogArgs("active", hint, err)...,
 			)
 		}
 	}
 
-	err := f.metasFile.Close()
-	if err != nil {
+	if err := f.metaFile.Close(); err != nil {
 		logger.Error("can't close meta file",
 			f.closeLogArgs("active", hint, err)...,
 		)
@@ -576,27 +524,27 @@ func (f *Active) Suicide() { // it seams we never call this method (of Active fr
 		}
 	}
 
-	err := os.Remove(f.BaseFileName + consts.DocsFileSuffix)
-	if err != nil {
+	rmPath := f.BaseFileName + consts.DocsFileSuffix
+	if err := os.Remove(rmPath); err != nil {
 		logger.Error("error removing file",
-			zap.String("file", f.BaseFileName+consts.DocsFileSuffix),
+			zap.String("file", rmPath),
 			zap.Error(err),
 		)
 	}
 
-	err = os.Remove(f.BaseFileName + consts.SortedDocsFileSuffix)
-	if err != nil {
+	rmPath = f.BaseFileName + consts.SdocsFileSuffix
+	if err := os.Remove(rmPath); err != nil && !os.IsNotExist(err) {
 		logger.Error("error removing file",
-			zap.String("file", f.BaseFileName+consts.SortedDocsFileSuffix),
+			zap.String("file", rmPath),
 			zap.Error(err),
 		)
 	}
 
 	if f.isSealed {
-		err := os.Remove(f.BaseFileName + consts.IndexFileSuffix)
-		if err != nil {
+		rmPath = f.BaseFileName + consts.IndexFileSuffix
+		if err := os.Remove(rmPath); err != nil {
 			logger.Error("error removing file",
-				zap.String("file", f.BaseFileName+consts.IndexFileSuffix),
+				zap.String("file", rmPath),
 				zap.Error(err),
 			)
 		}
@@ -622,13 +570,12 @@ func (f *Active) DataProvider(ctx context.Context) (DataProvider, func(), bool) 
 	if f.sealed == nil && !f.suicided && f.Info().DocsTotal > 0 { // it is ordinary active fraction state
 		dp := ActiveDataProvider{
 			Active: f,
-			sc:     NewSearchCell(ctx),
-			tracer: tracer.New(),
+			ctx:    ctx,
 		}
 
 		return &dp, func() {
-			if dp.idsProvider != nil {
-				dp.idsProvider.inverser.Release()
+			if dp.idsIndex != nil {
+				dp.idsIndex.inverser.Release()
 			}
 			f.useLock.RUnlock()
 		}, true

@@ -67,16 +67,19 @@ const (
 )
 
 const (
-	DocsFileSuffix          = ".docs"
-	DocsDelFileSuffix       = ".docs.del"
-	SortedDocsFileSuffix    = ".sdocs"
-	SortedDocsTmpFileSuffix = "._sdocs"
-	SortedDocsDelFileSuffix = ".sdocs.del"
+	DocsFileSuffix    = ".docs"
+	DocsDelFileSuffix = ".docs.del"
 
-	MetaFileSuffix      = ".meta"
-	IndexTmpFileSuffix  = "._index"
-	IndexFileSuffix     = ".index"
-	IndexDelFileSuffix  = ".index.del"
+	MetaFileSuffix = ".meta"
+
+	SdocsFileSuffix    = ".sdocs"
+	SdocsTmpFileSuffix = "._sdocs"
+	SdocsDelFileSuffix = ".sdocs.del"
+
+	IndexFileSuffix    = ".index"
+	IndexTmpFileSuffix = "._index"
+	IndexDelFileSuffix = ".index.del"
+
 	FracCacheFileSuffix = ".frac-cache"
 )
 

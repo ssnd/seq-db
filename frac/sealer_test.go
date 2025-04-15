@@ -67,7 +67,7 @@ func BenchmarkSealing(b *testing.B) {
 	dataDir := filepath.Join(b.TempDir(), "BenchmarkSealing")
 	common.RecreateDir(dataDir)
 
-	dr := disk.NewReader(metric.StoreBytesRead)
+	readLimiter := disk.NewReadLimiter(1, metric.StoreBytesRead)
 
 	indexWorkers := NewIndexWorkers(10, 10)
 
@@ -85,7 +85,7 @@ func BenchmarkSealing(b *testing.B) {
 		DocBlockSize:           consts.MB * 4,
 	}
 	for i := 0; i < b.N; i++ {
-		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), indexWorkers, dr, nil)
+		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), indexWorkers, readLimiter, nil)
 		err := fillActiveFraction(active)
 		assert.NoError(b, err)
 
@@ -93,7 +93,7 @@ func BenchmarkSealing(b *testing.B) {
 		active.GetAllDocuments() // emulate search-pre-sorted LIDs
 
 		b.StartTimer()
-		err = active.Seal(defaultSealParams)
+		_, err = active.Seal(defaultSealParams)
 		assert.NoError(b, err)
 
 		b.StopTimer()

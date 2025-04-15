@@ -32,7 +32,7 @@ type SealParams struct {
 	DocBlockSize int
 }
 
-func seal(f *Active, params SealParams) {
+func seal(f *Active, params SealParams) *os.File {
 	logger.Info("sealing fraction", zap.String("fraction", f.BaseFileName))
 
 	start := time.Now()
@@ -54,7 +54,7 @@ func seal(f *Active, params SealParams) {
 		logger.Fatal("can't seek file", zap.String("file", indexFile.Name()), zap.Error(err))
 	}
 
-	tmpSdocsFileName := f.BaseFileName + consts.SortedDocsTmpFileSuffix
+	tmpSdocsFileName := f.BaseFileName + consts.SdocsTmpFileSuffix
 	sdocsFile, err := os.OpenFile(tmpSdocsFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o776)
 	if err != nil {
 		logger.Fatal("can't open file", zap.String("file", tmpSdocsFileName), zap.Error(err))
@@ -64,7 +64,7 @@ func seal(f *Active, params SealParams) {
 		logger.Fatal("can't write sealed fraction", zap.String("fraction", f.BaseFileName), zap.Error(err))
 	}
 
-	sdocsFileName := f.BaseFileName + consts.SortedDocsFileSuffix
+	sdocsFileName := f.BaseFileName + consts.SdocsFileSuffix
 	if err := os.Rename(tmpSdocsFileName, sdocsFileName); err != nil {
 		logger.Fatal("can't rename sdocs file", zap.String("file", tmpSdocsFileName), zap.Error(err))
 	}
@@ -77,10 +77,6 @@ func seal(f *Active, params SealParams) {
 
 	if err := indexFile.Sync(); err != nil {
 		logger.Fatal("can't sync tmp index file", zap.String("file", indexFile.Name()), zap.Error(err))
-	}
-
-	if err = indexFile.Close(); err != nil {
-		logger.Fatal("can't close file", zap.String("file", indexFile.Name()), zap.Error(err))
 	}
 
 	f.close(false, "seal")
@@ -100,6 +96,7 @@ func seal(f *Active, params SealParams) {
 		zap.String("fraction", newFileName),
 		zap.Float64("time_spent_s", util.DurationToUnit(time.Since(start), "s")),
 	)
+	return indexFile
 }
 
 func writeSealedFraction(f *Active, indexFile, sdocsFile *os.File, params SealParams) error {
@@ -116,6 +113,7 @@ func writeSealedFraction(f *Active, indexFile, sdocsFile *os.File, params SealPa
 		return fmt.Errorf("syncing sorted docs file: %s", err)
 	}
 	f.sortedDocsFile = sdocsFile
+	f.sortedBlocksOffsets = bw.BlockOffsets
 
 	producer := NewDiskBlocksProducer()
 	writer := NewSealedBlockWriter(indexFile)
@@ -188,14 +186,11 @@ func writeSealedFraction(f *Active, indexFile, sdocsFile *os.File, params SealPa
 		return err
 	}
 
-	// these fields actually aren't not used as intended: the data of these three fields will actually be read
-	// from disk again in the future on the first attempt to search in fraction (see method Sealed.loadAndRLock())
-	// TODO: we need to either remove this data preparation in active fraction sealing or avoid re-reading the data from disk
-	f.sealedIDs = &SealedIDs{
-		IDBlocksTotal:       0,
-		DiskStartBlockIndex: writer.startOfIDsBlockIndex,
+	f.idsTable = IDsTable{
 		MinBlockIDs:         minBlockIDs,
-		IDsTotal:            uint32(len(f.RIDs.GetVals())),
+		IDsTotal:            f.MIDs.Len(),
+		IDBlocksTotal:       f.DocBlocks.Len(),
+		DiskStartBlockIndex: writer.startOfIDsBlockIndex,
 	}
 	f.lidsTable = lidsTable
 	f.tokenTable = tokenTable
@@ -230,7 +225,7 @@ func writeDocBlocksInOrder(f *Active, ids []seq.ID, bw *docBlocksWriter) error {
 
 		blockOffsetIndex, offset := oldPos.Unpack()
 		blockOffset := f.DocBlocks.vals[blockOffsetIndex]
-		docs, err := f.frac.readDocs(blockOffset, []uint64{offset})
+		docs, err := f.docsReader.ReadDocs(blockOffset, []uint64{offset})
 		if err != nil {
 			return err
 		}

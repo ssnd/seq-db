@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"time"
 	"unsafe"
 
 	"go.uber.org/zap"
@@ -18,14 +17,6 @@ import (
 )
 
 const sizeOfUint32 = uint32(unsafe.Sizeof(uint32(0)))
-
-type StatsCollector interface {
-	AddReadFieldTimeNS(time.Duration)
-	AddDecodeFieldTimeNS(time.Duration)
-	AddFieldBytesRead(uint64)
-	AddFieldBlocksRead(uint64)
-	AddValsLoaded(uint64)
-}
 
 type CacheEntry struct {
 	Block, Offset []byte
@@ -104,26 +95,16 @@ func (b *Block) getCacheEntry() *CacheEntry {
 // NOT THREAD SAFE. Do not use concurrently.
 // Use your own Loader instance for each search query
 type BlockLoader struct {
-	fracName     string
-	cache        *cache.Cache[*CacheEntry]
-	reader       *disk.Reader
-	blocksReader *disk.BlocksReader
-	stats        StatsCollector
+	fracName string
+	cache    *cache.Cache[*CacheEntry]
+	reader   *disk.IndexReader
 }
 
-func NewBlockLoader(
-	fracName string,
-	reader *disk.Reader,
-	blocksReader *disk.BlocksReader,
-	c *cache.Cache[*CacheEntry],
-	stats StatsCollector,
-) *BlockLoader {
+func NewBlockLoader(fracName string, reader *disk.IndexReader, c *cache.Cache[*CacheEntry]) *BlockLoader {
 	return &BlockLoader{
-		fracName:     fracName,
-		cache:        c,
-		reader:       reader,
-		blocksReader: blocksReader,
-		stats:        stats,
+		fracName: fracName,
+		cache:    c,
+		reader:   reader,
 	}
 }
 
@@ -136,39 +117,22 @@ func (l *BlockLoader) Load(entry *TableEntry) *Block {
 	return newBlock(entry, cacheEntry.Block, cacheEntry.Offset)
 }
 
-func (l *BlockLoader) readBinary(stats StatsCollector, blockIndex uint32) []byte {
-	t := time.Now()
-	data, n, err := l.reader.ReadIndexBlock(l.blocksReader, blockIndex, nil)
+func (l *BlockLoader) readBinary(blockIndex uint32) []byte {
+	data, _, err := l.reader.ReadIndexBlock(blockIndex, nil)
 	if util.IsRecoveredPanicError(err) {
 		logger.Panic("todo: handle read err", zap.Error(err))
 	}
-
-	if stats != nil {
-		stats.AddReadFieldTimeNS(time.Since(t))
-		stats.AddFieldBytesRead(n)
-		stats.AddFieldBlocksRead(1)
-	}
-
 	return data
 }
 
 func (l *BlockLoader) read(entry *TableEntry) *Block {
-	data := l.readBinary(l.stats, entry.BlockIndex)
-
-	t := time.Now()
-	var err error
 	tokensBlock := newBlock(entry, nil, nil)
-	if err = tokensBlock.unpack(data); err != nil {
+	if err := tokensBlock.unpack(l.readBinary(entry.BlockIndex)); err != nil {
 		logger.Panic("error reading tokens block",
 			zap.Error(err),
 			zap.Any("entry", entry),
 			zap.String("frac", l.fracName),
 		)
-	}
-
-	if l.stats != nil {
-		l.stats.AddDecodeFieldTimeNS(time.Since(t))
-		l.stats.AddValsLoaded(uint64(entry.ValCount))
 	}
 
 	return tokensBlock

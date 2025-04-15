@@ -315,7 +315,24 @@ func (g *grpcV1) tryMirrorRequest(req *seqproxyapi.ComplexSearchRequest) {
 }
 
 func validateAgg(agg *seqproxyapi.AggQuery) error {
-	if agg.Func == seqproxyapi.AggFunc_AGG_FUNC_QUANTILE {
+	switch agg.Func {
+	case seqproxyapi.AggFunc_AGG_FUNC_COUNT:
+		// Expect COUNT to support legacy format in which 'field' means 'groupBy'
+		if agg.GroupBy == "" && agg.Field == "" {
+			return status.Error(codes.InvalidArgument, "'groupBy' or 'field' must be set")
+		}
+	case seqproxyapi.AggFunc_AGG_FUNC_UNIQUE:
+		if agg.GroupBy == "" {
+			return status.Error(codes.InvalidArgument, "'groupBy' must be set")
+		}
+	case seqproxyapi.AggFunc_AGG_FUNC_SUM, seqproxyapi.AggFunc_AGG_FUNC_MIN, seqproxyapi.AggFunc_AGG_FUNC_MAX, seqproxyapi.AggFunc_AGG_FUNC_AVG:
+		if agg.Field == "" {
+			return status.Error(codes.InvalidArgument, "'field' must be set")
+		}
+	case seqproxyapi.AggFunc_AGG_FUNC_QUANTILE:
+		if agg.Field == "" {
+			return status.Error(codes.InvalidArgument, "'field' must be set")
+		}
 		if len(agg.Quantiles) == 0 {
 			return status.Error(codes.InvalidArgument, "aggregation query with QUANTILE function must contain at least one quantile")
 		}
@@ -324,17 +341,6 @@ func validateAgg(agg *seqproxyapi.AggQuery) error {
 				return status.Error(codes.InvalidArgument, "quantile must be between 0 and 1")
 			}
 		}
-	}
-	if agg.Func != seqproxyapi.AggFunc_AGG_FUNC_QUANTILE && len(agg.Quantiles) != 0 {
-		return status.Error(codes.InvalidArgument, "unexpected argument for aggregation function")
-	}
-	// GroupBy and Field must be set if this is one of the functions: sum/min/max/quantile
-	if (agg.GroupBy == "" || agg.Field == "") && agg.Func != seqproxyapi.AggFunc_AGG_FUNC_COUNT && agg.Func != seqproxyapi.AggFunc_AGG_FUNC_UNIQUE {
-		return status.Error(codes.InvalidArgument, "'groupBy' and 'field' fields are required")
-	}
-	// Expect COUNT to support legacy format in which 'field' means 'groupBy'
-	if agg.GroupBy == "" && agg.Field == "" && agg.Func == seqproxyapi.AggFunc_AGG_FUNC_COUNT {
-		return status.Error(codes.InvalidArgument, "'groupBy' or 'field' must be set")
 	}
 	return nil
 }

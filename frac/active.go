@@ -492,19 +492,27 @@ func (f *Active) Suicide() { // it seams we never call this method (of Active fr
 		}
 	}
 
-	err := os.Remove(f.BaseFileName + consts.DocsFileSuffix)
-	if err != nil {
+	rmPath := f.BaseFileName + consts.DocsFileSuffix
+	if err := os.Remove(rmPath); err != nil {
 		logger.Error("error removing file",
-			zap.String("file", f.BaseFileName+consts.DocsFileSuffix),
+			zap.String("file", rmPath),
+			zap.Error(err),
+		)
+	}
+
+	rmPath = f.BaseFileName + consts.SdocsFileSuffix
+	if err := os.Remove(rmPath); err != nil {
+		logger.Error("error removing file",
+			zap.String("file", rmPath),
 			zap.Error(err),
 		)
 	}
 
 	if f.isSealed {
-		err := os.Remove(f.BaseFileName + consts.IndexFileSuffix)
-		if err != nil {
+		rmPath = f.BaseFileName + consts.IndexFileSuffix
+		if err := os.Remove(rmPath); err != nil {
 			logger.Error("error removing file",
-				zap.String("file", f.BaseFileName+consts.IndexFileSuffix),
+				zap.String("file", rmPath),
 				zap.Error(err),
 			)
 		}

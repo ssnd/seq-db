@@ -6,7 +6,6 @@ import (
 	"net"
 	"path"
 
-	"github.com/ozontech/seq-db/search"
 	"go.uber.org/atomic"
 
 	"github.com/ozontech/seq-db/consts"
@@ -34,15 +33,14 @@ type Store struct {
 type StoreConfig struct {
 	API         APIConfig
 	FracManager fracmanager.Config
-	AsyncSearch search.AsyncSearcherConfig
 }
 
 func (c *StoreConfig) setDefaults() error {
 	if err := c.API.setDefaults(); err != nil {
 		return err
 	}
-	if c.AsyncSearch.DataDir == "" {
-		c.AsyncSearch.DataDir = path.Join(c.FracManager.DataDir, "async_searches")
+	if c.API.Search.Async.DataDir == "" {
+		c.API.Search.Async.DataDir = path.Join(c.FracManager.DataDir, "async_searches")
 	}
 	return nil
 }
@@ -59,14 +57,11 @@ func NewStore(ctx context.Context, c StoreConfig, mappingProvider MappingProvide
 	}
 	fracManager.Start()
 
-	searcher := search.NewWorkerPool(c.API.Search.WorkersCount)
-	asyncSearcher := search.MustStartAsyncSearcher(c.AsyncSearch, mappingProvider, fracManager, searcher)
-
 	return &Store{
 		Config: c,
 		// We will set grpcAddr later in Start()
 		grpcAddr:    "",
-		grpcServer:  newGRPCServer(c.API, fracManager, searcher, asyncSearcher, mappingProvider),
+		grpcServer:  newGRPCServer(c.API, fracManager, mappingProvider),
 		FracManager: fracManager,
 		isStopped:   atomic.Bool{},
 	}, nil

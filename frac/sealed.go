@@ -2,11 +2,11 @@ package frac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"sync"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -17,7 +17,6 @@ import (
 	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
-	"github.com/ozontech/seq-db/metric/tracer"
 	"github.com/ozontech/seq-db/node"
 	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/pattern"
@@ -27,41 +26,40 @@ import (
 
 const seqDBMagic = "SEQM"
 
-type SealedIDsProvider struct {
-	ids         *SealedIDs
+type SealedIDsIndex struct {
+	loader      *IDsLoader
 	midCache    *UnpackCache
 	ridCache    *UnpackCache
-	searchSB    *SearchCell
 	fracVersion BinaryDataVersion
 }
 
-func (p *SealedIDsProvider) GetMID(lid seq.LID) seq.MID {
-	p.ids.GetMIDsBlock(p.searchSB, seq.LID(lid), p.midCache)
+func (p *SealedIDsIndex) GetMID(lid seq.LID) seq.MID {
+	p.loader.GetMIDsBlock(seq.LID(lid), p.midCache)
 	return seq.MID(p.midCache.GetValByLID(uint64(lid)))
 }
 
-func (p *SealedIDsProvider) GetRID(lid seq.LID) seq.RID {
-	p.ids.GetRIDsBlock(p.searchSB, seq.LID(lid), p.ridCache, p.fracVersion)
+func (p *SealedIDsIndex) GetRID(lid seq.LID) seq.RID {
+	p.loader.GetRIDsBlock(seq.LID(lid), p.ridCache, p.fracVersion)
 	return seq.RID(p.ridCache.GetValByLID(uint64(lid)))
 }
 
-func (p *SealedIDsProvider) Len() int {
-	return int(p.ids.IDsTotal)
+func (p *SealedIDsIndex) Len() int {
+	return int(p.loader.table.IDsTotal)
 }
 
-func (p *SealedIDsProvider) LessOrEqual(lid seq.LID, id seq.ID) bool {
-	if lid >= seq.LID(p.ids.IDsTotal) {
+func (p *SealedIDsIndex) LessOrEqual(lid seq.LID, id seq.ID) bool {
+	if lid >= seq.LID(p.loader.table.IDsTotal) {
 		// out of right border
 		return true
 	}
 
-	blockIndex := p.ids.getIDBlockIndexByLID(lid)
-	if !seq.LessOrEqual(p.ids.MinBlockIDs[blockIndex], id) {
+	blockIndex := p.loader.getIDBlockIndexByLID(lid)
+	if !seq.LessOrEqual(p.loader.table.MinBlockIDs[blockIndex], id) {
 		// the LID's block min ID is greater than the given ID, so any ID of that block is also greater
 		return false
 	}
 
-	if blockIndex > 0 && seq.LessOrEqual(p.ids.MinBlockIDs[blockIndex-1], id) {
+	if blockIndex > 0 && seq.LessOrEqual(p.loader.table.MinBlockIDs[blockIndex-1], id) {
 		// the min ID of the previous block is also less than or equal to the given ID,
 		// so any ID of this block is definitely less than or equal to the given ID.
 		return true
@@ -82,8 +80,7 @@ func (p *SealedIDsProvider) LessOrEqual(lid seq.LID, id seq.ID) bool {
 
 type SealedDataProvider struct {
 	*Sealed
-	sc               *SearchCell
-	tracer           *tracer.Tracer
+	ctx              context.Context
 	fracVersion      BinaryDataVersion
 	midCache         *UnpackCache
 	ridCache         *UnpackCache
@@ -91,16 +88,11 @@ type SealedDataProvider struct {
 	tokenTableLoader *token.TableLoader
 }
 
-func (dp *SealedDataProvider) Tracer() *tracer.Tracer {
-	return dp.tracer
-}
-
-func (dp *SealedDataProvider) IDsProvider() IDsProvider {
-	return &SealedIDsProvider{
-		ids:         dp.ids,
+func (dp *SealedDataProvider) IDsIndex() IDsIndex {
+	return &SealedIDsIndex{
+		loader:      NewIDsLoader(dp.indexReader, dp.indexCache, dp.idsTable),
 		midCache:    dp.midCache,
 		ridCache:    dp.ridCache,
-		searchSB:    dp.sc,
 		fracVersion: dp.fracVersion,
 	}
 }
@@ -141,12 +133,8 @@ func (dp *SealedDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) 
 
 	for tid := fetcher.GetTIDFromIndex(begin); tid <= lastTID; tid++ {
 		if tid > entryLastTID {
-			if dp.sc.Exit.Load() {
-				return nil, consts.ErrUnexpectedInterruption
-			}
-			if dp.sc.IsCancelled() {
-				err := fmt.Errorf("search cancelled when matching tokens: reason=%s field=%s, query=%s", dp.sc.Context.Err(), field, searchStr)
-				dp.sc.Cancel(err)
+			if util.IsCancelled(dp.ctx) {
+				err := fmt.Errorf("search cancelled when matching tokens: reason=%s field=%s, query=%s", dp.ctx.Err(), field, searchStr)
 				return nil, err
 			}
 			blockIndex++
@@ -165,16 +153,48 @@ func (dp *SealedDataProvider) GetTIDsByTokenExpr(t parser.Token, tids []uint32) 
 }
 
 func (dp *SealedDataProvider) GetLIDsFromTIDs(tids []uint32, stats lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node {
-	return dp.Sealed.GetLIDsFromTIDs(dp.sc, tids, stats, minLID, maxLID, dp.tracer, order)
+	return dp.Sealed.GetLIDsFromTIDs(tids, stats, minLID, maxLID, order)
+}
+
+func (dp *SealedDataProvider) DocsIndex() DocsIndex {
+	return &SealedDocsIndex{
+		idsIndex: dp.IDsIndex(),
+		idsLoader: NewIDsLoader(
+			dp.Sealed.indexReader,
+			dp.Sealed.indexCache,
+			dp.Sealed.idsTable,
+		),
+		docsReader:    dp.Sealed.docsReader,
+		blocksOffsets: dp.Sealed.BlocksOffsets,
+	}
+}
+
+type SealedDocsIndex struct {
+	idsIndex      IDsIndex
+	idsLoader     *IDsLoader
+	docsReader    *disk.DocsReader
+	blocksOffsets []uint64
+}
+
+func (di *SealedDocsIndex) GetBlocksOffsets(num uint32) uint64 {
+	return di.blocksOffsets[num]
+}
+
+func (di *SealedDocsIndex) GetDocPos(ids []seq.ID) []DocPos {
+	return di.getDocPosByLIDs(di.findLIDs(ids))
+}
+
+func (di *SealedDocsIndex) ReadDocs(blockOffset uint64, docOffsets []uint64) ([][]byte, error) {
+	return di.docsReader.ReadDocs(blockOffset, docOffsets)
 }
 
 // findLIDs returns a slice of LIDs. If seq.ID is not found, LID has the value 0 at the corresponding position
-func findLIDs(p IDsProvider, ids []seq.ID) []seq.LID {
+func (di *SealedDocsIndex) findLIDs(ids []seq.ID) []seq.LID {
 	res := make([]seq.LID, len(ids))
 
 	// left and right it is search range
-	left := 1            // first
-	right := p.Len() - 1 // last
+	left := 1                      // first
+	right := di.idsIndex.Len() - 1 // last
 
 	for i, id := range ids {
 
@@ -184,10 +204,10 @@ func findLIDs(p IDsProvider, ids []seq.ID) []seq.LID {
 		}
 
 		lid := seq.LID(util.BinSearchInRange(left, right, func(lid int) bool {
-			return p.LessOrEqual(seq.LID(lid), id)
+			return di.idsIndex.LessOrEqual(seq.LID(lid), id)
 		}))
 
-		if id.MID == p.GetMID(lid) && id.RID == p.GetRID(lid) {
+		if id.MID == di.idsIndex.GetMID(lid) && id.RID == di.idsIndex.GetRID(lid) {
 			res[i] = lid
 		}
 
@@ -198,51 +218,55 @@ func findLIDs(p IDsProvider, ids []seq.ID) []seq.LID {
 	return res
 }
 
-func (dp *SealedDataProvider) Fetch(ids []seq.ID) ([][]byte, error) {
-	defer dp.tracer.UpdateMetric(metric.FetchSealedStagesSeconds)
+// GetDocPosByLIDs returns a slice of DocPos for the corresponding LIDs.
+// Passing sorted LIDs (asc or desc) will improve the performance of this method.
+// For LID with zero value will return DocPos with `DocPosNotFound` value
+func (di *SealedDocsIndex) getDocPosByLIDs(localIDs []seq.LID) []DocPos {
+	var (
+		prevIndex int64 = -1
+		positions []uint64
+		startLID  seq.LID
+	)
 
-	m := dp.tracer.Start("get_lid_by_mid")
-	l := findLIDs(dp.IDsProvider(), ids)
-	m.Stop()
-
-	m = dp.tracer.Start("get_doc_params_by_lid")
-	docsPos := dp.ids.GetDocPosByLIDs(l)
-	m.Stop()
-
-	m = dp.tracer.Start("get_doc_pos")
-	blocks, offsets, index := GroupDocsOffsets(docsPos)
-	m.Stop()
-
-	m = dp.tracer.Start("read_doc")
-	res := make([][]byte, len(ids))
-	for i, docOffsets := range offsets {
-		docs, err := dp.readDocs(dp.BlocksOffsets[blocks[i]], docOffsets)
-		if err != nil {
-			return nil, err
+	res := make([]DocPos, len(localIDs))
+	for i, lid := range localIDs {
+		if lid == 0 {
+			res[i] = DocPosNotFound
+			continue
 		}
-		for i, j := range index[i] {
-			res[j] = docs[i]
+
+		index := di.idsLoader.getIDBlockIndexByLID(lid)
+		if prevIndex != index {
+			positions = di.idsLoader.GetParamsBlock(uint32(index))
+			startLID = seq.LID(index * consts.IDsPerBlock)
+			prevIndex = index
 		}
+
+		res[i] = DocPos(positions[lid-startLID])
 	}
-	m.Stop()
 
-	return res, nil
+	return res
 }
 
 type Sealed struct {
 	frac
 
-	blocksReader *disk.BlocksReader
+	docsFile   *os.File
+	docsCache  *cache.Cache[[]byte]
+	docsReader *disk.DocsReader
 
-	lidsTable *lids.Table
-	ids       *SealedIDs
+	indexFile   *os.File
+	indexCache  *IndexCache
+	indexReader *disk.IndexReader
 
+	idsTable      IDsTable
+	lidsTable     *lids.Table
 	BlocksOffsets []uint64
 
-	isLoaded bool
 	loadMu   *sync.RWMutex
+	isLoaded bool
 
-	cache *SealedIndexCache
+	readLimiter *disk.ReadLimiter
 
 	// shit for testing
 	PartialSuicideMode PSD
@@ -256,21 +280,17 @@ const (
 	HalfRemove
 )
 
-func NewSealed(baseFile string, reader *disk.Reader, sealedIndexCache *SealedIndexCache, docBlockCache *cache.Cache[[]byte], fracInfoCache *Info) *Sealed {
-	indexFileName := baseFile + consts.IndexFileSuffix
-
-	r := disk.NewBlocksReader(sealedIndexCache.Registry, indexFileName, metric.StoreBytesRead)
-
+func NewSealed(baseFile string, readLimiter *disk.ReadLimiter, indexCache *IndexCache, docsCache *cache.Cache[[]byte], fracInfoCache *Info) *Sealed {
 	f := &Sealed{
-		ids:          NewSealedIDs(reader, r, sealedIndexCache),
-		blocksReader: r,
-		loadMu:       &sync.RWMutex{},
-		cache:        sealedIndexCache,
+		loadMu: &sync.RWMutex{},
+
+		readLimiter: readLimiter,
+		docsCache:   docsCache,
+		indexCache:  indexCache,
+
 		frac: frac{
-			docBlockCache: docBlockCache,
-			reader:        reader,
-			info:          fracInfoCache,
-			BaseFileName:  baseFile,
+			info:         fracInfoCache,
+			BaseFileName: baseFile,
 		},
 		PartialSuicideMode: Off,
 	}
@@ -280,42 +300,71 @@ func NewSealed(baseFile string, reader *disk.Reader, sealedIndexCache *SealedInd
 		return f
 	}
 
+	f.openIndex()
 	f.info = f.loadHeader()
 
 	return f
 }
 
-func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *SealedIndexCache) *Sealed {
-	indexFileName := active.BaseFileName + consts.IndexFileSuffix
-	blocksReader := disk.NewBlocksReader(sealedIndexCache.Registry, indexFileName, metric.StoreBytesRead)
+func (f *Sealed) openIndex() {
+	if f.indexReader == nil {
+		var err error
+		name := f.BaseFileName + consts.IndexFileSuffix
+		f.indexFile, err = os.Open(name)
+		if err != nil {
+			logger.Fatal("can't open index file", zap.String("file", name), zap.Error(err))
+		}
+		f.indexReader = disk.NewIndexReader(f.readLimiter, f.indexFile, f.indexCache.Registry)
+	}
+}
 
+func (f *Sealed) openDocs() {
+	if f.docsReader == nil {
+		var err error
+		f.docsFile, err = os.Open(f.BaseFileName + consts.DocsFileSuffix)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				logger.Fatal("can't open docs file", zap.String("frac", f.BaseFileName), zap.Error(err))
+			}
+			f.docsFile, err = os.Open(f.BaseFileName + consts.SdocsFileSuffix)
+			if err != nil {
+				logger.Fatal("can't open sdocs file", zap.String("frac", f.BaseFileName), zap.Error(err))
+			}
+		}
+		f.docsReader = disk.NewDocsReader(f.readLimiter, f.docsFile, f.docsCache)
+	}
+}
+
+func NewSealedFromActive(active *Active, readLimiter *disk.ReadLimiter, indexFile *os.File, indexCache *IndexCache) *Sealed {
 	infoCopy := *active.info
 	f := &Sealed{
-		// the data of these three fields will actually be read from disk again in the future on the first
-		// attempt to search in fraction (see method Sealed.loadAndRLock())
-		// TODO: we need to either remove this data preparation in active fraction sealing or avoid re-reading the data from disk
-		lidsTable:    active.lidsTable,
-		ids:          active.sealedIDs,
-		blocksReader: blocksReader,
-		loadMu:       &sync.RWMutex{},
-		cache:        sealedIndexCache,
+		idsTable:      active.idsTable,
+		lidsTable:     active.lidsTable,
+		BlocksOffsets: active.DocBlocks.GetVals(),
+
+		docsFile:   active.docsFile,
+		docsCache:  active.docsCache,
+		docsReader: active.docsReader,
+
+		indexFile:   indexFile,
+		indexCache:  indexCache,
+		indexReader: disk.NewIndexReader(readLimiter, indexFile, indexCache.Registry),
+
+		loadMu:   &sync.RWMutex{},
+		isLoaded: true,
+
+		readLimiter: readLimiter,
+
 		frac: frac{
-			docBlockCache: active.frac.docBlockCache,
-			reader:        reader,
-			docsFile:      active.docsFile,
-			info:          &infoCopy,
-			BaseFileName:  active.BaseFileName,
+			info:         &infoCopy,
+			BaseFileName: active.BaseFileName,
 		},
 	}
 
 	// put the token table built during sealing into the cache of the sealed faction
-	sealedIndexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
+	indexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
 		return active.tokenTable, active.tokenTable.Size()
 	})
-
-	f.ids.Reader = reader
-	f.ids.BlocksReader = blocksReader
-	f.ids.cache = sealedIndexCache
 
 	docsCountK := float64(f.info.DocsTotal) / 1000
 	logger.Info("sealed fraction created from active",
@@ -331,36 +380,27 @@ func NewSealedFromActive(active *Active, reader *disk.Reader, sealedIndexCache *
 	return f
 }
 
-func (f *Sealed) readHeader() *Info {
-	block, _, err := f.reader.ReadIndexBlock(f.blocksReader, 0, nil)
+func (f *Sealed) loadHeader() *Info {
+	block, _, err := f.indexReader.ReadIndexBlock(0, nil)
 	if err != nil {
 		logger.Panic("todo")
 	}
 	if len(block) < 4 || string(block[:4]) != seqDBMagic {
-		logger.Fatal("seq-db index file header corrupted", zap.String("file", f.blocksReader.GetFileName()))
+		logger.Fatal("seq-db index file header corrupted", zap.String("file", f.indexFile.Name()))
 	}
 	info := &Info{}
 	info.Load(block[4:])
-	return info
-}
 
-func (f *Sealed) loadHeader() *Info {
-	info := f.readHeader()
-	info.Path = f.BaseFileName
-	info.MetaOnDisk = 0
-	info.IndexOnDisk = f.getIndexSize()
-	return info
-}
-
-func (f *Sealed) getIndexSize() uint64 {
-	stat, err := f.blocksReader.GetFileStat()
+	stat, err := f.indexFile.Stat()
 	if err != nil {
-		logger.Fatal("can't stat index file",
-			zap.String("file", f.blocksReader.GetFileName()),
-			zap.Error(err),
-		)
+		logger.Fatal("can't stat index file", zap.String("file", f.indexFile.Name()), zap.Error(err))
 	}
-	return uint64(stat.Size())
+
+	info.MetaOnDisk = 0        // todo: make this correction on sealing
+	info.Path = f.BaseFileName // todo: make this correction on sealing
+	info.IndexOnDisk = uint64(stat.Size())
+
+	return info
 }
 
 func (f *Sealed) Type() string {
@@ -372,21 +412,22 @@ func (f *Sealed) load() {
 	defer f.loadMu.Unlock()
 
 	if !f.isLoaded {
+
+		f.openDocs()
+		f.openIndex()
+
 		(&Loader{}).Load(f)
 		f.isLoaded = true
 	}
 }
 
-func (f *Sealed) GetLIDsFromTIDs(sc *SearchCell, tids []uint32, counter lids.Counter, minLID, maxLID uint32, tr *tracer.Tracer, order seq.DocsOrder) []node.Node {
-	m := tr.Start("GetOpTIDLIDs")
-	defer m.Stop()
-
+func (f *Sealed) GetLIDsFromTIDs(tids []uint32, counter lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node {
 	var (
 		getBlockIndex   func(tid uint32) uint32
 		getLIDsIterator func(uint32, uint32) node.Node
 	)
 
-	loader := lids.NewLoader(f.reader, f.blocksReader, f.cache.LIDs, sc)
+	loader := lids.NewLoader(f.indexReader, f.indexCache.LIDs)
 
 	if order.IsReverse() {
 		getBlockIndex = func(tid uint32) uint32 { return f.lidsTable.GetLastBlockIndexForTID(tid) }
@@ -400,12 +441,10 @@ func (f *Sealed) GetLIDsFromTIDs(sc *SearchCell, tids []uint32, counter lids.Cou
 		}
 	}
 
-	t := time.Now()
 	startIndexes := make([]uint32, len(tids))
 	for i, tid := range tids {
 		startIndexes[i] = getBlockIndex(tid)
 	}
-	sc.AddLIDBlocksSearchTimeNS(time.Since(t))
 
 	nodes := make([]node.Node, len(tids))
 	for i, tid := range tids {
@@ -422,15 +461,24 @@ func (f *Sealed) Suicide() {
 
 	f.close("suicide")
 
-	f.cache.Release()
-	f.docBlockCache.Release()
+	f.docsCache.Release()
+	f.indexCache.Release()
 
 	// make some atomic magic, to be more stable on removing fractions
 	oldPath := f.BaseFileName + consts.DocsFileSuffix
 	newPath := f.BaseFileName + consts.DocsDelFileSuffix
-	err := os.Rename(oldPath, newPath)
-	if err != nil {
+	if err := os.Rename(oldPath, newPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		logger.Error("can't rename docs file",
+			zap.String("old_path", oldPath),
+			zap.String("new_path", newPath),
+			zap.Error(err),
+		)
+	}
+
+	oldPath = f.BaseFileName + consts.SdocsFileSuffix
+	newPath = f.BaseFileName + consts.SdocsDelFileSuffix
+	if err := os.Rename(oldPath, newPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.Error("can't rename sdocs file",
 			zap.String("old_path", oldPath),
 			zap.String("new_path", newPath),
 			zap.Error(err),
@@ -443,8 +491,7 @@ func (f *Sealed) Suicide() {
 
 	oldPath = f.BaseFileName + consts.IndexFileSuffix
 	newPath = f.BaseFileName + consts.IndexDelFileSuffix
-	err = os.Rename(oldPath, newPath)
-	if err != nil {
+	if err := os.Rename(oldPath, newPath); err != nil {
 		logger.Error("can't rename index file",
 			zap.String("old_path", oldPath),
 			zap.String("new_path", newPath),
@@ -453,9 +500,16 @@ func (f *Sealed) Suicide() {
 	}
 
 	rmPath := f.BaseFileName + consts.DocsDelFileSuffix
-	err = os.Remove(rmPath)
-	if err != nil {
+	if err := os.Remove(rmPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		logger.Error("can't remove docs file",
+			zap.String("file", rmPath),
+			zap.Error(err),
+		)
+	}
+
+	rmPath = f.BaseFileName + consts.SdocsDelFileSuffix
+	if err := os.Remove(rmPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.Error("can't remove sdocs file",
 			zap.String("file", rmPath),
 			zap.Error(err),
 		)
@@ -466,8 +520,7 @@ func (f *Sealed) Suicide() {
 	}
 
 	rmPath = f.BaseFileName + consts.IndexDelFileSuffix
-	err = os.Remove(rmPath)
-	if err != nil {
+	if err := os.Remove(rmPath); err != nil {
 		logger.Error("can't remove index file",
 			zap.String("file", rmPath),
 			zap.Error(err),
@@ -483,21 +536,14 @@ func (f *Sealed) close(hint string) {
 		return
 	}
 
-	// docs file may not be opened since it's loaded lazily
-	if f.docsFile != nil {
-		err := f.docsFile.Close()
-		if err != nil {
-			logger.Error("can't close docs file",
-				f.closeLogArgs("sealed", hint, err)...,
-			)
+	if f.docsFile != nil { // docs file may not be opened since it's loaded lazily
+		if err := f.docsFile.Close(); err != nil {
+			logger.Error("can't close docs file", f.closeLogArgs("sealed", hint, err)...)
 		}
 	}
 
-	err := f.blocksReader.Close()
-	if err != nil {
-		logger.Error("can't close index file",
-			f.closeLogArgs("sealed", hint, err)...,
-		)
+	if err := f.indexFile.Close(); err != nil {
+		logger.Error("can't close index file", f.closeLogArgs("sealed", hint, err)...)
 	}
 }
 
@@ -529,16 +575,14 @@ func (f *Sealed) DataProvider(ctx context.Context) (DataProvider, func(), bool) 
 
 	f.load()
 
-	sc := NewSearchCell(ctx)
 	dp := SealedDataProvider{
 		Sealed:           f,
-		sc:               sc,
-		tracer:           tracer.New(),
+		ctx:              ctx,
 		fracVersion:      f.info.BinaryDataVer,
 		midCache:         NewUnpackCache(),
 		ridCache:         NewUnpackCache(),
-		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.Tokens, sc),
-		tokenTableLoader: token.NewTableLoader(f.BaseFileName, f.reader, f.blocksReader, f.cache.TokenTable),
+		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, f.indexReader, f.indexCache.Tokens),
+		tokenTableLoader: token.NewTableLoader(f.BaseFileName, f.indexReader, f.indexCache.TokenTable),
 	}
 
 	return &dp, func() {

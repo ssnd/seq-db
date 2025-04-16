@@ -1,4 +1,4 @@
-package search
+package searcher
 
 import (
 	"context"
@@ -24,8 +24,8 @@ import (
 	"go.uber.org/zap"
 )
 
-type Searcher interface {
-	Search(ctx context.Context, fracs []frac.Fraction, params Params) ([]*seq.QPR, []*Stats, error)
+type SyncSearcher interface {
+	SearchDocs(ctx context.Context, fracs []frac.Fraction, params Params) (*seq.QPR, error)
 }
 
 type MappingProvider interface {
@@ -38,12 +38,14 @@ type AsyncSearcher struct {
 	mp MappingProvider
 
 	fracManager *fracmanager.FracManager
-	searcher    Searcher
+	searcher    SyncSearcher
 
 	requestsMu sync.RWMutex
 	requests   map[string]asyncSearchInfo
 
 	rateLimit chan struct{}
+
+	createDirOnce *sync.Once
 }
 
 type AsyncSearcherConfig struct {
@@ -51,13 +53,9 @@ type AsyncSearcherConfig struct {
 	Parallelism int
 }
 
-func MustStartAsyncSearcher(config AsyncSearcherConfig, mp MappingProvider, m *fracmanager.FracManager, searcher Searcher) *AsyncSearcher {
+func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, m *fracmanager.FracManager, searcher SyncSearcher) *AsyncSearcher {
 	if config.DataDir == "" {
 		logger.Fatal("can't start async searcher: DataDir is empty")
-	}
-
-	if err := os.MkdirAll(config.DataDir, 0o777); err != nil {
-		panic(err)
 	}
 
 	asyncSearches, err := loadAsyncSearches(config.DataDir)
@@ -71,13 +69,14 @@ func MustStartAsyncSearcher(config AsyncSearcherConfig, mp MappingProvider, m *f
 	}
 
 	as := &AsyncSearcher{
-		config:      config,
-		mp:          mp,
-		fracManager: m,
-		searcher:    searcher,
-		requestsMu:  sync.RWMutex{},
-		requests:    asyncSearches,
-		rateLimit:   make(chan struct{}, parallelism),
+		config:        config,
+		mp:            mp,
+		fracManager:   m,
+		searcher:      searcher,
+		requestsMu:    sync.RWMutex{},
+		requests:      asyncSearches,
+		rateLimit:     make(chan struct{}, parallelism),
+		createDirOnce: &sync.Once{},
 	}
 
 	notProcessedIDs := notProcessedTasks(asyncSearches)
@@ -116,10 +115,7 @@ func (as *AsyncSearcher) StartSearch(r AsyncSearchRequest) error {
 	}
 	r.Params.AST = ast.Root
 
-	fracs, err := as.fracManager.SelectFracsInRange(r.Params.From, r.Params.To)
-	if err != nil {
-		return err
-	}
+	fracs := as.fracManager.GetAllFracs().FilterInRange(r.Params.From, r.Params.To)
 	if len(fracs) == 0 {
 		return nil
 	}
@@ -217,16 +213,17 @@ func (as *AsyncSearcher) doSearch(id string) error {
 	}
 
 	r := state.Request
-	fracsInRange, err := as.fracManager.SelectFracsInRange(r.Params.From, r.Params.To)
-	if err != nil {
-		return err
+	fracsInRange := as.fracManager.GetAllFracs().FilterInRange(r.Params.From, r.Params.To)
+	fracsByName := make(map[string]frac.Fraction)
+	for _, f := range fracsInRange {
+		fracsByName[f.Info().Name()] = f
 	}
 
 	for _, fracInfo := range state.Fractions {
 		if _, ok := processedFracs[fracInfo.Name]; ok {
 			continue
 		}
-		f := fracsInRange.FindByName(fracInfo.Name)
+		f := fracsByName[fracInfo.Name]
 
 		// todo send batch of fracs?
 		if err := as.processFrac(f, state.Request); err != nil {
@@ -244,14 +241,9 @@ var compressBufPool = sync.Pool{
 }
 
 func (as *AsyncSearcher) processFrac(f frac.Fraction, r AsyncSearchRequest) error {
-	qprs, _, err := as.searcher.Search(context.Background(), []frac.Fraction{f}, r.Params)
+	qpr, err := as.searcher.SearchDocs(context.Background(), []frac.Fraction{f}, r.Params)
 	if err != nil {
 		return err
-	}
-	qpr := qprs[0]
-	// qpr can be nil if fraction suicided.
-	if qpr == nil {
-		return nil
 	}
 
 	qprRaw, err := json.Marshal(qpr)
@@ -433,4 +425,12 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 		HistInterval: info.Request.Params.HistInterval,
 		Order:        info.Request.Params.Order,
 	}, true
+}
+
+func (as *AsyncSearcher) createDir() {
+	as.createDirOnce.Do(func() {
+		if err := os.MkdirAll(as.config.DataDir, 0o777); err != nil {
+			panic(err)
+		}
+	})
 }

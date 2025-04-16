@@ -3,18 +3,18 @@ package storeapi
 import (
 	"context"
 	"math"
+	"path"
 	"strconv"
 	"testing"
 
 	insaneJSON "github.com/ozontech/insane-json"
 	"github.com/stretchr/testify/assert"
-	"github.com/ozontech/seq-db/search"
-
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/mappingprovider"
 	"github.com/ozontech/seq-db/pkg/storeapi"
+	"github.com/ozontech/seq-db/searcher"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/tests/common"
 )
@@ -88,6 +88,7 @@ func getTestGrpc(t *testing.T) (*GrpcV1, func(), func()) {
 			FractionsPerIteration: 1,
 			RequestsLimit:         consts.DefaultSearchRequestsLimit,
 			LogThreshold:          0,
+			Async:                 searcher.AsyncSearcherConfig{DataDir: path.Join(dataDir, "async_search")},
 		},
 		Fetch: FetchConfig{
 			LogThreshold: 0,
@@ -97,9 +98,7 @@ func getTestGrpc(t *testing.T) (*GrpcV1, func(), func()) {
 	mappingProvider, err := mappingprovider.New("", mappingprovider.WithMapping(seq.TestMapping))
 	assert.NoError(t, err)
 
-	searcher := search.NewWorkerPool(config.Search.WorkersCount)
-
-	g := NewGrpcV1(config, fm, searcher, nil, mappingProvider)
+	g := NewGrpcV1(config, fm, mappingProvider)
 
 	release := func() {
 		fm.Stop()

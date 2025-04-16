@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/ozontech/seq-db/mappingprovider"
-	"github.com/ozontech/seq-db/search"
 	"go.uber.org/zap"
 
 	"github.com/ozontech/seq-db/fracmanager"
@@ -40,9 +39,7 @@ func NewBareStore(config *storeapi.StoreConfig, mapping seq.Mapping) BareStore {
 		logger.Fatal("can't create mapping", zap.Error(err))
 	}
 
-	searcher := search.NewWorkerPool(config.API.Search.WorkersCount)
-
-	s.impl = storeapi.NewGrpcV1(config.API, s.fracManager, searcher, nil, mappingProvider)
+	s.impl = storeapi.NewGrpcV1(config.API, s.fracManager, mappingProvider)
 
 	return s
 }

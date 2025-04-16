@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	storesearch "github.com/ozontech/seq-db/searcher"
 	"go.uber.org/atomic"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
@@ -34,7 +35,6 @@ import (
 	"github.com/ozontech/seq-db/proxy/search"
 	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/proxyapi"
-	storesearch "github.com/ozontech/seq-db/search"
 	"github.com/ozontech/seq-db/storeapi"
 	"github.com/ozontech/seq-db/tracing"
 )
@@ -62,7 +62,7 @@ var (
 	logFetchThresholdMs    = kingpin.Flag("log-fetch-threshold-ms", `threshold for logging fetch requests, ms`).Default("3000").Int()
 	bulkRequestsLimit      = kingpin.Flag("requests-limit", `maximum number of simultaneous bulk requests`).Default(strconv.Itoa(consts.DefaultBulkRequestsLimit)).Uint64()
 	searchRequestsLimit    = kingpin.Flag("search-requests-limit", `maximum number of simultaneous search requests`).Default(strconv.Itoa(consts.DefaultSearchRequestsLimit)).Uint64()
-	maxFractionHits        = kingpin.Flag("search-fraction-limit", `the maximum number of fractions used in the search`).Default(strconv.Itoa(consts.DefaultMaxFractionHits)).Uint64()
+	maxFractionHits        = kingpin.Flag("search-fraction-limit", `the maximum number of fractions used in the search`).Default(strconv.Itoa(consts.DefaultMaxFractionHits)).Int()
 	allowedTimeDrift       = kingpin.Flag("allowed-time-drift", `maximum allowed time since the message timestamp`).Default(consts.AllowedTimeDrift).Duration()
 	futureAllowedTimeDrift = kingpin.Flag("future-allowed-time-drift", `maximum future allowed time since the message timestamp`).Default(consts.FutureAllowedTimeDrift).Duration()
 	maxInflightBulks       = kingpin.Flag("max-inflight-bulks", `max ingestor inflight bulk requests`).Default(strconv.Itoa(consts.IngestorMaxInflightBulks)).Int()
@@ -311,7 +311,6 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 			FracSize:          uint64(*fracSize),
 			TotalSize:         uint64(*totalSize),
 			CacheSize:         uint64(*cacheSize),
-			MaxFractionHits:   *maxFractionHits,
 			FracLoadLimit:     0,
 			ShouldReplay:      true,
 			ShouldRemoveMeta:  true,
@@ -326,10 +325,6 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 				TokenTableZstdLevel:    *sealCompressLevel,
 			},
 		},
-		AsyncSearch: storesearch.AsyncSearcherConfig{
-			DataDir:     *asyncSearchesDataDir,
-			Parallelism: *asyncSearchesParallelism,
-		},
 		API: storeapi.APIConfig{
 			StoreMode: configMode,
 			Bulk: storeapi.BulkConfig{
@@ -338,6 +333,7 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 			},
 			Search: storeapi.SearchConfig{
 				WorkersCount:          *searchWorkersCount,
+				MaxFractionHits:       *maxFractionHits,
 				FractionsPerIteration: runtime.GOMAXPROCS(0),
 				RequestsLimit:         *searchRequestsLimit,
 				LogThreshold:          time.Millisecond * time.Duration(*logSearchThresholdMs),
@@ -345,6 +341,10 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 					MaxGroupTokens:     *aggMaxGroupTokens,
 					MaxFieldTokens:     *aggMaxFieldTokens,
 					MaxTIDsPerFraction: *aggMaxTIDsPerFraction,
+				},
+				Async: storesearch.AsyncSearcherConfig{
+					DataDir:     *asyncSearchesDataDir,
+					Parallelism: *asyncSearchesParallelism,
 				},
 			},
 			Fetch: storeapi.FetchConfig{

@@ -1,19 +1,10 @@
 package lids
 
 import (
-	"time"
-
 	"github.com/ozontech/seq-db/cache"
 	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/packer"
 )
-
-type Stats interface {
-	AddLIDBytesRead(uint64)
-	AddReadLIDTimeNS(time.Duration)
-	AddDecodeLIDTimeNS(time.Duration)
-	AddLIDBlocksSearchTimeNS(time.Duration)
-}
 
 type unpackBuffer struct {
 	lids    []uint32
@@ -24,26 +15,17 @@ type unpackBuffer struct {
 // NOT THREAD SAFE. Do not use concurrently.
 // Use your own Loader instance for each search query
 type Loader struct {
-	cache            *cache.Cache[*Chunks]
-	diskReader       *disk.Reader
-	diskBlocksReader *disk.BlocksReader
-	stats            Stats
-	unpackBuf        *unpackBuffer
-	blockBuf         []byte
+	cache     *cache.Cache[*Chunks]
+	reader    *disk.IndexReader
+	unpackBuf *unpackBuffer
+	blockBuf  []byte
 }
 
-func NewLoader(
-	diskReader *disk.Reader,
-	diskBlocksReader *disk.BlocksReader,
-	chunkCache *cache.Cache[*Chunks],
-	stats Stats,
-) *Loader {
+func NewLoader(reader *disk.IndexReader, chunkCache *cache.Cache[*Chunks]) *Loader {
 	return &Loader{
-		cache:            chunkCache,
-		diskReader:       diskReader,
-		diskBlocksReader: diskBlocksReader,
-		stats:            stats,
-		unpackBuf:        &unpackBuffer{},
+		cache:     chunkCache,
+		reader:    reader,
+		unpackBuf: &unpackBuffer{},
 	}
 }
 
@@ -59,26 +41,17 @@ func (l *Loader) GetLIDsChunks(blockIndex uint32) (*Chunks, error) {
 }
 
 func (l *Loader) readLIDsChunks(blockIndex uint32) (*Chunks, error) {
-	var (
-		n   uint64
-		err error
-	)
-	ts := time.Now()
-	l.blockBuf, n, err = l.diskReader.ReadIndexBlock(l.diskBlocksReader, blockIndex, l.blockBuf)
-
+	var err error
+	l.blockBuf, _, err = l.reader.ReadIndexBlock(blockIndex, l.blockBuf)
 	if err != nil {
 		return nil, err
 	}
-	l.stats.AddLIDBytesRead(n)
-	l.stats.AddReadLIDTimeNS(time.Since(ts))
 
-	ts = time.Now()
 	chunks := &Chunks{}
 	err = chunks.unpack(packer.NewBytesUnpacker(l.blockBuf), l.unpackBuf)
 	if err != nil {
 		return nil, err
 	}
-	l.stats.AddDecodeLIDTimeNS(time.Since(ts))
 
 	return chunks, err
 }

@@ -2,7 +2,6 @@ package fracmanager
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"math/rand"
 	"os"
@@ -10,10 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-
-	"github.com/oklog/ulid/v2"
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
@@ -21,7 +21,6 @@ import (
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
-	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
 )
 
@@ -41,7 +40,7 @@ type FracManager struct {
 	fracs  []*fracRef
 	active activeRef
 
-	reader       *disk.Reader
+	readLimiter  *disk.ReadLimiter
 	indexWorkers *frac.IndexWorkers
 
 	OldestCT atomic.Uint64
@@ -84,7 +83,7 @@ func NewFracManager(config *Config) *FracManager {
 		config:       config,
 		mature:       atomic.Bool{},
 		indexWorkers: indexWorkers,
-		reader:       disk.NewReader(metric.StoreBytesRead),
+		readLimiter:  disk.NewReadLimiter(conf.ReaderWorkers, metric.StoreBytesRead),
 		ulidEntropy:  ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0),
 		cacheMaintainer: NewCacheMaintainer(config.CacheSize, &CacheMaintainerMetrics{
 			HitsTotal:       metric.CacheHitsTotal,
@@ -156,7 +155,7 @@ func (fm *FracManager) shiftFirstFrac() frac.Fraction {
 func (fm *FracManager) shrinkSizes(suicideWG *sync.WaitGroup) {
 	var outsiders []frac.Fraction
 	fracs := fm.GetAllFracs()
-	size := fracs.getTotalSize()
+	size := fracs.GetTotalSize()
 
 	for size > fm.config.TotalSize {
 		outsider := fm.shiftFirstFrac()
@@ -187,7 +186,7 @@ func (fm *FracManager) shrinkSizes(suicideWG *sync.WaitGroup) {
 		}
 	}
 
-	if oldestByCT := fracs.getOldestFrac(); oldestByCT != nil {
+	if oldestByCT := fracs.GetOldestFrac(); oldestByCT != nil {
 		newOldestCT := oldestByCT.Info().CreationTime
 		prevOldestCT := fm.OldestCT.Swap(newOldestCT)
 		if newOldestCT != prevOldestCT {
@@ -202,11 +201,11 @@ func (fm *FracManager) shrinkSizes(suicideWG *sync.WaitGroup) {
 // (search and fetch) occurs under blocking (see DataProvider).
 // This way we avoid the race.
 // Accessing the deleted faction data just will return an empty result.
-func (fm *FracManager) GetAllFracs() FracsList {
+func (fm *FracManager) GetAllFracs() frac.List {
 	fm.fracMu.RLock()
 	defer fm.fracMu.RUnlock()
 
-	fracs := make([]frac.Fraction, len(fm.fracs))
+	fracs := make(frac.List, len(fm.fracs))
 	for i, f := range fm.fracs {
 		fracs[i] = f.instance
 	}
@@ -297,7 +296,7 @@ func (fm *FracManager) Load(ctx context.Context) error {
 	var err error
 	var notSealed []activeRef
 
-	l := NewLoader(fm.config, fm.reader, fm.cacheMaintainer, fm.indexWorkers, fm.fracCache)
+	l := NewLoader(fm.config, fm.readLimiter, fm.cacheMaintainer, fm.indexWorkers, fm.fracCache)
 	if fm.fracs, notSealed, err = l.load(ctx); err != nil {
 		return err
 	}
@@ -327,27 +326,6 @@ func (fm *FracManager) Load(ctx context.Context) error {
 	return nil
 }
 
-func (fm *FracManager) SelectFracsInRange(from, to seq.MID) (FracsList, error) {
-	fracs := make(FracsList, 0)
-	for _, f := range fm.GetAllFracs() {
-		if f.IsIntersecting(from, to) {
-			fracs = append(fracs, f)
-		}
-	}
-
-	if fm.config.MaxFractionHits > 0 && len(fracs) > int(fm.config.MaxFractionHits) {
-		metric.RejectedRequests.WithLabelValues("search", "fracs_exceeding").Inc()
-		return nil, fmt.Errorf(
-			"%w (%d > %d), try decreasing query time range",
-			consts.ErrTooManyFractionsHit,
-			len(fracs),
-			fm.config.MaxFractionHits,
-		)
-	}
-
-	return fracs, nil
-}
-
 func (fm *FracManager) Append(ctx context.Context, docs, metas disk.DocBlock, writeQueue *atomic.Uint64) error {
 	for {
 		select {
@@ -366,20 +344,40 @@ func (fm *FracManager) Append(ctx context.Context, docs, metas disk.DocBlock, wr
 	return nil
 }
 
-func (fm *FracManager) seal(active activeRef) {
-	if err := active.frac.Seal(fm.config.SealParams); err != nil {
+var (
+	sealsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "seq_db",
+		Subsystem: "main",
+		Name:      "seals_total",
+	})
+	sealsDoneSeconds = promauto.NewSummary(prometheus.SummaryOpts{
+		Namespace: "seq_db",
+		Subsystem: "main",
+		Name:      "seals_done_seconds",
+	})
+)
+
+func (fm *FracManager) seal(activeRef activeRef) {
+	sealsTotal.Inc()
+	now := time.Now()
+	defer func() {
+		sealsDoneSeconds.Observe(time.Since(now).Seconds())
+	}()
+
+	indexFile, err := activeRef.frac.Seal(fm.config.SealParams)
+	if err != nil {
 		logger.Panic("sealing error", zap.Error(err))
 	}
-	sealed := frac.NewSealedFromActive(active.frac, fm.reader, fm.cacheMaintainer.CreateSealedIndexCache())
+	sealed := frac.NewSealedFromActive(activeRef.frac, fm.readLimiter, indexFile, fm.cacheMaintainer.CreateIndexCache())
 
 	stats := sealed.Info()
 	fm.fracCache.AddFraction(stats.Name(), stats)
 
 	fm.fracMu.Lock()
-	active.ref.instance = sealed
+	activeRef.ref.instance = sealed
 	fm.fracMu.Unlock()
 
-	active.frac.Release(sealed)
+	activeRef.frac.Release(sealed)
 }
 
 func (fm *FracManager) rotate() activeRef {
@@ -392,7 +390,7 @@ func (fm *FracManager) rotate() activeRef {
 
 	prev := fm.active
 
-	active := frac.NewActive(baseFilePath, fm.config.ShouldRemoveMeta, fm.indexWorkers, fm.reader, fm.cacheMaintainer.CreateDocBlockCache())
+	active := frac.NewActive(baseFilePath, fm.config.ShouldRemoveMeta, fm.indexWorkers, fm.readLimiter, fm.cacheMaintainer.CreateDocBlockCache())
 	fm.active.frac = active
 	fm.active.ref = &fracRef{instance: active}
 	fm.fracs = append(fm.fracs, fm.active.ref)
@@ -407,7 +405,6 @@ func (fm *FracManager) shouldSealOnExit(active *frac.Active) bool {
 
 func (fm *FracManager) Stop() {
 	fm.indexWorkers.Stop()
-	fm.reader.Stop()
 	fm.stopFn()
 
 	fm.statWG.Wait()

@@ -19,6 +19,10 @@ const (
 	DocsOrderAsc  DocsOrder = 1
 )
 
+func (o DocsOrder) IsDesc() bool {
+	return o == DocsOrderDesc
+}
+
 func (o DocsOrder) IsReverse() bool {
 	return o == DocsOrderAsc
 }
@@ -45,6 +49,12 @@ func (p IDSources) IDs() []ID {
 		ids[i] = id.ID
 	}
 	return ids
+}
+
+func (p IDSources) ApplyHint(hint string) {
+	for i := range p {
+		p[i].Hint = hint
+	}
 }
 
 type ErrorSource struct {

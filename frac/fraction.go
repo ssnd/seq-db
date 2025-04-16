@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ozontech/seq-db/frac/lids"
-	"github.com/ozontech/seq-db/metric/tracer"
 	"github.com/ozontech/seq-db/node"
 	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/seq"
@@ -15,11 +14,11 @@ const (
 	TypeActive = "active"
 )
 
-// IDsProvider provide access to seq.ID by seq.LID
+// IDsIndex provide access to seq.ID by seq.LID
 // where seq.LID (Local ID) is a position of seq.ID in sorted sequence.
 // seq.ID sorted in descending order, so for seq.LID1 > seq.LID2
 // we have seq.ID1 < seq.ID2
-type IDsProvider interface {
+type IDsIndex interface {
 	// LessOrEqual checks if seq.ID in LID position less or equal searched seq.ID, i.e. seqID(lid) <= id
 	LessOrEqual(lid seq.LID, id seq.ID) bool
 	GetMID(seq.LID) seq.MID
@@ -27,15 +26,21 @@ type IDsProvider interface {
 	Len() int
 }
 
+type DocsIndex interface {
+	GetBlocksOffsets(uint32) uint64
+	GetDocPos([]seq.ID) []DocPos
+	ReadDocs(blockOffset uint64, docOffsets []uint64) ([][]byte, error)
+}
+
 type DataProvider interface {
 	Type() string
 
-	Tracer() *tracer.Tracer
-	IDsProvider() IDsProvider
+	IDsIndex() IDsIndex
+	DocsIndex() DocsIndex
+
 	GetValByTID(tid uint32) []byte
 	GetTIDsByTokenExpr(token parser.Token, tids []uint32) ([]uint32, error)
 	GetLIDsFromTIDs(tids []uint32, stats lids.Counter, minLID, maxLID uint32, order seq.DocsOrder) []node.Node
-	Fetch(ids []seq.ID) ([][]byte, error)
 }
 
 type Fraction interface {

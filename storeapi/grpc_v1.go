@@ -12,12 +12,13 @@ import (
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
-	"github.com/ozontech/seq-db/fetch"
+	"github.com/ozontech/seq-db/fetcher"
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
+	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/querytracer"
-	"github.com/ozontech/seq-db/search"
+	"github.com/ozontech/seq-db/searcher"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
 )
@@ -34,11 +35,14 @@ type AggregationsConfig struct {
 
 type SearchConfig struct {
 	WorkersCount          int
+	MaxFractionHits       int
 	FractionsPerIteration int
 	RequestsLimit         uint64
 	LogThreshold          time.Duration
 
 	Aggregation AggregationsConfig
+
+	Async searcher.AsyncSearcherConfig
 }
 
 type BulkConfig struct {
@@ -82,12 +86,12 @@ type bulkData struct {
 }
 
 type searchData struct {
-	workerPool *search.WorkerPool
-	inflight   atomic.Int64
+	searcher *searcher.Searcher
+	inflight atomic.Int64
 }
 
 type fetchData struct {
-	docFetcher *fetch.Fetcher
+	docFetcher *fetcher.Fetcher
 }
 
 type GrpcV1 struct {
@@ -102,10 +106,21 @@ type GrpcV1 struct {
 	bulkData      bulkData
 	searchData    searchData
 	fetchData     fetchData
-	asyncSearcher *search.AsyncSearcher
+	asyncSearcher *searcher.AsyncSearcher
 }
 
-func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, searcher *search.WorkerPool, asyncSearcher *search.AsyncSearcher, mappingProvider MappingProvider) *GrpcV1 {
+func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *GrpcV1 {
+	srch := searcher.New(config.Search.WorkersCount, searcher.Conf{
+		AggLimits: searcher.AggLimits{
+			MaxFieldTokens:     config.Search.Aggregation.MaxFieldTokens,
+			MaxGroupTokens:     config.Search.Aggregation.MaxGroupTokens,
+			MaxTIDsPerFraction: config.Search.Aggregation.MaxTIDsPerFraction,
+		},
+		MaxFractionHits:       config.Search.MaxFractionHits,
+		FractionsPerIteration: config.Search.FractionsPerIteration,
+	})
+	asyncSearcher := searcher.MustStartAsync(config.Search.Async, mappingProvider, fracManager, srch)
+
 	g := &GrpcV1{
 		config:          config,
 		fracManager:     fracManager,
@@ -115,10 +130,10 @@ func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, searcher 
 			writeQueue:  atomic.NewUint64(0),
 		},
 		searchData: searchData{
-			workerPool: searcher,
+			searcher: srch,
 		},
 		fetchData: fetchData{
-			docFetcher: fetch.New(conf.FetchWorkers),
+			docFetcher: fetcher.New(conf.FetchWorkers),
 		},
 		asyncSearcher: asyncSearcher,
 	}
@@ -191,6 +206,7 @@ func parseStoreError(e error) (storeapi.SearchErrorCode, bool) {
 	}
 
 	if errors.Is(e, consts.ErrTooManyFractionsHit) {
+		metric.RejectedRequests.WithLabelValues("search", "fracs_exceeding").Inc()
 		return storeapi.SearchErrorCode_TOO_MANY_FRACTIONS_HIT, true
 	}
 

@@ -4,9 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/pkg/storeapi"
-	"github.com/ozontech/seq-db/search"
+	"github.com/ozontech/seq-db/searcher"
 	"github.com/ozontech/seq-db/seq"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -19,14 +18,9 @@ func (g *GrpcV1) StartAsyncSearch(_ context.Context, r *storeapi.StartAsyncSearc
 		return nil, err
 	}
 
-	params := search.Params{
-		AST:  nil, // Parse AST later.
-		AggQ: aggs,
-		AggLimits: search.AggLimits{
-			MaxFieldTokens:     g.config.Search.Aggregation.MaxFieldTokens,
-			MaxGroupTokens:     g.config.Search.Aggregation.MaxGroupTokens,
-			MaxTIDsPerFraction: g.config.Search.Aggregation.MaxTIDsPerFraction,
-		},
+	params := searcher.Params{
+		AST:          nil, // Parse AST later.
+		AggQ:         aggs,
 		HistInterval: uint64(r.HistogramInterval),
 		From:         seq.MID(r.From),
 		To:           seq.MID(r.To),
@@ -35,7 +29,7 @@ func (g *GrpcV1) StartAsyncSearch(_ context.Context, r *storeapi.StartAsyncSearc
 		Order:        r.Order.MustDocsOrder(),
 	}
 
-	req := search.AsyncSearchRequest{
+	req := searcher.AsyncSearchRequest{
 		ID:        r.SearchId,
 		Query:     r.Query,
 		Params:    params,
@@ -49,12 +43,12 @@ func (g *GrpcV1) StartAsyncSearch(_ context.Context, r *storeapi.StartAsyncSearc
 }
 
 func (g *GrpcV1) FetchAsyncSearchResult(_ context.Context, r *storeapi.FetchAsyncSearchResultRequest) (*storeapi.FetchAsyncSearchResultResponse, error) {
-	fetchResp, exists := g.asyncSearcher.FetchSearchResult(search.FetchSearchResultRequest{ID: r.SearchId})
+	fetchResp, exists := g.asyncSearcher.FetchSearchResult(searcher.FetchSearchResultRequest{ID: r.SearchId})
 	if !exists {
 		return nil, status.Error(codes.NotFound, "search not found")
 	}
 
-	resp := buildSearchResponse(&fetchResp.QPR, &frac.SearchCell{})
+	resp := buildSearchResponse(&fetchResp.QPR)
 
 	return &storeapi.FetchAsyncSearchResultResponse{
 		Done:              fetchResp.Done,
@@ -66,7 +60,7 @@ func (g *GrpcV1) FetchAsyncSearchResult(_ context.Context, r *storeapi.FetchAsyn
 	}, nil
 }
 
-func convertAggQueriesToProto(query []search.AggQuery) []*storeapi.AggQuery {
+func convertAggQueriesToProto(query []searcher.AggQuery) []*storeapi.AggQuery {
 	var res []*storeapi.AggQuery
 	for _, q := range query {
 		pq := &storeapi.AggQuery{

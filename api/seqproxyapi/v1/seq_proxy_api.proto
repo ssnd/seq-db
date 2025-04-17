@@ -26,34 +26,6 @@ service SeqProxyApi {
     };
   }
 
-  // Starts a new asynchronous search operation.
-  // The server processes the request in the background and returns a search ID.
-  rpc StartAsyncSearch(StartAsyncSearchRequest) returns (StartAsyncSearchResponse) {
-    option (google.api.http) = {
-      post: "/async-search"
-      body: "*"
-    };
-  }
-
-  // Fetches the result or current status of a previously started async search.
-  // Clients should use the search ID returned by StartAsyncSearch.
-  rpc FetchAsyncSearchResult(FetchAsyncSearchResultRequest) returns (FetchAsyncSearchResultResponse) {
-    option (google.api.http) = {
-      get: "/async-search/{search_id}"
-    };
-  }
-
-  // Cancels an ongoing asynchronous search operation if it hasn't completed yet.
-  // Useful for freeing up resources if the result is no longer needed.
-  rpc CancelAsyncSearch(CancelAsyncSearchRequest) returns (CancelAsyncSearchResponse) {
-    option (google.api.http) = {
-      delete: "/async-search/{search_id}"
-    };
-  }
-
-  // todo update retention settings handler
-  // todo delete async search handler
-
   // Fetch aggregations for given SearchQuery and AggQueries.
   rpc GetAggregation(GetAggregationRequest) returns (GetAggregationResponse) {
     option (google.api.http) = {
@@ -97,6 +69,31 @@ service SeqProxyApi {
     option (google.api.http) = {
       post: "/export"
       body: "*"
+    };
+  }
+
+  // Starts a new asynchronous search operation.
+  // The server processes the request in the background and returns a search ID.
+  rpc StartAsyncSearch(StartAsyncSearchRequest) returns (StartAsyncSearchResponse) {
+    option (google.api.http) = {
+      post: "/async-search"
+      body: "*"
+    };
+  }
+
+  // Fetches the result or current status of a previously started async search.
+  // Clients should use the search ID returned by StartAsyncSearch.
+  rpc FetchAsyncSearchResult(FetchAsyncSearchResultRequest) returns (FetchAsyncSearchResultResponse) {
+    option (google.api.http) = {
+      get: "/async-search/{search_id}"
+    };
+  }
+
+  // Cancels an ongoing asynchronous search operation if it hasn't completed yet.
+  // Useful for freeing up resources if the result is no longer needed.
+  rpc CancelAsyncSearch(CancelAsyncSearchRequest) returns (CancelAsyncSearchResponse) {
+    option (google.api.http) = {
+      delete: "/async-search/{search_id}"
     };
   }
 }

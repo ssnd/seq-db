@@ -2,6 +2,7 @@ package storeapi
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/ozontech/seq-db/pkg/storeapi"
@@ -24,7 +25,7 @@ func (g *GrpcV1) StartAsyncSearch(_ context.Context, r *storeapi.StartAsyncSearc
 		HistInterval: uint64(r.HistogramInterval),
 		From:         seq.MID(r.From),
 		To:           seq.MID(r.To),
-		Limit:        0,
+		Limit:        math.MaxInt32, // TODO: use WithDocs from request
 		WithTotal:    false,
 		Order:        r.Order.MustDocsOrder(),
 	}

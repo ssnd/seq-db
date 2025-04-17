@@ -1771,15 +1771,6 @@ type SeqProxyApiClient interface {
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	// Fetch documents, aggregations and histograms for given queries correspondingly.
 	ComplexSearch(ctx context.Context, in *ComplexSearchRequest, opts ...grpc.CallOption) (*ComplexSearchResponse, error)
-	// Starts a new asynchronous search operation.
-	// The server processes the request in the background and returns a search ID.
-	StartAsyncSearch(ctx context.Context, in *StartAsyncSearchRequest, opts ...grpc.CallOption) (*StartAsyncSearchResponse, error)
-	// Fetches the result or current status of a previously started async search.
-	// Clients should use the search ID returned by StartAsyncSearch.
-	FetchAsyncSearchResult(ctx context.Context, in *FetchAsyncSearchResultRequest, opts ...grpc.CallOption) (*FetchAsyncSearchResultResponse, error)
-	// Cancels an ongoing asynchronous search operation if it hasn't completed yet.
-	// Useful for freeing up resources if the result is no longer needed.
-	CancelAsyncSearch(ctx context.Context, in *CancelAsyncSearchRequest, opts ...grpc.CallOption) (*CancelAsyncSearchResponse, error)
 	// Fetch aggregations for given SearchQuery and AggQueries.
 	GetAggregation(ctx context.Context, in *GetAggregationRequest, opts ...grpc.CallOption) (*GetAggregationResponse, error)
 	// Fetch histogram for given SearchQuery and HistQuery.
@@ -1792,6 +1783,15 @@ type SeqProxyApiClient interface {
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// Stream documents for given SearchQuery. Same as Search, but returns streaming response.
 	Export(ctx context.Context, in *ExportRequest, opts ...grpc.CallOption) (SeqProxyApi_ExportClient, error)
+	// Starts a new asynchronous search operation.
+	// The server processes the request in the background and returns a search ID.
+	StartAsyncSearch(ctx context.Context, in *StartAsyncSearchRequest, opts ...grpc.CallOption) (*StartAsyncSearchResponse, error)
+	// Fetches the result or current status of a previously started async search.
+	// Clients should use the search ID returned by StartAsyncSearch.
+	FetchAsyncSearchResult(ctx context.Context, in *FetchAsyncSearchResultRequest, opts ...grpc.CallOption) (*FetchAsyncSearchResultResponse, error)
+	// Cancels an ongoing asynchronous search operation if it hasn't completed yet.
+	// Useful for freeing up resources if the result is no longer needed.
+	CancelAsyncSearch(ctx context.Context, in *CancelAsyncSearchRequest, opts ...grpc.CallOption) (*CancelAsyncSearchResponse, error)
 }
 
 type seqProxyApiClient struct {
@@ -1814,33 +1814,6 @@ func (c *seqProxyApiClient) Search(ctx context.Context, in *SearchRequest, opts 
 func (c *seqProxyApiClient) ComplexSearch(ctx context.Context, in *ComplexSearchRequest, opts ...grpc.CallOption) (*ComplexSearchResponse, error) {
 	out := new(ComplexSearchResponse)
 	err := c.cc.Invoke(ctx, "/seqproxyapi.v1.SeqProxyApi/ComplexSearch", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *seqProxyApiClient) StartAsyncSearch(ctx context.Context, in *StartAsyncSearchRequest, opts ...grpc.CallOption) (*StartAsyncSearchResponse, error) {
-	out := new(StartAsyncSearchResponse)
-	err := c.cc.Invoke(ctx, "/seqproxyapi.v1.SeqProxyApi/StartAsyncSearch", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *seqProxyApiClient) FetchAsyncSearchResult(ctx context.Context, in *FetchAsyncSearchResultRequest, opts ...grpc.CallOption) (*FetchAsyncSearchResultResponse, error) {
-	out := new(FetchAsyncSearchResultResponse)
-	err := c.cc.Invoke(ctx, "/seqproxyapi.v1.SeqProxyApi/FetchAsyncSearchResult", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *seqProxyApiClient) CancelAsyncSearch(ctx context.Context, in *CancelAsyncSearchRequest, opts ...grpc.CallOption) (*CancelAsyncSearchResponse, error) {
-	out := new(CancelAsyncSearchResponse)
-	err := c.cc.Invoke(ctx, "/seqproxyapi.v1.SeqProxyApi/CancelAsyncSearch", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1947,6 +1920,33 @@ func (x *seqProxyApiExportClient) Recv() (*ExportResponse, error) {
 	return m, nil
 }
 
+func (c *seqProxyApiClient) StartAsyncSearch(ctx context.Context, in *StartAsyncSearchRequest, opts ...grpc.CallOption) (*StartAsyncSearchResponse, error) {
+	out := new(StartAsyncSearchResponse)
+	err := c.cc.Invoke(ctx, "/seqproxyapi.v1.SeqProxyApi/StartAsyncSearch", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *seqProxyApiClient) FetchAsyncSearchResult(ctx context.Context, in *FetchAsyncSearchResultRequest, opts ...grpc.CallOption) (*FetchAsyncSearchResultResponse, error) {
+	out := new(FetchAsyncSearchResultResponse)
+	err := c.cc.Invoke(ctx, "/seqproxyapi.v1.SeqProxyApi/FetchAsyncSearchResult", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *seqProxyApiClient) CancelAsyncSearch(ctx context.Context, in *CancelAsyncSearchRequest, opts ...grpc.CallOption) (*CancelAsyncSearchResponse, error) {
+	out := new(CancelAsyncSearchResponse)
+	err := c.cc.Invoke(ctx, "/seqproxyapi.v1.SeqProxyApi/CancelAsyncSearch", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SeqProxyApiServer is the server API for SeqProxyApi service.
 // All implementations must embed UnimplementedSeqProxyApiServer
 // for forward compatibility
@@ -1955,15 +1955,6 @@ type SeqProxyApiServer interface {
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// Fetch documents, aggregations and histograms for given queries correspondingly.
 	ComplexSearch(context.Context, *ComplexSearchRequest) (*ComplexSearchResponse, error)
-	// Starts a new asynchronous search operation.
-	// The server processes the request in the background and returns a search ID.
-	StartAsyncSearch(context.Context, *StartAsyncSearchRequest) (*StartAsyncSearchResponse, error)
-	// Fetches the result or current status of a previously started async search.
-	// Clients should use the search ID returned by StartAsyncSearch.
-	FetchAsyncSearchResult(context.Context, *FetchAsyncSearchResultRequest) (*FetchAsyncSearchResultResponse, error)
-	// Cancels an ongoing asynchronous search operation if it hasn't completed yet.
-	// Useful for freeing up resources if the result is no longer needed.
-	CancelAsyncSearch(context.Context, *CancelAsyncSearchRequest) (*CancelAsyncSearchResponse, error)
 	// Fetch aggregations for given SearchQuery and AggQueries.
 	GetAggregation(context.Context, *GetAggregationRequest) (*GetAggregationResponse, error)
 	// Fetch histogram for given SearchQuery and HistQuery.
@@ -1976,6 +1967,15 @@ type SeqProxyApiServer interface {
 	Status(context.Context, *StatusRequest) (*StatusResponse, error)
 	// Stream documents for given SearchQuery. Same as Search, but returns streaming response.
 	Export(*ExportRequest, SeqProxyApi_ExportServer) error
+	// Starts a new asynchronous search operation.
+	// The server processes the request in the background and returns a search ID.
+	StartAsyncSearch(context.Context, *StartAsyncSearchRequest) (*StartAsyncSearchResponse, error)
+	// Fetches the result or current status of a previously started async search.
+	// Clients should use the search ID returned by StartAsyncSearch.
+	FetchAsyncSearchResult(context.Context, *FetchAsyncSearchResultRequest) (*FetchAsyncSearchResultResponse, error)
+	// Cancels an ongoing asynchronous search operation if it hasn't completed yet.
+	// Useful for freeing up resources if the result is no longer needed.
+	CancelAsyncSearch(context.Context, *CancelAsyncSearchRequest) (*CancelAsyncSearchResponse, error)
 	mustEmbedUnimplementedSeqProxyApiServer()
 }
 
@@ -1988,15 +1988,6 @@ func (UnimplementedSeqProxyApiServer) Search(context.Context, *SearchRequest) (*
 }
 func (UnimplementedSeqProxyApiServer) ComplexSearch(context.Context, *ComplexSearchRequest) (*ComplexSearchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ComplexSearch not implemented")
-}
-func (UnimplementedSeqProxyApiServer) StartAsyncSearch(context.Context, *StartAsyncSearchRequest) (*StartAsyncSearchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method StartAsyncSearch not implemented")
-}
-func (UnimplementedSeqProxyApiServer) FetchAsyncSearchResult(context.Context, *FetchAsyncSearchResultRequest) (*FetchAsyncSearchResultResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FetchAsyncSearchResult not implemented")
-}
-func (UnimplementedSeqProxyApiServer) CancelAsyncSearch(context.Context, *CancelAsyncSearchRequest) (*CancelAsyncSearchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CancelAsyncSearch not implemented")
 }
 func (UnimplementedSeqProxyApiServer) GetAggregation(context.Context, *GetAggregationRequest) (*GetAggregationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAggregation not implemented")
@@ -2015,6 +2006,15 @@ func (UnimplementedSeqProxyApiServer) Status(context.Context, *StatusRequest) (*
 }
 func (UnimplementedSeqProxyApiServer) Export(*ExportRequest, SeqProxyApi_ExportServer) error {
 	return status.Errorf(codes.Unimplemented, "method Export not implemented")
+}
+func (UnimplementedSeqProxyApiServer) StartAsyncSearch(context.Context, *StartAsyncSearchRequest) (*StartAsyncSearchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartAsyncSearch not implemented")
+}
+func (UnimplementedSeqProxyApiServer) FetchAsyncSearchResult(context.Context, *FetchAsyncSearchResultRequest) (*FetchAsyncSearchResultResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchAsyncSearchResult not implemented")
+}
+func (UnimplementedSeqProxyApiServer) CancelAsyncSearch(context.Context, *CancelAsyncSearchRequest) (*CancelAsyncSearchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelAsyncSearch not implemented")
 }
 func (UnimplementedSeqProxyApiServer) mustEmbedUnimplementedSeqProxyApiServer() {}
 
@@ -2061,60 +2061,6 @@ func _SeqProxyApi_ComplexSearch_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SeqProxyApiServer).ComplexSearch(ctx, req.(*ComplexSearchRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _SeqProxyApi_StartAsyncSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(StartAsyncSearchRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SeqProxyApiServer).StartAsyncSearch(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/seqproxyapi.v1.SeqProxyApi/StartAsyncSearch",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SeqProxyApiServer).StartAsyncSearch(ctx, req.(*StartAsyncSearchRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _SeqProxyApi_FetchAsyncSearchResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FetchAsyncSearchResultRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SeqProxyApiServer).FetchAsyncSearchResult(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/seqproxyapi.v1.SeqProxyApi/FetchAsyncSearchResult",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SeqProxyApiServer).FetchAsyncSearchResult(ctx, req.(*FetchAsyncSearchResultRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _SeqProxyApi_CancelAsyncSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CancelAsyncSearchRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SeqProxyApiServer).CancelAsyncSearch(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/seqproxyapi.v1.SeqProxyApi/CancelAsyncSearch",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SeqProxyApiServer).CancelAsyncSearch(ctx, req.(*CancelAsyncSearchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2233,6 +2179,60 @@ func (x *seqProxyApiExportServer) Send(m *ExportResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _SeqProxyApi_StartAsyncSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartAsyncSearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SeqProxyApiServer).StartAsyncSearch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/seqproxyapi.v1.SeqProxyApi/StartAsyncSearch",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SeqProxyApiServer).StartAsyncSearch(ctx, req.(*StartAsyncSearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SeqProxyApi_FetchAsyncSearchResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FetchAsyncSearchResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SeqProxyApiServer).FetchAsyncSearchResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/seqproxyapi.v1.SeqProxyApi/FetchAsyncSearchResult",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SeqProxyApiServer).FetchAsyncSearchResult(ctx, req.(*FetchAsyncSearchResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SeqProxyApi_CancelAsyncSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelAsyncSearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SeqProxyApiServer).CancelAsyncSearch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/seqproxyapi.v1.SeqProxyApi/CancelAsyncSearch",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SeqProxyApiServer).CancelAsyncSearch(ctx, req.(*CancelAsyncSearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SeqProxyApi_ServiceDesc is the grpc.ServiceDesc for SeqProxyApi service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2249,18 +2249,6 @@ var SeqProxyApi_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SeqProxyApi_ComplexSearch_Handler,
 		},
 		{
-			MethodName: "StartAsyncSearch",
-			Handler:    _SeqProxyApi_StartAsyncSearch_Handler,
-		},
-		{
-			MethodName: "FetchAsyncSearchResult",
-			Handler:    _SeqProxyApi_FetchAsyncSearchResult_Handler,
-		},
-		{
-			MethodName: "CancelAsyncSearch",
-			Handler:    _SeqProxyApi_CancelAsyncSearch_Handler,
-		},
-		{
 			MethodName: "GetAggregation",
 			Handler:    _SeqProxyApi_GetAggregation_Handler,
 		},
@@ -2275,6 +2263,18 @@ var SeqProxyApi_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Status",
 			Handler:    _SeqProxyApi_Status_Handler,
+		},
+		{
+			MethodName: "StartAsyncSearch",
+			Handler:    _SeqProxyApi_StartAsyncSearch_Handler,
+		},
+		{
+			MethodName: "FetchAsyncSearchResult",
+			Handler:    _SeqProxyApi_FetchAsyncSearchResult_Handler,
+		},
+		{
+			MethodName: "CancelAsyncSearch",
+			Handler:    _SeqProxyApi_CancelAsyncSearch_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

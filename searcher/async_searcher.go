@@ -53,7 +53,7 @@ type AsyncSearcherConfig struct {
 	Parallelism int
 }
 
-func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, m *fracmanager.FracManager, searcher SyncSearcher) *AsyncSearcher {
+func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, fm *fracmanager.FracManager, searcher SyncSearcher) *AsyncSearcher {
 	if config.DataDir == "" {
 		logger.Fatal("can't start async searcher: DataDir is empty")
 	}
@@ -71,7 +71,7 @@ func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, m *fracmanag
 	as := &AsyncSearcher{
 		config:        config,
 		mp:            mp,
-		fracManager:   m,
+		fracManager:   fm,
 		searcher:      searcher,
 		requestsMu:    sync.RWMutex{},
 		requests:      asyncSearches,
@@ -106,9 +106,15 @@ type asyncSearchInfo struct {
 	StartTime  time.Time
 }
 
-const asyncSearchFileExtension = ".info"
-
 func (as *AsyncSearcher) StartSearch(r AsyncSearchRequest) error {
+	as.requestsMu.RLock()
+	_, ok := as.requests[r.ID]
+	as.requestsMu.RUnlock()
+	if ok {
+		logger.Warn("async search already started", zap.String("id", r.ID))
+		return nil
+	}
+
 	ast, err := parser.ParseSeqQL(r.Query, as.mp.GetMapping())
 	if err != nil {
 		return err
@@ -116,58 +122,59 @@ func (as *AsyncSearcher) StartSearch(r AsyncSearchRequest) error {
 	r.Params.AST = ast.Root
 
 	fracs := as.fracManager.GetAllFracs().FilterInRange(r.Params.From, r.Params.To)
-	if len(fracs) == 0 {
-		return nil
-	}
-
 	fracsToSearch := make([]fracInfo, 0, len(fracs))
 	for _, f := range fracs {
 		fracsToSearch = append(fracsToSearch, fracInfo{Name: f.Info().Name()})
 	}
 
-	const asyncSearchTmpFileExtension = "._info"
-	fnameTmp := path.Join(as.config.DataDir, r.ID+asyncSearchTmpFileExtension)
-	fname := path.Join(as.config.DataDir, r.ID+asyncSearchFileExtension)
-
-	metaFile, err := os.OpenFile(fnameTmp, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
-	if err != nil {
-		logger.Fatal("can't create async search info file", zap.Error(err))
-	}
-	defer metaFile.Close()
+	// It can be empty if the replica does not contain the required data.
+	// In this case, it is necessary to consider that the asynchronous request is completed.
+	requestDone := len(fracs) == 0
 
 	now := time.Now()
 	info := asyncSearchInfo{
-		Done:       false,
+		Done:       requestDone,
 		Request:    r,
 		Fractions:  fracsToSearch,
 		Expiration: now.Add(r.Retention),
 		StartTime:  now,
 	}
-	if err := json.NewEncoder(metaFile).Encode(info); err != nil {
-		logger.Fatal("can't encode async request to info file", zap.Error(err))
+	as.updateSearchInfo(r.ID, info)
+
+	if !requestDone {
+		go as.processRequest(r.ID)
 	}
-
-	if err := metaFile.Sync(); err != nil {
-		logger.Fatal("can't sync info file", zap.Error(err))
-	}
-
-	if err := os.Rename(fnameTmp, fname); err != nil {
-		logger.Fatal("can't rename async search info file", zap.Error(err))
-	}
-
-	as.requestsMu.Lock()
-	as.requests[r.ID] = info
-	as.requestsMu.Unlock()
-
-	go as.processRequest(r.ID)
 
 	return nil
+}
+
+func (as *AsyncSearcher) updateSearchInfo(id string, info asyncSearchInfo) {
+	as.requestsMu.Lock()
+	defer as.requestsMu.Unlock()
+
+	as.mustWriteSearchInfo(id, info)
+	as.requests[id] = info
+}
+
+const asyncSearchFileExtension = ".info"
+
+func (as *AsyncSearcher) mustWriteSearchInfo(id string, info asyncSearchInfo) {
+	as.createDataDir()
+
+	infoRaw, err := json.Marshal(info)
+	if err != nil {
+		logger.Fatal("can't encode async request", zap.Error(err))
+	}
+
+	fpath := path.Join(as.config.DataDir, id+asyncSearchFileExtension)
+	mustWriteFileAtomic(fpath, infoRaw)
 }
 
 func (as *AsyncSearcher) processRequest(asyncSearchID string) {
 	as.rateLimit <- struct{}{}
 	defer func() { <-as.rateLimit }()
 
+	logger.Info("start to process async search request", zap.String("id", asyncSearchID))
 	if err := as.doSearch(asyncSearchID); err != nil {
 		logger.Fatal("async search failed", zap.Error(err))
 	}
@@ -190,26 +197,24 @@ func (as *AsyncSearcher) doSearch(id string) error {
 
 	as.requestsMu.RLock()
 	state, ok := as.requests[id]
+	astParsed := state.Request.Params.AST != nil
 	as.requestsMu.RUnlock()
 	if !ok {
 		panic(fmt.Errorf("BUG: can't find async search request for id %s", id))
 	}
 
-	if len(processedFracs) == len(state.Fractions) {
-		state.Done = true
-		as.requestsMu.Lock()
-		as.requests[id] = state
-		as.requestsMu.Unlock()
-		return nil
-	}
-
 	// AST can be nil in case of restarts.
-	if state.Request.Params.AST == nil {
-		ast, err := parser.ParseSeqQL(state.Request.Query, as.mp.GetMapping())
-		if err != nil {
-			panic(fmt.Errorf("BUG: search query must be valid: %s", err))
+	if !astParsed {
+		as.requestsMu.Lock()
+		// Check if another worker has parsed the AST.
+		if state.Request.Params.AST == nil {
+			ast, err := parser.ParseSeqQL(state.Request.Query, as.mp.GetMapping())
+			if err != nil {
+				panic(fmt.Errorf("BUG: search query must be valid: %s", err))
+			}
+			state.Request.Params.AST = ast.Root
 		}
-		state.Request.Params.AST = ast.Root
+		as.requestsMu.Unlock()
 	}
 
 	r := state.Request
@@ -225,19 +230,16 @@ func (as *AsyncSearcher) doSearch(id string) error {
 		}
 		f := fracsByName[fracInfo.Name]
 
-		// todo send batch of fracs?
 		if err := as.processFrac(f, state.Request); err != nil {
 			return fmt.Errorf("processing fraction %s: %s", fracInfo.Name, err)
 		}
 	}
 
-	return nil
-}
+	state.Done = true
 
-var compressBufPool = sync.Pool{
-	New: func() interface{} {
-		return new(bytespool.Buffer)
-	},
+	as.updateSearchInfo(id, state)
+
+	return nil
 }
 
 func (as *AsyncSearcher) processFrac(f frac.Fraction, r AsyncSearchRequest) error {
@@ -248,39 +250,18 @@ func (as *AsyncSearcher) processFrac(f frac.Fraction, r AsyncSearchRequest) erro
 
 	qprRaw, err := json.Marshal(qpr)
 	if err != nil {
-		return err
+		panic(fmt.Errorf("BUG: can't encode async search request: %s", err))
 	}
+
+	buf := bytespool.AcquireReset(len(qprRaw))
+	defer bytespool.Release(buf)
 
 	// zstd uses level 3 as the default value, which has optimal compression ratio and speed.
-	// Please, create an issue if you want to change this value via configuration.
 	const compressionLevel = 3
+	buf.B = zstd.CompressLevel(qprRaw, buf.B, compressionLevel)
 
-	compressedQPR := compressBufPool.Get().(*bytespool.Buffer)
-	compressedQPR.B = zstd.CompressLevel(qprRaw, compressedQPR.B, compressionLevel)
-	defer compressBufPool.Put(compressedQPR)
-
-	qprFilePrefix := path.Join(as.config.DataDir, r.ID+"."+f.Info().Name()) // <data-dir>/<request_id>.<frac_name>
-	const tmpQPRExtension = "._qpr"
-	qprTmpFileName := qprFilePrefix + tmpQPRExtension
-	qprResultFileName := qprFilePrefix + qprExtension
-
-	out, err := os.OpenFile(qprTmpFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	if _, err := out.Write(compressedQPR.B); err != nil {
-		return fmt.Errorf("writing compressed QPR: %s", err)
-	}
-
-	if err := out.Sync(); err != nil {
-		return fmt.Errorf("syncing compressed QPR: %s", err)
-	}
-
-	if err := os.Rename(qprTmpFileName, qprResultFileName); err != nil {
-		return err
-	}
+	fpath := path.Join(as.config.DataDir, r.ID+"."+f.Info().Name()+qprExtension) // <data-dir>/<request_id>.<frac_name>.qpr
+	mustWriteFileAtomic(fpath, buf.B)
 
 	return nil
 }
@@ -347,7 +328,7 @@ func loadAsyncSearches(dataDir string) (map[string]asyncSearchInfo, error) {
 func notProcessedTasks(tasks map[string]asyncSearchInfo) []string {
 	var toProcess []string
 
-	//nolint:gocritic // rangeValCopy (each iteration copies 216 bytes) – it's ok here
+	// nolint:gocritic // rangeValCopy (each iteration copies 216 bytes) – it's ok here
 	for id, task := range tasks {
 		if !task.Done {
 			toProcess = append(toProcess, id)
@@ -427,10 +408,57 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 	}, true
 }
 
-func (as *AsyncSearcher) createDir() {
+// createDataDir creates dir data lazily to avoid creating extra folders.
+func (as *AsyncSearcher) createDataDir() {
 	as.createDirOnce.Do(func() {
 		if err := os.MkdirAll(as.config.DataDir, 0o777); err != nil {
 			panic(err)
 		}
 	})
+}
+
+func mustWriteFileAtomic(fpath string, data []byte) {
+	fpathTmp := fpath + ".tmp"
+
+	f, err := os.Create(fpathTmp)
+	if err != nil {
+		logger.Fatal("can't create file", zap.Error(err))
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			logger.Fatal("can't close file", zap.Error(err))
+		}
+	}()
+
+	if _, err := f.Write(data); err != nil {
+		logger.Fatal("can't write to file", zap.Error(err))
+	}
+
+	if err := f.Sync(); err != nil {
+		logger.Fatal("can't sync file", zap.Error(err))
+	}
+
+	if err := os.Rename(fpathTmp, fpath); err != nil {
+		logger.Fatal("can't rename file", zap.Error(err))
+	}
+
+	absFpath, err := filepath.Abs(fpath)
+	if err != nil {
+		logger.Fatal("can't get absolute path", zap.String("path", fpath), zap.Error(err))
+	}
+	dir := path.Dir(absFpath)
+	mustFsyncFile(dir)
+}
+
+func mustFsyncFile(fpath string) {
+	dirFile, err := os.Open(fpath)
+	if err != nil {
+		logger.Fatal("can't open dir", zap.Error(err))
+	}
+	if err := dirFile.Sync(); err != nil {
+		logger.Fatal("can't sync dir", zap.Error(err))
+	}
+	if err := dirFile.Close(); err != nil {
+		logger.Fatal("can't close dir", zap.Error(err))
+	}
 }

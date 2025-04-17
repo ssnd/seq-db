@@ -92,7 +92,7 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 		Offset:   int32(r.Offset),
 	}
 
-	done := false
+	done := true
 	var expiration time.Time
 	var aggQueries []seq.AggregateArgs
 

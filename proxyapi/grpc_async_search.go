@@ -45,9 +45,9 @@ func (g *grpcV1) StartAsyncSearch(ctx context.Context, r *seqproxyapi.StartAsync
 func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.FetchAsyncSearchResultRequest) (*seqproxyapi.FetchAsyncSearchResultResponse, error) {
 	resp, err := g.searchIngestor.FetchAsyncSearchResult(ctx, search.FetchAsyncSearchResultRequest{
 		ID:       r.SearchId,
-		WithDocs: false,
-		Size:     0,
-		Offset:   0,
+		WithDocs: r.WithDocs,
+		Size:     int(r.Size),
+		Offset:   int(r.Offset),
 	})
 	if err != nil {
 		return nil, err

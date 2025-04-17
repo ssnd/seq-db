@@ -207,12 +207,12 @@ out:
 
 // Append causes data to be written on disk and sends IndexTask to index workers
 // Checks the state of a faction and may return an error if the faction has already started sealing.
-func (f *Active) Append(docs, metas []byte, writeQueue *atomic.Uint64) error {
+func (f *Active) Append(docs, metas []byte) error {
 	if !f.incAppendQueueSize() {
 		return errors.New("fraction is not writable")
 	}
 
-	f.appender.In(f, docs, metas, writeQueue, &f.appendQueueSize)
+	f.appender.In(f, docs, metas, &f.appendQueueSize)
 
 	return nil
 }

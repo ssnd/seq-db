@@ -79,7 +79,7 @@ func StartAppender(docsFile, metasFile *os.File, size int, skipFsync bool, iw *I
 	}
 }
 
-func (a *ActiveAppender) In(frac *Active, docs, metas []byte, writeQueue *atomic.Uint64, appendQueue *atomic.Uint32) {
+func (a *ActiveAppender) In(frac *Active, docs, metas []byte, appendQueue *atomic.Uint32) {
 	task := &IndexTask{
 		DocsLen:     uint64(len(docs)),
 		Metas:       metas,
@@ -113,8 +113,6 @@ func (a *ActiveAppender) In(frac *Active, docs, metas []byte, writeQueue *atomic
 	m = sw.Start("send_index_chan")
 	a.iw.In(task)
 	m.Stop()
-
-	writeQueue.Dec()
 
 	sw.Export(metric.BulkStagesSeconds)
 }

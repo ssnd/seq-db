@@ -19,12 +19,11 @@ type Config struct {
 
 	FracLoadLimit     uint64 // how many sealed fractions should fracmanager load, if 0 then loads all
 	ShouldReplay      bool
-	ShouldRemoveMeta  bool
 	MaintenanceDelay  time.Duration
 	CacheCleanupDelay time.Duration
 	CacheGCDelay      time.Duration
 	SealParams        frac.SealParams
-	SdocsCacheSize    uint64
+	SortCacheSize     uint64 // size for docs cache for active fraction
 	Fraction          frac.Config
 }
 
@@ -58,19 +57,19 @@ func FillConfigWithDefault(config *Config) *Config {
 		config.SealParams.TokenTableZstdLevel = zstdDefaultLevel
 	}
 
-	if config.SdocsCacheSize == 0 {
+	if config.SortCacheSize == 0 {
 		const (
 			SdocsCacheSizeMultiplier = 8
 			SdocsCacheSizeMaxRatio   = 0.8
 		)
-		config.SdocsCacheSize = config.FracSize * SdocsCacheSizeMultiplier
-		if config.SdocsCacheSize > config.CacheSize {
-			config.SdocsCacheSize = uint64(float64(config.CacheSize) * 0.8)
+		config.SortCacheSize = config.FracSize * SdocsCacheSizeMultiplier
+		if config.SortCacheSize > config.CacheSize {
+			config.SortCacheSize = uint64(float64(config.CacheSize) * 0.8)
 		}
-	} else if config.SdocsCacheSize > config.CacheSize {
+	} else if config.SortCacheSize > config.CacheSize {
 		logger.Fatal("cache size misconfiguration",
 			zap.Float64("total_cache_size_mb", util.SizeToUnit(config.CacheSize, "mb")),
-			zap.Float64("sort_cache_size_mb", util.SizeToUnit(config.SdocsCacheSize, "mb")))
+			zap.Float64("sort_cache_size_mb", util.SizeToUnit(config.SortCacheSize, "mb")))
 	}
 
 	return config

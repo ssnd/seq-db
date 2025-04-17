@@ -25,7 +25,7 @@ const (
 	tokensName     = "tokens"
 	tokenTableName = "token_table"
 	docsName       = "docblock"
-	sdocsName      = "sdocblock" // Used when sealing for sorting documents.
+	sortName       = "sorting" // Used when sealing for sorting documents.
 )
 
 type cleanerConf struct {
@@ -34,7 +34,7 @@ type cleanerConf struct {
 	weight    uint64 // or relative size
 }
 
-func cleanerConfig(sdocsSize uint64) []cleanerConf {
+func cleanerConfig(sortCacheSize uint64) []cleanerConf {
 	return []cleanerConf{
 		{
 			layers: []string{indexName},
@@ -61,8 +61,8 @@ func cleanerConfig(sdocsSize uint64) []cleanerConf {
 			weight: 8,
 		},
 		{
-			layers:    []string{sdocsName},
-			sizeLimit: sdocsSize,
+			layers:    []string{sortName},
+			sizeLimit: sortCacheSize,
 		},
 	}
 }
@@ -119,8 +119,8 @@ func cleanersToLayers(cfg []cleanerConf, cleaners []*cache.Cleaner, metrics *Cac
 	return res
 }
 
-func NewCacheMaintainer(totalCacheSize, sdocsCacheSize uint64, metrics *CacheMaintainerMetrics) *CacheMaintainer {
-	config := cleanerConfig(sdocsCacheSize)
+func NewCacheMaintainer(totalCacheSize, sortCacheSize uint64, metrics *CacheMaintainerMetrics) *CacheMaintainer {
+	config := cleanerConfig(sortCacheSize)
 	cleaners, labels := createCleaners(config, totalCacheSize, metrics)
 	return &CacheMaintainer{
 		cleanerLabels: labels,
@@ -138,8 +138,8 @@ func (cm *CacheMaintainer) CreateDocBlockCache() *cache.Cache[[]byte] {
 	return newCache[[]byte](cm, docsName)
 }
 
-func (cm *CacheMaintainer) CreateSdocBlockCache() *cache.Cache[[]byte] {
-	return newCache[[]byte](cm, sdocsName)
+func (cm *CacheMaintainer) CreateSortDocsCache() *cache.Cache[[]byte] {
+	return newCache[[]byte](cm, sortName)
 }
 
 func (cm *CacheMaintainer) CreateIndexCache() *frac.IndexCache {

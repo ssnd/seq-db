@@ -40,8 +40,7 @@ type FracManager struct {
 	fracs  []*fracRef
 	active activeRef
 
-	readLimiter  *disk.ReadLimiter
-	indexWorkers *frac.IndexWorkers
+	fracProvider *fractionProvider
 
 	OldestCT atomic.Uint64
 	mature   atomic.Bool
@@ -63,48 +62,36 @@ type activeRef struct {
 	frac *frac.Active
 }
 
-// NewFracManagerWithBackgroundStart only used from tests
-func NewFracManagerWithBackgroundStart(config *Config) (*FracManager, error) {
-	fracManager := NewFracManager(config)
-	if err := fracManager.Load(context.Background()); err != nil {
-		return nil, err
-	}
-	fracManager.Start()
-
-	return fracManager, nil
-}
-
 func NewFracManager(config *Config) *FracManager {
 	FillConfigWithDefault(config)
 
-	indexWorkers := frac.NewIndexWorkers(conf.IndexWorkers, conf.IndexWorkers)
+	cacheMaintainer := NewCacheMaintainer(config.CacheSize, config.SortCacheSize, &CacheMaintainerMetrics{
+		HitsTotal:       metric.CacheHitsTotal,
+		MissTotal:       metric.CacheMissTotal,
+		PanicsTotal:     metric.CachePanicsTotal,
+		LockWaitsTotal:  metric.CacheLockWaitsTotal,
+		WaitsTotal:      metric.CacheWaitsTotal,
+		ReattemptsTotal: metric.CacheReattemptsTotal,
+		SizeRead:        metric.CacheSizeRead,
+		SizeOccupied:    metric.CacheSizeOccupied,
+		SizeReleased:    metric.CacheSizeReleased,
+		MapsRecreated:   metric.CacheMapsRecreated,
+		MissLatency:     metric.CacheMissLatencySec,
+
+		Oldest:            metric.CacheOldest,
+		AddBuckets:        metric.CacheAddBuckets,
+		DelBuckets:        metric.CacheDelBuckets,
+		CleanGenerations:  metric.CacheCleanGenerations,
+		ChangeGenerations: metric.CacheChangeGenerations,
+	})
 
 	fracManager := &FracManager{
-		config:       config,
-		mature:       atomic.Bool{},
-		indexWorkers: indexWorkers,
-		readLimiter:  disk.NewReadLimiter(conf.ReaderWorkers, metric.StoreBytesRead),
-		ulidEntropy:  ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0),
-		cacheMaintainer: NewCacheMaintainer(config.CacheSize, config.SdocsCacheSize, &CacheMaintainerMetrics{
-			HitsTotal:       metric.CacheHitsTotal,
-			MissTotal:       metric.CacheMissTotal,
-			PanicsTotal:     metric.CachePanicsTotal,
-			LockWaitsTotal:  metric.CacheLockWaitsTotal,
-			WaitsTotal:      metric.CacheWaitsTotal,
-			ReattemptsTotal: metric.CacheReattemptsTotal,
-			SizeRead:        metric.CacheSizeRead,
-			SizeOccupied:    metric.CacheSizeOccupied,
-			SizeReleased:    metric.CacheSizeReleased,
-			MapsRecreated:   metric.CacheMapsRecreated,
-			MissLatency:     metric.CacheMissLatencySec,
-
-			Oldest:            metric.CacheOldest,
-			AddBuckets:        metric.CacheAddBuckets,
-			DelBuckets:        metric.CacheDelBuckets,
-			CleanGenerations:  metric.CacheCleanGenerations,
-			ChangeGenerations: metric.CacheChangeGenerations,
-		}),
-		fracCache: NewSealedFracCache(filepath.Join(config.DataDir, consts.FracCacheFileSuffix)),
+		config:          config,
+		mature:          atomic.Bool{},
+		cacheMaintainer: cacheMaintainer,
+		fracProvider:    newFractionProvider(&config.Fraction, cacheMaintainer, conf.ReaderWorkers, conf.IndexWorkers),
+		ulidEntropy:     ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0),
+		fracCache:       NewSealedFracCache(filepath.Join(config.DataDir, consts.FracCacheFileSuffix)),
 	}
 
 	return fracManager
@@ -291,12 +278,10 @@ func (fm *FracManager) Start() {
 }
 
 func (fm *FracManager) Load(ctx context.Context) error {
-	fm.indexWorkers.Start() // first start indexWorkers to allow active frac replaying
-
 	var err error
 	var notSealed []activeRef
 
-	l := NewLoader(fm.config, fm.readLimiter, fm.cacheMaintainer, fm.indexWorkers, fm.fracCache, fm.config.Fraction)
+	l := NewLoader(fm.config, fm.fracProvider, fm.fracCache)
 
 	if fm.fracs, notSealed, err = l.load(ctx); err != nil {
 		return err
@@ -365,16 +350,12 @@ func (fm *FracManager) seal(activeRef activeRef) {
 		sealsDoneSeconds.Observe(time.Since(now).Seconds())
 	}()
 
-	sortedDocsCache := fm.cacheMaintainer.CreateSdocBlockCache()
-	indexFile, err := activeRef.frac.Seal(fm.config.SealParams, fm.readLimiter, sortedDocsCache)
+	preloaded, err := activeRef.frac.Seal(fm.config.SealParams)
 	if err != nil {
 		logger.Panic("sealing error", zap.Error(err))
 	}
-	sortedDocsCache.Release()
 
-	indexCache := fm.cacheMaintainer.CreateIndexCache()
-	docsCache := fm.cacheMaintainer.CreateDocBlockCache()
-	sealed := frac.NewSealedFromActive(activeRef.frac, fm.readLimiter, indexFile, indexCache, docsCache)
+	sealed := fm.fracProvider.NewSealedPreloaded(activeRef.frac.BaseFileName, preloaded)
 
 	stats := sealed.Info()
 	fm.fracCache.AddFraction(stats.Name(), stats)
@@ -383,7 +364,7 @@ func (fm *FracManager) seal(activeRef activeRef) {
 	activeRef.ref.instance = sealed
 	fm.fracMu.Unlock()
 
-	if err := activeRef.frac.Release(sealed, fm.config.ShouldRemoveMeta); err != nil {
+	if err := activeRef.frac.Release(sealed); err != nil {
 		logger.Fatal("failed to release active fraction", zap.Error(err))
 	}
 }
@@ -393,21 +374,13 @@ func (fm *FracManager) rotate() activeRef {
 	baseFilePath := filepath.Join(fm.config.DataDir, filePath)
 	logger.Info("creating new fraction", zap.String("filepath", baseFilePath))
 
+	next := fm.fracProvider.newActiveRef(fm.fracProvider.NewActive(baseFilePath))
+
 	fm.fracMu.Lock()
-	defer fm.fracMu.Unlock()
-
 	prev := fm.active
-
-	active := frac.NewActive(
-		baseFilePath,
-		fm.indexWorkers,
-		fm.readLimiter,
-		fm.cacheMaintainer.CreateDocBlockCache(),
-		fm.config.Fraction,
-	)
-	fm.active.frac = active
-	fm.active.ref = &fracRef{instance: active}
+	fm.active = next
 	fm.fracs = append(fm.fracs, fm.active.ref)
+	fm.fracMu.Unlock()
 
 	return prev
 }
@@ -418,7 +391,7 @@ func (fm *FracManager) shouldSealOnExit(active *frac.Active) bool {
 }
 
 func (fm *FracManager) Stop() {
-	fm.indexWorkers.Stop()
+	fm.fracProvider.Stop()
 	fm.stopFn()
 
 	fm.statWG.Wait()

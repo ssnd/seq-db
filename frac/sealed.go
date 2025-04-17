@@ -33,11 +33,11 @@ type Sealed struct {
 
 	docsFile   *os.File
 	docsCache  *cache.Cache[[]byte]
-	docsReader *disk.DocsReader
+	docsReader disk.DocsReader
 
 	indexFile   *os.File
 	indexCache  *IndexCache
-	indexReader *disk.IndexReader
+	indexReader disk.IndexReader
 
 	idsTable      IDsTable
 	lidsTable     *lids.Table
@@ -94,7 +94,7 @@ func NewSealed(
 }
 
 func (f *Sealed) openIndex() {
-	if f.indexReader == nil {
+	if f.indexFile == nil {
 		var err error
 		name := f.BaseFileName + consts.IndexFileSuffix
 		f.indexFile, err = os.Open(name)
@@ -106,7 +106,7 @@ func (f *Sealed) openIndex() {
 }
 
 func (f *Sealed) openDocs() {
-	if f.docsReader == nil {
+	if f.docsFile == nil {
 		var err error
 		f.docsFile, err = os.Open(f.BaseFileName + consts.DocsFileSuffix)
 		if err != nil {
@@ -339,16 +339,16 @@ func (f *Sealed) createDataProvider(ctx context.Context) *sealedDataProvider {
 		ctx:              ctx,
 		info:             f.info,
 		config:           &f.Config,
-		docsReader:       f.docsReader,
+		docsReader:       &f.docsReader,
 		blocksOffsets:    f.BlocksOffsets,
 		fracVersion:      f.info.BinaryDataVer,
 		midCache:         NewUnpackCache(),
 		ridCache:         NewUnpackCache(),
 		lidsTable:        f.lidsTable,
-		idsLoader:        NewIDsLoader(f.indexReader, f.indexCache, f.idsTable),
-		lidsLoader:       lids.NewLoader(f.indexReader, f.indexCache.LIDs),
-		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, f.indexReader, f.indexCache.Tokens),
-		tokenTableLoader: token.NewTableLoader(f.BaseFileName, f.indexReader, f.indexCache.TokenTable),
+		idsLoader:        NewIDsLoader(&f.indexReader, f.indexCache, f.idsTable),
+		lidsLoader:       lids.NewLoader(&f.indexReader, f.indexCache.LIDs),
+		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, &f.indexReader, f.indexCache.Tokens),
+		tokenTableLoader: token.NewTableLoader(f.BaseFileName, &f.indexReader, f.indexCache.TokenTable),
 	}
 }
 

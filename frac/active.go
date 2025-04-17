@@ -47,11 +47,12 @@ type Active struct {
 
 	DocsPositions *DocsPositions
 
-	docsReader *disk.DocsReader
+	docsFile   *os.File
+	docsReader disk.DocsReader
 	docsCache  *cache.Cache[[]byte]
 
-	docsFile *os.File
-	metaFile *os.File
+	metaFile   *os.File
+	metaReader disk.DocBlocksReader
 
 	appendQueueSize atomic.Uint32
 	appender        ActiveAppender
@@ -93,10 +94,13 @@ func NewActive(
 		MIDs:          NewIDs(),
 		RIDs:          NewIDs(),
 		DocBlocks:     NewIDs(),
-		docsFile:      docsFile,
-		metaFile:      metaFile,
-		docsReader:    disk.NewDocsReader(readLimiter, docsFile, docsCache),
-		docsCache:     docsCache,
+
+		docsFile:   docsFile,
+		docsCache:  docsCache,
+		docsReader: disk.NewDocsReader(readLimiter, docsFile, docsCache),
+
+		metaFile:   metaFile,
+		metaReader: disk.NewDocBlocksReader(readLimiter, metaFile),
 
 		appender: StartAppender(docsFile, metaFile, conf.IndexWorkers, conf.SkipFsync, indexWorkers),
 
@@ -132,20 +136,11 @@ func openFile(name string, skipFsync bool) (*os.File, os.FileInfo) {
 	return file, stat
 }
 
-func (f *Active) ReplayBlocks(ctx context.Context, reader *disk.ReadLimiter) error {
+func (f *Active) ReplayBlocks(ctx context.Context) error {
 	logger.Info("start replaying...")
-
-	if _, err := f.docsFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("can't seek docs file: filename=%s, err=%w", f.docsFile.Name(), err)
-	}
-	if _, err := f.metaFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("can't seek metas file: filename=%s, err=%w", f.metaFile.Name(), err)
-	}
 
 	targetSize := f.info.MetaOnDisk
 	t := time.Now()
-
-	metaReader := disk.NewDocsReader(reader, f.metaFile, nil)
 
 	f.info.DocsOnDisk = 0
 	f.info.MetaOnDisk = 0
@@ -159,9 +154,9 @@ out:
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			result, n, err := metaReader.ReadDocBlock(int64(metaPos))
+			meta, metaSize, err := f.metaReader.ReadDocBlock(int64(metaPos))
 			if err == io.EOF {
-				if n != 0 {
+				if metaSize != 0 {
 					logger.Warn("last meta block is partially written, skipping it")
 				}
 				break out
@@ -175,17 +170,17 @@ out:
 				progress := float64(metaPos) / float64(targetSize) * 100
 				logger.Info("replaying batch, meta",
 					zap.Uint64("from", metaPos),
-					zap.Uint64("to", metaPos+n),
+					zap.Uint64("to", metaPos+metaSize),
 					zap.Uint64("target", targetSize),
 					util.ZapFloat64WithPrec("progress_percentage", progress, 2),
 				)
 			}
 
-			docBlockLen := disk.DocBlock(result).GetExt1()
+			docBlockLen := disk.DocBlock(meta).GetExt1()
 			docsPos += docBlockLen
-			metaPos += n
+			metaPos += metaSize
 
-			if err := f.Replay(docBlockLen, result); err != nil {
+			if err := f.Replay(docBlockLen, meta); err != nil {
 				return err
 			}
 		}
@@ -277,6 +272,7 @@ func (f *Active) Seal(params SealParams, readLimiter *disk.ReadLimiter, sdocsCac
 	logger.Info("write is stopped", zap.Float64("time_wait_s", util.DurationToUnit(time.Since(start), "s")))
 
 	docsReader := disk.NewDocsReader(readLimiter, f.docsFile, sdocsCache)
+
 	return seal(f, params, docsReader), nil
 }
 
@@ -490,7 +486,7 @@ func (f *Active) createDataProvider(ctx context.Context) *activeDataProvider {
 
 		blocksOffsets: f.DocBlocks.GetVals(),
 		docsPositions: f.DocsPositions,
-		docsReader:    f.docsReader,
+		docsReader:    &f.docsReader,
 	}
 }
 

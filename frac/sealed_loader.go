@@ -23,7 +23,7 @@ type Loader struct {
 func (l *Loader) Load(frac *Sealed) {
 	t := time.Now()
 
-	l.reader = frac.indexReader
+	l.reader = &frac.indexReader
 
 	l.blockIndex = 1 // skipping info block that's already read
 

@@ -115,7 +115,7 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	logger.Info("replaying active fractions", zap.Int("count", len(actives)))
 	notSealed := make([]activeRef, 0)
 	for _, a := range actives {
-		if err := a.ReplayBlocks(ctx, t.readLimiter); err != nil {
+		if err := a.ReplayBlocks(ctx); err != nil {
 			return nil, nil, fmt.Errorf("while replaying blocks: %w", err)
 		}
 		if a.Info().DocsTotal == 0 { // skip empty
@@ -242,7 +242,7 @@ func (t *loader) noValidDoc(info *fracInfo) (invalid bool) {
 		}
 	}()
 
-	docsReader := disk.NewDocsReader(t.readLimiter, docFile, nil)
+	docsReader := disk.NewDocBlocksReader(t.readLimiter, docFile)
 	_, _, err = docsReader.ReadDocBlockPayload(0)
 	return err != nil
 }

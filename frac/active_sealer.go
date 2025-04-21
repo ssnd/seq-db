@@ -32,7 +32,7 @@ type SealParams struct {
 	DocBlockSize int
 }
 
-func seal(f *Active, params SealParams) *os.File {
+func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 	logger.Info("sealing fraction", zap.String("fraction", f.BaseFileName))
 
 	start := time.Now()
@@ -60,7 +60,7 @@ func seal(f *Active, params SealParams) *os.File {
 		logger.Fatal("can't open file", zap.String("file", tmpSdocsFileName), zap.Error(err))
 	}
 
-	if err = writeSealedFraction(f, indexFile, sdocsFile, params); err != nil {
+	if err = writeSealedFraction(f, docsReader, indexFile, sdocsFile, params); err != nil {
 		logger.Fatal("can't write sealed fraction", zap.String("fraction", f.BaseFileName), zap.Error(err))
 	}
 
@@ -99,14 +99,14 @@ func seal(f *Active, params SealParams) *os.File {
 	return indexFile
 }
 
-func writeSealedFraction(f *Active, indexFile, sdocsFile *os.File, params SealParams) error {
+func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdocsFile *os.File, params SealParams) error {
 	var err error
 	sortedIDs, oldToNewLIDsIndex := sortSeqIDs(f, f.MIDs.GetVals(), f.RIDs.GetVals())
 
 	logger.Info("sorting docs...")
 	bw := getDocBlocksWriter(sdocsFile, params.DocBlockSize, params.DocBlocksZstdLevel)
 	defer putDocBlocksWriter(bw)
-	if err := writeDocsInOrder(f, sortedIDs, bw); err != nil {
+	if err := writeDocsInOrder(f.DocsPositions, f.DocBlocks.GetVals(), docsReader, sortedIDs, bw); err != nil {
 		return fmt.Errorf("writing sorted docs: %s", err)
 	}
 	if err := sdocsFile.Sync(); err != nil {
@@ -200,7 +200,7 @@ func writeSealedFraction(f *Active, indexFile, sdocsFile *os.File, params SealPa
 	return nil
 }
 
-func writeDocsInOrder(f *Active, ids []seq.ID, bw *docBlocksWriter) error {
+func writeDocsInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
 	// Skip system seq.ID.
 	if len(ids) == 0 {
 		panic(fmt.Errorf("BUG: ids is empty"))
@@ -210,22 +210,22 @@ func writeDocsInOrder(f *Active, ids []seq.ID, bw *docBlocksWriter) error {
 	}
 	ids = ids[1:]
 
-	if err := writeDocBlocksInOrder(f, ids, bw); err != nil {
+	if err := writeDocBlocksInOrder(pos, blocks, docsReader, ids, bw); err != nil {
 		return err
 	}
 	return nil
 }
 
-func writeDocBlocksInOrder(f *Active, ids []seq.ID, bw *docBlocksWriter) error {
+func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
 	for _, id := range ids {
-		oldPos := f.DocsPositions.Get(id)
+		oldPos := pos.Get(id)
 		if oldPos == DocPosNotFound {
 			panic(fmt.Errorf("BUG: can't find doc position"))
 		}
 
 		blockOffsetIndex, offset := oldPos.Unpack()
-		blockOffset := f.DocBlocks.vals[blockOffsetIndex]
-		docs, err := f.docsReader.ReadDocs(blockOffset, []uint64{offset})
+		blockOffset := blocks[blockOffsetIndex]
+		docs, err := docsReader.ReadDocs(blockOffset, []uint64{offset})
 		if err != nil {
 			return err
 		}

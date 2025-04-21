@@ -93,7 +93,7 @@ func BenchmarkSealing(b *testing.B) {
 		active.GetAllDocuments() // emulate search-pre-sorted LIDs
 
 		b.StartTimer()
-		_, err = active.Seal(defaultSealParams)
+		_, err = active.Seal(defaultSealParams, readLimiter, nil)
 		assert.NoError(b, err)
 
 		b.StopTimer()

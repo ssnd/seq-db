@@ -364,10 +364,12 @@ func (fm *FracManager) seal(activeRef activeRef) {
 		sealsDoneSeconds.Observe(time.Since(now).Seconds())
 	}()
 
-	indexFile, err := activeRef.frac.Seal(fm.config.SealParams)
+	sortedDocsCache := fm.cacheMaintainer.CreateSdocBlockCache()
+	indexFile, err := activeRef.frac.Seal(fm.config.SealParams, fm.readLimiter, sortedDocsCache)
 	if err != nil {
 		logger.Panic("sealing error", zap.Error(err))
 	}
+	sortedDocsCache.Release()
 
 	indexCache := fm.cacheMaintainer.CreateIndexCache()
 	docsCache := fm.cacheMaintainer.CreateDocBlockCache()

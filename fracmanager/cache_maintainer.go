@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/ozontech/seq-db/consts"
 	"go.uber.org/zap"
 
 	"github.com/ozontech/seq-db/cache"
@@ -25,6 +26,7 @@ const (
 	tokensName     = "tokens"
 	tokenTableName = "token_table"
 	docsName       = "docblock"
+	sdocsName      = "sdocblock" // Used when sealing for sorting documents.
 )
 
 type cleanerConf struct {
@@ -57,6 +59,10 @@ var config = []cleanerConf{
 	{
 		layers: []string{docsName},
 		weight: 8,
+	},
+	{
+		layers:    []string{sdocsName},
+		sizeLimit: consts.MB * 512,
 	},
 }
 
@@ -128,6 +134,10 @@ func newCache[V any](cm *CacheMaintainer, layerName string) *cache.Cache[V] {
 
 func (cm *CacheMaintainer) CreateDocBlockCache() *cache.Cache[[]byte] {
 	return newCache[[]byte](cm, docsName)
+}
+
+func (cm *CacheMaintainer) CreateSdocBlockCache() *cache.Cache[[]byte] {
+	return newCache[[]byte](cm, sdocsName)
 }
 
 func (cm *CacheMaintainer) CreateIndexCache() *frac.IndexCache {

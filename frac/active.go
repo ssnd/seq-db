@@ -344,7 +344,7 @@ func (f *Active) setSealed() error {
 	return nil
 }
 
-func (f *Active) Seal(params SealParams) (*os.File, error) {
+func (f *Active) Seal(params SealParams, readLimiter *disk.ReadLimiter, sdocsCache *cache.Cache[[]byte]) (*os.File, error) {
 	if err := f.setSealed(); err != nil {
 		return nil, err
 	}
@@ -354,7 +354,8 @@ func (f *Active) Seal(params SealParams) (*os.File, error) {
 	f.WaitWriteIdle()
 	logger.Info("write is stopped", zap.Float64("time_wait_s", util.DurationToUnit(time.Since(start), "s")))
 
-	return seal(f, params), nil
+	docsReader := disk.NewDocsReader(readLimiter, f.docsFile, sdocsCache)
+	return seal(f, params, docsReader), nil
 }
 
 func (f *Active) GetAllDocuments() []uint32 {

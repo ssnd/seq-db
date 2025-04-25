@@ -54,7 +54,7 @@ func main() {
 
 func getCacheMaintainer() (*fracmanager.CacheMaintainer, func()) {
 	done := make(chan struct{})
-	cm := fracmanager.NewCacheMaintainer(consts.GB, nil)
+	cm := fracmanager.NewCacheMaintainer(consts.GB, consts.MB*64, nil)
 	wg := cm.RunCleanLoop(done, time.Second, time.Second)
 	return cm, func() {
 		close(done)

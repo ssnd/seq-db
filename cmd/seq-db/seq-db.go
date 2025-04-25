@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ozontech/seq-db/frac"
 	"go.uber.org/atomic"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
@@ -23,7 +24,6 @@ import (
 	"github.com/ozontech/seq-db/buildinfo"
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
-	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/mappingprovider"
@@ -53,6 +53,7 @@ var (
 	fracSize               = kingpin.Flag("frac-size", `size of one fraction`).Default("128MB").Bytes()
 	totalSize              = kingpin.Flag("total-size", `max size of all data`).Default("1GB").Bytes()
 	cacheSize              = kingpin.Flag("cache-size", `max size of the cache`).Default("8GB").Bytes()
+	sdocsCacheSize         = kingpin.Flag("sdocs-cache-size", `cache size that used to seal active fraction, must be lower than --cache-size parameter`).Default("2GB").Bytes()
 	mappingPath            = kingpin.Flag("mapping", `path to mapping file or 'auto' to index all fields`).Required().String()
 	storeMode              = kingpin.Flag("store-mode", `store operation mode`).Default("").HintOptions("", storeapi.StoreModeCold, storeapi.StoreModeHot).String()
 	queryRateLimit         = kingpin.Flag("query-rate-limit", `max requests per second`).Default("2.0").Float()
@@ -312,6 +313,7 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 			FracSize:          uint64(*fracSize),
 			TotalSize:         uint64(*totalSize),
 			CacheSize:         uint64(*cacheSize),
+			SdocsCacheSize:    uint64(*sdocsCacheSize),
 			FracLoadLimit:     0,
 			ShouldReplay:      true,
 			ShouldRemoveMeta:  true,

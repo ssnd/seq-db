@@ -85,7 +85,7 @@ func NewFracManager(config *Config) *FracManager {
 		indexWorkers: indexWorkers,
 		readLimiter:  disk.NewReadLimiter(conf.ReaderWorkers, metric.StoreBytesRead),
 		ulidEntropy:  ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0),
-		cacheMaintainer: NewCacheMaintainer(config.CacheSize, &CacheMaintainerMetrics{
+		cacheMaintainer: NewCacheMaintainer(config.CacheSize, config.SdocsCacheSize, &CacheMaintainerMetrics{
 			HitsTotal:       metric.CacheHitsTotal,
 			MissTotal:       metric.CacheMissTotal,
 			PanicsTotal:     metric.CachePanicsTotal,

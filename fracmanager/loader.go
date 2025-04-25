@@ -35,6 +35,9 @@ type loader struct {
 	cacheMaintainer *CacheMaintainer
 	indexWorkers    *frac.IndexWorkers
 	fracCache       *sealedFracCache
+
+	cachedFracs   int
+	uncachedFracs int
 }
 
 func NewLoader(
@@ -67,8 +70,6 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	infosList := t.filterInfos(fracIDs, infos)
 	cnt := len(infosList)
 
-	cachedFracs := 0
-	uncachedFracs := 0
 	fracs := make([]*fracRef, 0, cnt)
 	actives := make([]*frac.Active, 0)
 
@@ -83,24 +84,14 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 			if info.hasDocs {
 				removeFile(info.base + consts.DocsFileSuffix)
 			}
-			infoCached, sealed := t.loadSealedFrac(diskFracCache, info)
+			sealed := t.loadSealedFrac(diskFracCache, info)
 			fracs = append(fracs, &fracRef{instance: sealed})
-			if infoCached {
-				cachedFracs++
-			} else {
-				uncachedFracs++
-			}
 		} else {
 			if info.hasMeta {
 				actives = append(actives, frac.NewActive(info.base, t.indexWorkers, t.readLimiter, t.cacheMaintainer.CreateDocBlockCache()))
 			} else {
-				infoCached, sealed := t.loadSealedFrac(diskFracCache, info)
+				sealed := t.loadSealedFrac(diskFracCache, info)
 				fracs = append(fracs, &fracRef{instance: sealed})
-				if infoCached {
-					cachedFracs++
-				} else {
-					uncachedFracs++
-				}
 			}
 		}
 
@@ -116,7 +107,7 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 		}
 	}
 
-	logger.Info("fractions list created", zap.Int("cached", cachedFracs), zap.Int("uncached", uncachedFracs))
+	logger.Info("fractions list created", zap.Int("cached", t.cachedFracs), zap.Int("uncached", t.uncachedFracs))
 
 	logger.Info("replaying active fractions", zap.Int("count", len(actives)))
 	notSealed := make([]activeRef, 0)
@@ -139,14 +130,19 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	return fracs, notSealed, nil
 }
 
-func (t *loader) loadSealedFrac(diskFracCache *sealedFracCache, info *fracInfo) (bool, *frac.Sealed) {
+func (t *loader) loadSealedFrac(diskFracCache *sealedFracCache, info *fracInfo) *frac.Sealed {
 	cachedFracInfo, ok := diskFracCache.GetFracInfo(filepath.Base(info.base))
+	if ok {
+		t.cachedFracs++
+	} else {
+		t.uncachedFracs++
+	}
 
 	sealed := frac.NewSealed(info.base, t.readLimiter, t.cacheMaintainer.CreateIndexCache(), t.cacheMaintainer.CreateDocBlockCache(), cachedFracInfo)
 
 	stats := sealed.Info()
 	t.fracCache.AddFraction(stats.Name(), stats)
-	return ok, sealed
+	return sealed
 }
 
 func (t *loader) getFileList() []string {

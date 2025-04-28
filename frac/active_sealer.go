@@ -246,12 +246,10 @@ func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk
 
 		blockOffsetIndex, offset := oldPos.Unpack()
 		blockOffset := blocks[blockOffsetIndex]
-		docs, err := docsReader.ReadDocs(blockOffset, []uint64{offset})
+		err := docsReader.ReadDocsFunc(blockOffset, []uint64{offset}, func(doc []byte) error {
+			return bw.WriteDoc(id, doc)
+		})
 		if err != nil {
-			return err
-		}
-		doc := docs[0]
-		if err := bw.WriteDoc(id, doc); err != nil {
 			return err
 		}
 	}

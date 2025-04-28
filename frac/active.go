@@ -446,6 +446,12 @@ func (f *Active) UpdateDiskStats(docsLen, metaLen uint64) uint64 {
 	return pos
 }
 
+func (f *Active) setInfoDocsOnDisk(v uint64) {
+	f.statsMu.Lock()
+	defer f.statsMu.Unlock()
+	f.info.DocsOnDisk = v
+}
+
 func (f *Active) close(closeDocs bool, hint string) {
 	f.appender.Stop()
 	if closeDocs {

@@ -69,15 +69,20 @@ func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 		logger.Fatal("can't rename sdocs file", zap.String("file", tmpSdocsFileName), zap.Error(err))
 	}
 
-	stat, err := indexFile.Stat() // refresh f.info.IndexOnDisk - it will be used later
+	docsStat, err := sdocsFile.Stat()
 	if err != nil {
-		logger.Fatal("can't stat index file", zap.String("file", indexFile.Name()), zap.Error(err))
+		logger.Fatal("can't stat sdocs file", zap.String("file", sdocsFile.Name()), zap.Error(err))
 	}
-	f.setInfoIndexOnDisk(uint64(stat.Size()))
+	f.setInfoDocsOnDisk(uint64(docsStat.Size()))
 
 	if err := indexFile.Sync(); err != nil {
 		logger.Fatal("can't sync tmp index file", zap.String("file", indexFile.Name()), zap.Error(err))
 	}
+	indexStat, err := indexFile.Stat()
+	if err != nil {
+		logger.Fatal("can't stat index file", zap.String("file", indexFile.Name()), zap.Error(err))
+	}
+	f.setInfoIndexOnDisk(uint64(indexStat.Size()))
 
 	f.close(false, "seal")
 

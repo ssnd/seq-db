@@ -178,28 +178,199 @@ we get
 
 ### `/GetAggregation`
 
-Method of getting aggregations by aggregation query
+Aggregations allow the computation of statistical values (sum, average, maximum, minimum, quantile, uniqueness, count) over document fields
+that match the query.
 
-Example request:
+Aggregations can be invoked in two ways:
 
-```bash
-grpcurl -plaintext -d '
+- Through a separate gRPC handler: [`GetAggregation`](#getaggregation)
+- Together with search and histograms: [`ComplexSearch`](#complexsearch)
+
+> The examples use the `GetAggregation` API, which has the same query and response structure as `ComplexSearch`.
+
+Supported aggregation functions:
+
+- `AGG_FUNC_SUM` — sum of field values
+- `AGG_FUNC_AVG` — average value of the field
+- `AGG_FUNC_MIN` — minimum value of the field
+- `AGG_FUNC_MAX` — maximum value of the field
+- `AGG_FUNC_QUANTILE` — quantile computation for the field
+- `AGG_FUNC_UNIQUE` — computation of unique field values
+- `AGG_FUNC_COUNT` — count of documents per group
+
+#### Aggregation Examples
+
+Sample documents:
+
+```json lines
+{"service": "svc1", "latency": 100}
+{"service": "svc1", "latency": 300}
+{"service": "svc2", "latency": 400}
+{"service": "svc2", "latency": 200}
+{"service": "svc3", "latency": 500}
+```
+
+##### Computing SUM, AVG, MIN, MAX
+
+**Request:**
+
+```sh
 {
   "query": {
-    "from": "2020-01-01T00:00:00Z",
-    "to": "2030-01-01T00:00:00Z"
+    "from": "2000-01-01T00:00:00Z",
+    "to": "2077-01-01T00:00:00Z",
+    "query": "*"
   },
   "aggs": [
     {
-      "group_by": "k8s_pod",
-      "field": "request_time",
+      "field": "latency",
+      "func": "AGG_FUNC_SUM"
+    },
+    {
+      "field": "latency",
       "func": "AGG_FUNC_AVG"
+    },
+    {
+      "field": "latency",
+      "func": "AGG_FUNC_MIN"
+    },
+    {
+      "field": "latency",
+      "func": "AGG_FUNC_MAX"
     }
   ]
-}' localhost:9004 seqproxyapi.v1.SeqProxyApi/GetAggregation
+} | grpcurl -plaintext -d @ localhost:9004 seqproxyapi.v1.SeqProxyApi/GetAggregation
 ```
 
-Example successful response
+**Response:**
+
+```json
+{
+  "aggs": [
+    {
+      "buckets": [
+        {"value": 1500}
+      ]
+    },
+    {
+      "buckets": [
+        {"value": 300}
+      ]
+    },
+    {
+      "buckets": [
+        {"value": 100}
+      ]
+    },
+    {
+      "buckets": [
+        {"value": 500}
+      ]
+    }
+  ]
+}
+```
+
+##### Computing SUM, AVG, MIN, MAX with group_by
+
+**Request:**
+
+```sh
+{
+  "query": {
+    "from": "2000-01-01T00:00:00Z",
+    "to": "2077-01-01T00:00:00Z",
+    "query": "*"
+  },
+  "aggs": [
+    {
+      "field": "latency",
+      "func": "AGG_FUNC_SUM",
+      "group_by": "service"
+    },
+    {
+      "field": "latency",
+      "func": "AGG_FUNC_AVG",
+      "group_by": "service"
+    },
+    {
+      "field": "latency",
+      "func": "AGG_FUNC_MIN",
+      "group_by": "service"
+    },
+    {
+      "field": "latency",
+      "func": "AGG_FUNC_MAX",
+      "group_by": "service"
+    }
+  ]
+} | grpcurl -plaintext -d @ localhost:9004 seqproxyapi.v1.SeqProxyApi/GetAggregation
+```
+
+**Response:**
+
+```json
+{
+  "aggs": [
+    {
+      "buckets": [
+        {"key": "svc2", "value": 600},
+        {"key": "svc3", "value": 500},
+        {"key": "svc1", "value": 400}
+      ]
+    },
+    {
+      "buckets": [
+        {"key": "svc3", "value": 500},
+        {"key": "svc2", "value": 300},
+        {"key": "svc1", "value": 200}
+      ]
+    },
+    {
+      "buckets": [
+        {"key": "svc1", "value": 100},
+        {"key": "svc2", "value": 200},
+        {"key": "svc3", "value": 500}
+      ]
+    },
+    {
+      "buckets": [
+        {"key": "svc3", "value": 500},
+        {"key": "svc2", "value": 400},
+        {"key": "svc1", "value": 300}
+      ]
+    }
+  ]
+}
+```
+
+##### QUANTILE
+
+> The QUANTILE aggregation function can also be applied with grouping by a field, using the `group_by` field.
+
+**Request:**
+
+```sh
+{
+  "query": {
+    "from": "2000-01-01T00:00:00Z",
+    "to": "2077-01-01T00:00:00Z",
+    "query": "*"
+  },
+  "aggs": [
+    {
+      "field": "latency",
+      "func": "AGG_FUNC_QUANTILE",
+      "quantiles": [
+        0.5,
+        0.9
+      ]
+    }
+  ]
+} | grpcurl -plaintext -d @ localhost:9004 seqproxyapi.v1.SeqProxyApi/GetAggregation
+```
+
+**Response:**
 
 ```json
 {
@@ -207,23 +378,65 @@ Example successful response
     {
       "buckets": [
         {
-          "docCount": "12",
-          "key": "seq-db",
-          "value": 12
-        },
-        {
-          "docCount": "7",
-          "key": "seq-proxy",
-          "value": 7
+          "quantiles": [
+            300,
+            500
+          ],
+          "value": 300
         }
       ]
     }
-  ],
-  "error": {
-    "code": "ERROR_CODE_NO"
-  }
+  ]
 }
+```
 
+##### UNIQUE, COUNT
+
+> For `AGG_FUNC_UNIQUE`, `AGG_FUNC_COUNT`, the `field` is not required.
+
+**Request:**
+
+```sh
+{
+  "query": {
+    "from": "2000-01-01T00:00:00Z",
+    "to": "2077-01-01T00:00:00Z",
+    "query": "*"
+  },
+  "aggs": [
+    {
+      "func": "AGG_FUNC_UNIQUE",
+      "group_by": "service"
+    },
+    {
+      "func": "AGG_FUNC_COUNT",
+      "group_by": "service"
+    }
+  ]
+} | grpcurl -plaintext -d @ localhost:9004 seqproxyapi.v1.SeqProxyApi/GetAggregation
+```
+
+**Response:**
+
+```json
+{
+  "aggs": [
+    {
+      "buckets": [
+        {"key": "svc1"},
+        {"key": "svc2"},
+        {"key": "svc3"}
+      ]
+    },
+    {
+      "buckets": [
+        {"key": "svc1", "value": 2},
+        {"key": "svc2", "value": 2},
+        {"key": "svc3", "value": 1}
+      ]
+    }
+  ]
+}
 ```
 
 ### `/GetHistogram`

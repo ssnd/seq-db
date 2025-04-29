@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/ozontech/seq-db/mappingprovider"
 	"go.uber.org/zap"
 
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
+	"github.com/ozontech/seq-db/mappingprovider"
 	api "github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/storeapi"

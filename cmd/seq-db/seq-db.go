@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	storesearch "github.com/ozontech/seq-db/searcher"
 	"go.uber.org/atomic"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
@@ -35,6 +34,7 @@ import (
 	"github.com/ozontech/seq-db/proxy/search"
 	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/proxyapi"
+	storesearcher "github.com/ozontech/seq-db/searcher"
 	"github.com/ozontech/seq-db/storeapi"
 	"github.com/ozontech/seq-db/tracing"
 )
@@ -105,7 +105,7 @@ var (
 	useSeqQLByDefault = kingpin.Flag("use-seq-ql-by-default", "enable seq-ql as default query language").Default("false").Bool()
 
 	asyncSearchesDataDir     = kingpin.Flag("data-dir-async-searches", "data dir that contains async searches, default is subfolder in --data-dir").String()
-	asyncSearchesParallelism = kingpin.Flag("async-searches-parallelism", "the maximum concurrent async search requests").Int()
+	asyncSearchesConcurrency = kingpin.Flag("async-searches-concurrency", "the maximum concurrent async search requests").Int()
 )
 
 const (
@@ -342,9 +342,9 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 					MaxFieldTokens:     *aggMaxFieldTokens,
 					MaxTIDsPerFraction: *aggMaxTIDsPerFraction,
 				},
-				Async: storesearch.AsyncSearcherConfig{
+				Async: storesearcher.AsyncSearcherConfig{
 					DataDir:     *asyncSearchesDataDir,
-					Parallelism: *asyncSearchesParallelism,
+					Parallelism: *asyncSearchesConcurrency,
 				},
 			},
 			Fetch: storeapi.FetchConfig{

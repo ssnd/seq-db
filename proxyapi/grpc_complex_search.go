@@ -17,8 +17,8 @@ func (g *grpcV1) ComplexSearch(
 	ctx, cancel := context.WithTimeout(ctx, g.config.SearchTimeout)
 	defer cancel()
 
-	if req.Query == nil {
-		return nil, status.Error(codes.InvalidArgument, "search query must be provided")
+	if req.Size <= 0 && req.Hist == nil && len(req.Aggs) == 0 {
+		return nil, status.Error(codes.InvalidArgument, `one of "size", "hist" or "aggs" must be provided`)
 	}
 
 	tr := querytracer.New(req.Query.Explain, "proxy/ComplexSearch")

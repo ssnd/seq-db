@@ -8,7 +8,6 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
-	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
@@ -196,9 +195,11 @@ func (w *IndexWorkers) sendTokensToMergeWorkers(frac *Active, tokens []*TokenLID
 }
 
 func addLIDsToTokens(tlids []*TokenLIDs, lids [][]uint32) []*TokenLIDs {
+	const minMergeQueue = 10000
+
 	needMerge := make([]*TokenLIDs, 0, len(tlids))
 	for i, tl := range tlids {
-		if l := tl.PutLIDsInQueue(lids[i]); l > consts.MinMergeQueue {
+		if l := tl.PutLIDsInQueue(lids[i]); l > minMergeQueue {
 			needMerge = append(needMerge, tl)
 		}
 	}

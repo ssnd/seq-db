@@ -8,7 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/ozontech/seq-db/bytespool"
+	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/frac/lids"
@@ -16,7 +19,6 @@ import (
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
-	"go.uber.org/zap"
 )
 
 type SealParams struct {
@@ -55,25 +57,29 @@ func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 	}
 
 	tmpSdocsFileName := f.BaseFileName + consts.SdocsTmpFileSuffix
-	sdocsFile, err := os.OpenFile(tmpSdocsFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o776)
-	if err != nil {
-		logger.Fatal("can't open file", zap.String("file", tmpSdocsFileName), zap.Error(err))
+	var sdocsFile *os.File
+	if conf.SortDocs {
+		sdocsFile, err = os.OpenFile(tmpSdocsFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o776)
+		if err != nil {
+			logger.Fatal("can't open file", zap.String("file", tmpSdocsFileName), zap.Error(err))
+		}
 	}
 
 	if err = writeSealedFraction(f, docsReader, indexFile, sdocsFile, params); err != nil {
 		logger.Fatal("can't write sealed fraction", zap.String("fraction", f.BaseFileName), zap.Error(err))
 	}
 
-	sdocsFileName := f.BaseFileName + consts.SdocsFileSuffix
-	if err := os.Rename(tmpSdocsFileName, sdocsFileName); err != nil {
-		logger.Fatal("can't rename sdocs file", zap.String("file", tmpSdocsFileName), zap.Error(err))
+	if conf.SortDocs {
+		sdocsFileName := f.BaseFileName + consts.SdocsFileSuffix
+		if err := os.Rename(tmpSdocsFileName, sdocsFileName); err != nil {
+			logger.Fatal("can't rename sdocs file", zap.String("file", tmpSdocsFileName), zap.Error(err))
+		}
+		docsStat, err := sdocsFile.Stat()
+		if err != nil {
+			logger.Fatal("can't stat sdocs file", zap.String("file", sdocsFile.Name()), zap.Error(err))
+		}
+		f.setInfoDocsOnDisk(uint64(docsStat.Size()))
 	}
-
-	docsStat, err := sdocsFile.Stat()
-	if err != nil {
-		logger.Fatal("can't stat sdocs file", zap.String("file", sdocsFile.Name()), zap.Error(err))
-	}
-	f.setInfoDocsOnDisk(uint64(docsStat.Size()))
 
 	if err := indexFile.Sync(); err != nil {
 		logger.Fatal("can't sync tmp index file", zap.String("file", indexFile.Name()), zap.Error(err))
@@ -108,17 +114,27 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 	var err error
 	sortedIDs, oldToNewLIDsIndex := sortSeqIDs(f, f.MIDs.GetVals(), f.RIDs.GetVals())
 
-	logger.Info("sorting docs...")
-	bw := getDocBlocksWriter(sdocsFile, params.DocBlockSize, params.DocBlocksZstdLevel)
-	defer putDocBlocksWriter(bw)
-	if err := writeDocsInOrder(f.DocsPositions, f.DocBlocks.GetVals(), docsReader, sortedIDs, bw); err != nil {
-		return fmt.Errorf("writing sorted docs: %s", err)
+	var blockOffsets []uint64
+	var positions map[seq.ID]DocPos
+	if conf.SortDocs {
+		logger.Info("sorting docs...")
+		bw := getDocBlocksWriter(sdocsFile, params.DocBlockSize, params.DocBlocksZstdLevel)
+		defer putDocBlocksWriter(bw)
+		if err := writeDocsInOrder(f.DocsPositions, f.DocBlocks.GetVals(), docsReader, sortedIDs, bw); err != nil {
+			return fmt.Errorf("writing sorted docs: %s", err)
+		}
+		if err := sdocsFile.Sync(); err != nil {
+			return fmt.Errorf("syncing sorted docs file: %s", err)
+		}
+		f.sortedDocsFile = sdocsFile
+		blockOffsets = bw.BlockOffsets
+		positions = bw.Positions
+	} else {
+		f.sortedDocsFile = f.docsFile
+		blockOffsets = f.DocBlocks.GetVals()
+		positions = f.DocsPositions.positions
 	}
-	if err := sdocsFile.Sync(); err != nil {
-		return fmt.Errorf("syncing sorted docs file: %s", err)
-	}
-	f.sortedDocsFile = sdocsFile
-	f.sortedBlocksOffsets = bw.BlockOffsets
+	f.sortedBlocksOffsets = blockOffsets
 
 	producer := NewDiskBlocksProducer()
 	writer := NewSealedBlockWriter(indexFile)
@@ -155,7 +171,7 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 	{
 		logger.Info("writing document positions block...")
 		idsLen := f.MIDs.Len()
-		generator := producer.getPositionBlock(idsLen, bw.BlockOffsets)
+		generator := producer.getPositionBlock(idsLen, blockOffsets)
 		if err := writer.writePositionsBlock(params.DocsPositionsZstdLevel, generator); err != nil {
 			logger.Error("document positions block error", zap.Error(err))
 			return err
@@ -165,7 +181,7 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 	var minBlockIDs []seq.ID
 	{
 		logger.Info("sealing ids...")
-		ds := DocsPositions{positions: bw.Positions}
+		ds := DocsPositions{positions: positions}
 		generator := producer.getIDsBlocksGenerator(sortedIDs, &ds, consts.IDsBlockSize)
 		minBlockIDs, err = writer.writeIDsBlocks(params.IDsZstdLevel, generator)
 		if err != nil {

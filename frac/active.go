@@ -414,18 +414,19 @@ func (f *Active) Release(sealed Fraction, removeMeta bool) error {
 	// Once frac is released, it is safe to remove the docs file,
 	// since search queries will use the sealed implementation.
 
-	if err := f.docsFile.Close(); err != nil {
-		return fmt.Errorf("closing docs file: %w", err)
+	if conf.SortDocs {
+		if err := f.docsFile.Close(); err != nil {
+			return fmt.Errorf("closing docs file: %w", err)
+		}
+		rmFileName := f.frac.BaseFileName + consts.DocsFileSuffix
+		if err := os.Remove(rmFileName); err != nil {
+			logger.Error("error removing docs file",
+				zap.String("file", rmFileName),
+				zap.Error(err))
+		}
 	}
 
 	f.docsCache.Release()
-
-	rmFileName := f.frac.BaseFileName + consts.DocsFileSuffix
-	if err := os.Remove(rmFileName); err != nil {
-		logger.Error("error removing docs file",
-			zap.String("file", rmFileName),
-			zap.Error(err))
-	}
 
 	if removeMeta {
 		rmFileName := f.frac.BaseFileName + consts.MetaFileSuffix

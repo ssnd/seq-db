@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ozontech/seq-db/frac"
 	"go.uber.org/atomic"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
@@ -24,6 +23,7 @@ import (
 	"github.com/ozontech/seq-db/buildinfo"
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/mappingprovider"
@@ -108,6 +108,8 @@ var (
 	mappingUpdatePeriod  = kingpin.Flag("mapping-update-period", "the amount of time to pass for the mappings to be reloaded").Default("30s").Duration()
 
 	useSeqQLByDefault = kingpin.Flag("use-seq-ql-by-default", "enable seq-ql as default query language").Default("false").Bool()
+
+	sortDocs = kingpin.Flag("sort-docs", "enable sort docs feature").Default("true").Bool()
 )
 
 const (
@@ -156,6 +158,7 @@ func main() {
 	conf.SkipFsync = *skipFsync
 	conf.MaxRequestedDocuments = int(*maxSearchDocs)
 	conf.UseSeqQLByDefault = *useSeqQLByDefault
+	conf.SortDocs = *sortDocs
 	backoff.DefaultConfig.MaxDelay = 10 * time.Second
 
 	var serviceReady atomic.Bool

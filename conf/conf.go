@@ -18,4 +18,6 @@ var (
 	MaxRequestedDocuments = consts.DefaultMaxRequestedDocuments
 
 	UseSeqQLByDefault = false
+
+	SortDocs = true
 )

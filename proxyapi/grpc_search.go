@@ -3,6 +3,9 @@ package proxyapi
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/ozontech/seq-db/pkg/seqproxyapi/v1"
 )
 
@@ -11,6 +14,10 @@ func (g *grpcV1) Search(
 ) (*seqproxyapi.SearchResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, g.config.SearchTimeout)
 	defer cancel()
+
+	if req.Size <= 0 {
+		return nil, status.Error(codes.InvalidArgument, `"size" must be greater than 0`)
+	}
 
 	proxyReq := &seqproxyapi.ComplexSearchRequest{
 		Query:     req.Query,

@@ -29,6 +29,8 @@ type SearchIngestor interface {
 	Search(ctx context.Context, sr *search.SearchRequest, tr *querytracer.Tracer) (*seq.QPR, search.DocsIterator, time.Duration, error)
 	Documents(ctx context.Context, r search.FetchRequest) (search.DocsIterator, error)
 	Status(ctx context.Context) *search.IngestorStatus
+	StartAsyncSearch(context.Context, search.AsyncRequest) (search.AsyncResponse, error)
+	FetchAsyncSearchResult(context.Context, search.FetchAsyncSearchResultRequest) (search.FetchAsyncSearchResultResponse, error)
 }
 
 type MappingProvider interface {
@@ -221,24 +223,11 @@ func (g *grpcV1) doSearch(
 		Order:       req.Order.MustDocsOrder(),
 	}
 	if len(req.Aggs) > 0 {
-		proxyReq.AggQ = make([]search.AggQuery, 0, len(req.Aggs))
-		for _, agg := range req.Aggs {
-			err := validateAgg(agg)
-			if err != nil {
-				return nil, err
-			}
-			aggFunc, err := agg.Func.ToAggFunc()
-			if err != nil {
-				return nil, err
-			}
-
-			proxyReq.AggQ = append(proxyReq.AggQ, search.AggQuery{
-				Field:     agg.Field,
-				GroupBy:   agg.GroupBy,
-				Func:      aggFunc,
-				Quantiles: agg.Quantiles,
-			})
+		aggs, err := convertAggsQuery(req.Aggs)
+		if err != nil {
+			return nil, err
 		}
+		proxyReq.AggQ = aggs
 	}
 	if req.Hist != nil {
 		intervalDuration, err := util.ParseDuration(req.Hist.Interval)
@@ -290,6 +279,28 @@ func (g *grpcV1) doSearch(
 	g.tryMirrorRequest(req)
 
 	return psr, nil
+}
+
+func convertAggsQuery(aggs []*seqproxyapi.AggQuery) ([]search.AggQuery, error) {
+	var result []search.AggQuery
+	for _, agg := range aggs {
+		err := validateAgg(agg)
+		if err != nil {
+			return nil, err
+		}
+		aggFunc, err := agg.Func.ToAggFunc()
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, search.AggQuery{
+			Field:     agg.Field,
+			GroupBy:   agg.GroupBy,
+			Func:      aggFunc,
+			Quantiles: agg.Quantiles,
+		})
+	}
+	return result, nil
 }
 
 func (g *grpcV1) tryMirrorRequest(req *seqproxyapi.ComplexSearchRequest) {

@@ -113,13 +113,9 @@ func (g *GrpcV1) doSearch(
 		return nil, fmt.Errorf("search cancelled before evaluating: reason=%w", ctx.Err())
 	}
 
-	aggQ := make([]searcher.AggQuery, 0, len(req.Aggs))
-	for _, aggQuery := range req.Aggs {
-		aggFunc, err := aggQueryFromProto(aggQuery)
-		if err != nil {
-			return nil, err
-		}
-		aggQ = append(aggQ, aggFunc)
+	aggQ, err := aggQueriesFromProto(req.Aggs)
+	if err != nil {
+		return nil, err
 	}
 
 	const millisecondsInSecond = float64(time.Second / time.Millisecond)
@@ -273,6 +269,18 @@ func buildSearchResponse(qpr *seq.QPR) *storeapi.SearchResponse {
 		Aggs:      aggs,
 		Total:     qpr.Total,
 	}
+}
+
+func aggQueriesFromProto(aggs []*storeapi.AggQuery) ([]searcher.AggQuery, error) {
+	aggQ := make([]searcher.AggQuery, 0, len(aggs))
+	for _, aggQuery := range aggs {
+		aggFunc, err := aggQueryFromProto(aggQuery)
+		if err != nil {
+			return nil, err
+		}
+		aggQ = append(aggQ, aggFunc)
+	}
+	return aggQ, nil
 }
 
 func aggQueryFromProto(aggQuery *storeapi.AggQuery) (searcher.AggQuery, error) {

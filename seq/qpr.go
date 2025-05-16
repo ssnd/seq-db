@@ -339,12 +339,18 @@ func MergeQPRs(dst *QPR, qprs []*QPR, limit int, histInterval MID, order DocsOrd
 
 	for _, qpr := range qprs {
 		dst.Total += qpr.Total
+		if qpr.Histogram != nil && dst.Histogram == nil {
+			dst.Histogram = make(map[MID]uint64)
+		}
 		for time, count := range qpr.Histogram {
 			dst.Histogram[time] += count
 		}
 
-		for j := range dst.Aggs {
-			dst.Aggs[j].Merge(qpr.Aggs[j])
+		if qpr.Aggs != nil && dst.Aggs == nil {
+			dst.Aggs = make([]QPRHistogram, len(qpr.Aggs))
+		}
+		for i := range qpr.Aggs {
+			dst.Aggs[i].Merge(qpr.Aggs[i])
 		}
 
 		dst.IDs = append(dst.IDs, qpr.IDs...)

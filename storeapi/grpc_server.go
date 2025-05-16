@@ -24,10 +24,10 @@ type grpcServer struct {
 	apiV1 *GrpcV1
 }
 
-func newGRPCServer(apiConfig APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *grpcServer {
+func newGRPCServer(cfg APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *grpcServer {
 	s := initServer()
 
-	apiV1 := NewGrpcV1(apiConfig, fracManager, mappingProvider)
+	apiV1 := NewGrpcV1(cfg, fracManager, mappingProvider)
 	storeapi.RegisterStoreApiServer(s, apiV1)
 
 	return &grpcServer{

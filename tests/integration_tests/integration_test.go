@@ -1723,3 +1723,110 @@ func (s *IntegrationTestSuite) TestTimeField() {
 		r.True(diff < 100*time.Millisecond)
 	}
 }
+
+func (s *IntegrationTestSuite) TestAsyncSearch() {
+	t := s.T()
+	r := require.New(t)
+
+	cfg := *s.Config
+	cfg.Mapping = map[string]seq.MappingTypes{
+		"ip":     seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"method": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"uri":    seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"status": seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+		"size":   seq.NewSingleType(seq.TokenizerTypeKeyword, "", 0),
+	}
+	env := setup.NewTestingEnv(&cfg)
+	defer env.StopAll()
+
+	docs := []string{
+		`{"timestamp":"2009-11-10T22:58:44Z","ip":"226.166.207.153","method":"PUT","uri":"/api/data","status":201,"size":5116}`,
+		`{"timestamp":"2009-11-10T22:54:26Z","ip":"211.170.224.81","method":"GET","uri":"/api/data","status":500,"size":2375}`,
+		`{"timestamp":"2009-11-10T22:57:28Z","ip":"13.30.65.187","method":"POST","uri":"/","status":201,"size":3892}`,
+		`{"timestamp":"2009-11-10T22:44:01Z","ip":"181.10.24.51","method":"GET","uri":"/api/data","status":201,"size":4002}`,
+		`{"timestamp":"2009-11-10T22:53:51Z","ip":"107.2.249.68","method":"PUT","uri":"/dashboard","status":400,"size":4334}`,
+		`{"timestamp":"2009-11-10T22:52:50Z","ip":"70.83.163.58","method":"DELETE","uri":"/","status":400,"size":2525}`,
+		`{"timestamp":"2009-11-10T22:55:31Z","ip":"106.51.48.84","method":"DELETE","uri":"/api/data","status":400,"size":3015}`,
+		`{"timestamp":"2009-11-10T22:58:54Z","ip":"117.81.168.0","method":"GET","uri":"/","status":404,"size":4734}`,
+		`{"timestamp":"2009-11-10T22:58:04Z","ip":"132.240.243.74","method":"PUT","uri":"/login","status":400,"size":1598}`,
+		`{"timestamp":"2009-11-10T22:46:58Z","ip":"222.36.179.145","method":"GET","uri":"/dashboard","status":404,"size":2683}`,
+	}
+
+	// Create active and sealed fractions.
+	setup.Bulk(s.T(), env.IngestorBulkAddr(), docs)
+	env.WaitIdle()
+
+	searcher := env.Ingestor().Ingestor.SearchIngestor
+
+	ctx := t.Context()
+	resp, err := searcher.StartAsyncSearch(ctx, search.AsyncRequest{
+		Query: "* | fields ip, method, uri",
+		From:  time.UnixMilli(0),
+		To:    time.Now().Add(time.Hour),
+		Aggregations: []search.AggQuery{
+			{
+				Field:     "size",
+				GroupBy:   "ip",
+				Func:      seq.AggFuncSum,
+				Quantiles: nil,
+			},
+			{
+				Field:     "size",
+				GroupBy:   "method",
+				Func:      seq.AggFuncQuantile,
+				Quantiles: []float64{0.99, 0.95, 0.50},
+			},
+		},
+		HistogramInterval: seq.MID(time.Second.Milliseconds()),
+	})
+	r.NoError(err)
+	r.NotEmpty(resp.ID)
+
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	fr := search.FetchAsyncSearchResultRequest{
+		ID:       resp.ID,
+		WithDocs: true,
+		Size:     100,
+		Offset:   0,
+	}
+
+	for ctx.Err() == nil {
+		fetchResp, err := searcher.FetchAsyncSearchResult(ctx, fr)
+		r.NoError(err)
+		if fetchResp.Done {
+			break
+		}
+		time.Sleep(time.Millisecond * 200)
+	}
+
+	r.NoError(ctx.Err())
+
+	fetchResp, err := searcher.FetchAsyncSearchResult(ctx, fr)
+	r.NoError(err)
+
+	r.True(fetchResp.Done)
+	r.True(fetchResp.Expiration.After(time.Now()))
+	r.Equal([]seq.AggregationResult{
+		{Buckets: []seq.AggregationBucket{
+			{Name: "226.166.207.153", Value: 5116},
+			{Name: "117.81.168.0", Value: 4734},
+			{Name: "107.2.249.68", Value: 4334},
+			{Name: "181.10.24.51", Value: 4002},
+			{Name: "13.30.65.187", Value: 3892},
+			{Name: "106.51.48.84", Value: 3015},
+			{Name: "222.36.179.145", Value: 2683},
+			{Name: "70.83.163.58", Value: 2525},
+			{Name: "211.170.224.81", Value: 2375},
+			{Name: "132.240.243.74", Value: 1598}}},
+		{Buckets: []seq.AggregationBucket{
+			{Name: "delete", Value: 3015, Quantiles: []float64{3015, 3015, 3015}},
+			{Name: "get", Value: 4734, Quantiles: []float64{4734, 4734, 4002}},
+			{Name: "post", Value: 3892, Quantiles: []float64{3892, 3892, 3892}},
+			{Name: "put", Value: 5116, Quantiles: []float64{5116, 5116, 4334}}}},
+	}, fetchResp.AggResult)
+
+	r.True(len(fetchResp.QPR.Histogram) != 0)
+	r.Equal(len(docs), fetchResp.QPR.IDs.Len())
+}

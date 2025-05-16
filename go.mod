@@ -7,6 +7,7 @@ require (
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cep21/circuit/v3 v3.2.2
 	github.com/golang/mock v1.6.0
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1
 	github.com/klauspost/compress v1.18.0
 	github.com/oklog/ulid/v2 v2.1.0

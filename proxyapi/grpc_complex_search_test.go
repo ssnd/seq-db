@@ -443,6 +443,22 @@ func TestGrpcV1_ComplexSearch(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "no_size_aggs_and_hists",
+			data: cSearchTestCaseData{
+				searchQ: &testSearchQuery{
+					query: "message:no_size",
+					from:  now,
+					to:    now.Add(time.Second),
+				},
+				size:     0,
+				offset:   0,
+				noResp:   true,
+				noSiMock: true,
+				noRlMock: true,
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

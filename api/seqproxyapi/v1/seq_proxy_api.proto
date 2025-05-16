@@ -71,6 +71,31 @@ service SeqProxyApi {
       body: "*"
     };
   }
+
+  // Starts a new asynchronous search operation.
+  // The server processes the request in the background and returns a search ID.
+  rpc StartAsyncSearch(StartAsyncSearchRequest) returns (StartAsyncSearchResponse) {
+    option (google.api.http) = {
+      post: "/async-search"
+      body: "*"
+    };
+  }
+
+  // Fetches the result or current status of a previously started async search.
+  // Clients should use the search ID returned by StartAsyncSearch.
+  rpc FetchAsyncSearchResult(FetchAsyncSearchResultRequest) returns (FetchAsyncSearchResultResponse) {
+    option (google.api.http) = {
+      get: "/async-search/{search_id}"
+    };
+  }
+
+  // Cancels an ongoing asynchronous search operation if it hasn't completed yet.
+  // Useful for freeing up resources if the result is no longer needed.
+  rpc CancelAsyncSearch(CancelAsyncSearchRequest) returns (CancelAsyncSearchResponse) {
+    option (google.api.http) = {
+      delete: "/async-search/{search_id}"
+    };
+  }
 }
 
 // Custom error code, returned by seq-db proxy.
@@ -200,6 +225,37 @@ message ComplexSearchResponse {
   Error error = 6;                               // Error if happened.
   optional ExplainEntry explain = 7;             // Explain info.
 }
+
+message StartAsyncSearchRequest {
+  google.protobuf.Duration retention = 1;
+  SearchQuery query = 2;        // Search query.
+  repeated AggQuery aggs = 3;   // List of aggregation queries.
+  optional HistQuery hist = 4;  // Histogram query.
+  Order order = 5;              // Document order ORDER_DESC/ORDER_ASC.
+}
+
+message StartAsyncSearchResponse {
+  string search_id = 1;
+}
+
+message FetchAsyncSearchResultRequest {
+  string search_id = 1;
+  bool with_docs = 2;
+  int32 size = 3;
+  int32 offset = 4;
+}
+
+message FetchAsyncSearchResultResponse {
+  bool done = 1;
+  google.protobuf.Timestamp expiration = 2;
+  ComplexSearchResponse response = 3;
+}
+
+message CancelAsyncSearchRequest{
+  string search_id = 1;
+}
+
+message CancelAsyncSearchResponse{}
 
 message GetAggregationRequest {
   SearchQuery query = 1;      // Search query.

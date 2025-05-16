@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"path"
 
 	"go.uber.org/atomic"
 
@@ -38,15 +39,18 @@ func (c *StoreConfig) setDefaults() error {
 	if err := c.API.setDefaults(); err != nil {
 		return err
 	}
+	if c.API.Search.Async.DataDir == "" {
+		c.API.Search.Async.DataDir = path.Join(c.FracManager.DataDir, "async_searches")
+	}
 	return nil
 }
 
-func NewStore(ctx context.Context, config StoreConfig, mappingProvider MappingProvider) (*Store, error) {
-	if err := config.setDefaults(); err != nil {
+func NewStore(ctx context.Context, c StoreConfig, mappingProvider MappingProvider) (*Store, error) {
+	if err := c.setDefaults(); err != nil {
 		return nil, err
 	}
 
-	fracManager := fracmanager.NewFracManager(&config.FracManager)
+	fracManager := fracmanager.NewFracManager(&c.FracManager)
 	err := fracManager.Load(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading time list: %s", err)
@@ -54,10 +58,10 @@ func NewStore(ctx context.Context, config StoreConfig, mappingProvider MappingPr
 	fracManager.Start()
 
 	return &Store{
-		Config: config,
+		Config: c,
 		// We will set grpcAddr later in Start()
 		grpcAddr:    "",
-		grpcServer:  newGRPCServer(config.API, fracManager, mappingProvider),
+		grpcServer:  newGRPCServer(c.API, fracManager, mappingProvider),
 		FracManager: fracManager,
 		isStopped:   atomic.Bool{},
 	}, nil

@@ -13,6 +13,10 @@ service StoreApi {
 
   rpc Search(SearchRequest) returns (SearchResponse) {}
 
+  rpc StartAsyncSearch(StartAsyncSearchRequest) returns (StartAsyncSearchResponse) {}
+
+  rpc FetchAsyncSearchResult(FetchAsyncSearchResultRequest) returns (FetchAsyncSearchResultResponse) {}
+
   rpc Fetch(FetchRequest) returns (stream BinaryData) {}
 
   rpc Status(StatusRequest) returns (StatusResponse) {}
@@ -111,6 +115,37 @@ enum SearchErrorCode {
   INGESTOR_QUERY_WANTS_OLD_DATA = 1;
   TOO_MANY_UNIQ_VALUES = 2;
   TOO_MANY_FRACTIONS_HIT = 3;
+}
+
+message StartAsyncSearchRequest {
+  string search_id = 1;
+
+  string query = 2;
+  int64 from = 3;
+  int64 to = 4;
+  repeated AggQuery aggs = 5;
+  int64 histogram_interval = 6;
+  Order order = 7;
+}
+
+message StartAsyncSearchResponse {}
+
+message FetchAsyncSearchResultRequest {
+  string search_id = 1;
+  bool with_docs = 2;
+  int32 size = 3;
+  int32 offset = 4;
+}
+
+message FetchAsyncSearchResultResponse {
+  bool done = 1;
+
+  SearchResponse response = 2;
+  google.protobuf.Timestamp expiration = 3;
+
+  repeated AggQuery aggs = 5;
+  int64 histogram_interval = 6;
+  Order order = 7;
 }
 
 message IdWithHint {

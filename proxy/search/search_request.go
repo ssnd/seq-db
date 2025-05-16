@@ -29,25 +29,6 @@ type SearchRequest struct {
 }
 
 func (sr *SearchRequest) GetAPISearchRequest() *storeapi.SearchRequest {
-	var aggQ []*storeapi.AggQuery
-	if sr.AggQ != nil {
-		buf := make([]storeapi.AggQuery, len(sr.AggQ))
-		aggQ = make([]*storeapi.AggQuery, len(sr.AggQ))
-		for i, query := range sr.AggQ {
-			groupBy := query.GroupBy
-			field := query.Field
-			// Support legacy format in which field means groupBy.
-			if query.Func == seq.AggFuncCount && query.Field != "" {
-				groupBy = query.Field
-				field = ""
-			}
-			buf[i].Field = field
-			buf[i].GroupBy = groupBy
-			buf[i].Func = storeapi.AggFunc(query.Func)
-			buf[i].Quantiles = query.Quantiles
-			aggQ[i] = &buf[i]
-		}
-	}
 	return &storeapi.SearchRequest{
 		Query:     util.ByteToStringUnsafe(sr.Q),
 		From:      int64(sr.From),
@@ -55,9 +36,29 @@ func (sr *SearchRequest) GetAPISearchRequest() *storeapi.SearchRequest {
 		Size:      int64(sr.Size),
 		Offset:    int64(sr.Offset),
 		Interval:  int64(sr.Interval),
-		Aggs:      aggQ,
+		Aggs:      convertToAggsQuery(sr.AggQ),
 		Explain:   sr.Explain,
 		WithTotal: sr.WithTotal,
 		Order:     storeapi.MustProtoOrder(sr.Order),
 	}
+}
+
+func convertToAggsQuery(aggs []AggQuery) []*storeapi.AggQuery {
+	buf := make([]storeapi.AggQuery, len(aggs))
+	aggQ := make([]*storeapi.AggQuery, len(aggs))
+	for i, query := range aggs {
+		groupBy := query.GroupBy
+		field := query.Field
+		// Support legacy format in which field means groupBy.
+		if query.Func == seq.AggFuncCount && query.Field != "" {
+			groupBy = query.Field
+			field = ""
+		}
+		buf[i].Field = field
+		buf[i].GroupBy = groupBy
+		buf[i].Func = storeapi.AggFunc(query.Func)
+		buf[i].Quantiles = query.Quantiles
+		aggQ[i] = &buf[i]
+	}
+	return aggQ
 }

@@ -55,6 +55,21 @@ func (mr *MockSearchIngestorMockRecorder) Documents(ctx, r interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Documents", reflect.TypeOf((*MockSearchIngestor)(nil).Documents), ctx, r)
 }
 
+// FetchAsyncSearchResult mocks base method.
+func (m *MockSearchIngestor) FetchAsyncSearchResult(arg0 context.Context, arg1 search.FetchAsyncSearchResultRequest) (search.FetchAsyncSearchResultResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchAsyncSearchResult", arg0, arg1)
+	ret0, _ := ret[0].(search.FetchAsyncSearchResultResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchAsyncSearchResult indicates an expected call of FetchAsyncSearchResult.
+func (mr *MockSearchIngestorMockRecorder) FetchAsyncSearchResult(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchAsyncSearchResult", reflect.TypeOf((*MockSearchIngestor)(nil).FetchAsyncSearchResult), arg0, arg1)
+}
+
 // Search mocks base method.
 func (m *MockSearchIngestor) Search(ctx context.Context, sr *search.SearchRequest, tr *querytracer.Tracer) (*seq.QPR, search.DocsIterator, time.Duration, error) {
 	m.ctrl.T.Helper()
@@ -70,6 +85,21 @@ func (m *MockSearchIngestor) Search(ctx context.Context, sr *search.SearchReques
 func (mr *MockSearchIngestorMockRecorder) Search(ctx, sr, tr interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockSearchIngestor)(nil).Search), ctx, sr, tr)
+}
+
+// StartAsyncSearch mocks base method.
+func (m *MockSearchIngestor) StartAsyncSearch(arg0 context.Context, arg1 search.AsyncRequest) (search.AsyncResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartAsyncSearch", arg0, arg1)
+	ret0, _ := ret[0].(search.AsyncResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StartAsyncSearch indicates an expected call of StartAsyncSearch.
+func (mr *MockSearchIngestorMockRecorder) StartAsyncSearch(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartAsyncSearch", reflect.TypeOf((*MockSearchIngestor)(nil).StartAsyncSearch), arg0, arg1)
 }
 
 // Status mocks base method.

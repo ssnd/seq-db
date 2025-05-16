@@ -41,6 +41,8 @@ type SearchConfig struct {
 	LogThreshold          time.Duration
 
 	Aggregation AggregationsConfig
+
+	Async searcher.AsyncSearcherConfig
 }
 
 type BulkConfig struct {
@@ -101,12 +103,24 @@ type GrpcV1 struct {
 	fracManager     *fracmanager.FracManager
 	mappingProvider MappingProvider
 
-	bulkData   bulkData
-	searchData searchData
-	fetchData  fetchData
+	bulkData      bulkData
+	searchData    searchData
+	fetchData     fetchData
+	asyncSearcher *searcher.AsyncSearcher
 }
 
 func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *GrpcV1 {
+	srch := searcher.New(config.Search.WorkersCount, searcher.Conf{
+		AggLimits: searcher.AggLimits{
+			MaxFieldTokens:     config.Search.Aggregation.MaxFieldTokens,
+			MaxGroupTokens:     config.Search.Aggregation.MaxGroupTokens,
+			MaxTIDsPerFraction: config.Search.Aggregation.MaxTIDsPerFraction,
+		},
+		MaxFractionHits:       config.Search.MaxFractionHits,
+		FractionsPerIteration: config.Search.FractionsPerIteration,
+	})
+	asyncSearcher := searcher.MustStartAsync(config.Search.Async, mappingProvider, fracManager, srch)
+
 	g := &GrpcV1{
 		config:          config,
 		fracManager:     fracManager,
@@ -116,19 +130,12 @@ func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingPr
 			writeQueue:  atomic.NewUint64(0),
 		},
 		searchData: searchData{
-			searcher: searcher.New(config.Search.WorkersCount, searcher.Conf{
-				AggLimits: searcher.AggLimits{
-					MaxFieldTokens:     config.Search.Aggregation.MaxFieldTokens,
-					MaxGroupTokens:     config.Search.Aggregation.MaxGroupTokens,
-					MaxTIDsPerFraction: config.Search.Aggregation.MaxTIDsPerFraction,
-				},
-				MaxFractionHits:       config.Search.MaxFractionHits,
-				FractionsPerIteration: config.Search.FractionsPerIteration,
-			}),
+			searcher: srch,
 		},
 		fetchData: fetchData{
 			docFetcher: fetcher.New(conf.FetchWorkers),
 		},
+		asyncSearcher: asyncSearcher,
 	}
 
 	go g.bulkStats()

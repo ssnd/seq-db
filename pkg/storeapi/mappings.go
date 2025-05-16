@@ -31,6 +31,28 @@ func (f AggFunc) ToAggFunc() (seq.AggFunc, error) {
 	return funcMappingsPb[f], nil
 }
 
+func (f AggFunc) MustAggFunc() seq.AggFunc {
+	if int(f) >= len(funcMappingsPb) || f < 0 {
+		panic("unknown function")
+	}
+	return funcMappingsPb[f]
+}
+
+func ToProtoAggFunc(f seq.AggFunc) (AggFunc, error) {
+	if int(f) >= len(funcMappings) {
+		return 0, fmt.Errorf("unknown order")
+	}
+	return funcMappings[f], nil
+}
+
+func MustProtoAggFunc(f seq.AggFunc) AggFunc {
+	fu, err := ToProtoAggFunc(f)
+	if err != nil {
+		panic(err)
+	}
+	return fu
+}
+
 var orderMappings = []Order{
 	seq.DocsOrderAsc:  Order_ORDER_ASC,
 	seq.DocsOrderDesc: Order_ORDER_DESC,

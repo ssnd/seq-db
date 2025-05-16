@@ -232,7 +232,7 @@ func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 	infos := make(map[string]*fracInfo)
 	for _, file := range files {
 		base, suffix, fracID := t.extractInfo(file)
-		if suffix == consts.IndexTmpFileSuffix {
+		if suffix == consts.IndexTmpFileSuffix || suffix == consts.SdocsTmpFileSuffix {
 			continue
 		}
 

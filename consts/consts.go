@@ -71,6 +71,7 @@ const (
 	DocsDelFileSuffix   = ".docs.del"
 	SdocsFileSuffix     = ".sdocs"
 	SdocsDelFileSuffix  = ".sdocs.del"
+	SdocsTmpFileSuffix  = "._sdocs"
 	MetaFileSuffix      = ".meta"
 	IndexTmpFileSuffix  = "._index"
 	IndexFileSuffix     = ".index"

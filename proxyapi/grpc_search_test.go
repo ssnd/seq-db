@@ -264,6 +264,22 @@ func TestGrpcV1_Search(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "no_size",
+			data: searchTestCaseData{
+				searchQ: &testSearchQuery{
+					query: "message:no_size",
+					from:  now,
+					to:    now.Add(time.Second),
+				},
+				size:     0,
+				offset:   0,
+				noResp:   true,
+				noSiMock: true,
+				noRlMock: true,
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

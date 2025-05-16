@@ -23,8 +23,7 @@ func (tp *Provider) FirstTID() uint32 {
 }
 
 func (tp *Provider) LastTID() uint32 {
-	lastIndex := len(tp.entries) - 1
-	return tp.entries[lastIndex].StartTID + tp.entries[lastIndex].ValCount - 1
+	return tp.entries[len(tp.entries)-1].getLastTID()
 }
 
 func (tp *Provider) Ordered() bool {

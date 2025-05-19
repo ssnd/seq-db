@@ -40,6 +40,18 @@ func (t *TableEntry) getIndexInTokensBlock(tid uint32) uint32 {
 	return t.StartIndex + tid - t.StartTID
 }
 
-func (t *TableEntry) GetLastTID() uint32 {
+func (t *TableEntry) getLastTID() uint32 {
 	return t.StartTID + t.ValCount - 1
+}
+
+func (t *TableEntry) checkTIDInBlock(tid uint32) bool {
+	if tid < t.StartTID {
+		return false
+	}
+
+	if tid > t.getLastTID() {
+		return false
+	}
+
+	return true
 }

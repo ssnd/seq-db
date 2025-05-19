@@ -26,10 +26,9 @@ func checkIndexInBlock(t *testing.T, index int, block *TableEntry) {
 
 func TestBlockFetcher(t *testing.T) {
 	blocks := makeBlocks([]int{0, 1, 2, 3, 5, 9, 100, 101, 103, 105, 110})
-	fetch := NewFetcher(nil, blocks)
-	for i := 0; i < 110; i++ {
-		block := fetch.GetBlockIndex(i)
-		id := fetch.GetTIDFromIndex(i)
-		checkIndexInBlock(t, int(id), blocks[block])
+	tp := NewProvider(nil, blocks)
+	for tid := 1; tid < 110; tid++ {
+		block := tp.findBlock(uint32(tid))
+		checkIndexInBlock(t, int(tid), blocks[block])
 	}
 }

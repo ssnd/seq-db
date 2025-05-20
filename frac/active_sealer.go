@@ -244,15 +244,13 @@ func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk
 			panic(fmt.Errorf("BUG: can't find doc position"))
 		}
 
-		blockOffsetIndex, offset := oldPos.Unpack()
+		blockOffsetIndex, docOffset := oldPos.Unpack()
 		blockOffset := blocks[blockOffsetIndex]
-		docs, err := docsReader.ReadDocs(blockOffset, []uint64{offset})
+		err := docsReader.ReadDocsFunc(blockOffset, []uint64{docOffset}, func(doc []byte) error {
+			return bw.WriteDoc(id, doc)
+		})
 		if err != nil {
-			return err
-		}
-		doc := docs[0]
-		if err := bw.WriteDoc(id, doc); err != nil {
-			return err
+			return fmt.Errorf("writing document to block: %s", err)
 		}
 	}
 	if err := bw.Flush(); err != nil {

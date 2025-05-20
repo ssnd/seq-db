@@ -104,11 +104,7 @@ func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 		)
 	}
 
-	absPath, err := filepath.Abs(newFileName)
-	if err != nil {
-		logger.Fatal("can't get absolute path of parent directory", zap.String("file", newFileName))
-	}
-	parentDirPath := filepath.Dir(absPath)
+	parentDirPath := filepath.Dir(newFileName)
 	util.MustSyncPath(parentDirPath)
 
 	logger.Info(

@@ -104,11 +104,12 @@ func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 		)
 	}
 
-	parentDir, err := filepath.Abs(newFileName)
+	absPath, err := filepath.Abs(newFileName)
 	if err != nil {
 		logger.Fatal("can't get absolute path of parent directory", zap.String("file", newFileName))
 	}
-	util.MustSyncPath(parentDir)
+	parentDirPath := filepath.Dir(absPath)
+	util.MustSyncPath(parentDirPath)
 
 	logger.Info(
 		"fraction sealed",

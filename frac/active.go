@@ -116,11 +116,12 @@ func openFile(name string, skipFsync bool) (*os.File, os.FileInfo) {
 	}
 
 	if !skipFsync {
-		parentDir, err := filepath.Abs(name)
+		absPath, err := filepath.Abs(name)
 		if err != nil {
 			logger.Fatal("can't get absolute path of parent directory", zap.String("file", name))
 		}
-		util.MustSyncPath(parentDir)
+		parentDirPath := filepath.Dir(absPath)
+		util.MustSyncPath(parentDirPath)
 	}
 
 	stat, err := file.Stat()

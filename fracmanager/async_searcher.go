@@ -1,4 +1,4 @@
-package searcher
+package fracmanager
 
 import (
 	"context"
@@ -16,17 +16,13 @@ import (
 
 	"github.com/ozontech/seq-db/bytespool"
 	"github.com/ozontech/seq-db/frac"
-	"github.com/ozontech/seq-db/fracmanager"
+	"github.com/ozontech/seq-db/frac/processor"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/zstd"
 	"go.uber.org/zap"
 )
-
-type SyncSearcher interface {
-	SearchDocs(ctx context.Context, fracs []frac.Fraction, params Params) (*seq.QPR, error)
-}
 
 type MappingProvider interface {
 	GetMapping() seq.Mapping
@@ -37,8 +33,7 @@ type AsyncSearcher struct {
 
 	mp MappingProvider
 
-	fracManager *fracmanager.FracManager
-	searcher    SyncSearcher
+	fracManager *FracManager
 
 	requestsMu sync.RWMutex
 	requests   map[string]asyncSearchInfo
@@ -53,7 +48,7 @@ type AsyncSearcherConfig struct {
 	Parallelism int
 }
 
-func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, fm *fracmanager.FracManager, searcher SyncSearcher) *AsyncSearcher {
+func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, fm *FracManager) *AsyncSearcher {
 	if config.DataDir == "" {
 		logger.Fatal("can't start async searcher: DataDir is empty")
 	}
@@ -72,7 +67,6 @@ func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, fm *fracmana
 		config:        config,
 		mp:            mp,
 		fracManager:   fm,
-		searcher:      searcher,
 		requestsMu:    sync.RWMutex{},
 		requests:      asyncSearches,
 		rateLimit:     make(chan struct{}, parallelism),
@@ -89,19 +83,19 @@ func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, fm *fracmana
 
 type AsyncSearchRequest struct {
 	ID        string
-	Params    Params
+	Params    processor.SearchParams
 	Query     string
 	Retention time.Duration
 }
 
-type fracInfo struct {
+type fracSearchState struct {
 	Name string
 }
 
 type asyncSearchInfo struct {
 	Done       bool
 	Request    AsyncSearchRequest
-	Fractions  []fracInfo
+	Fractions  []fracSearchState
 	Expiration time.Time
 	StartTime  time.Time
 }
@@ -122,9 +116,9 @@ func (as *AsyncSearcher) StartSearch(r AsyncSearchRequest) error {
 	r.Params.AST = ast.Root
 
 	fracs := as.fracManager.GetAllFracs().FilterInRange(r.Params.From, r.Params.To)
-	fracsToSearch := make([]fracInfo, 0, len(fracs))
+	fracsToSearch := make([]fracSearchState, 0, len(fracs))
 	for _, f := range fracs {
-		fracsToSearch = append(fracsToSearch, fracInfo{Name: f.Info().Name()})
+		fracsToSearch = append(fracsToSearch, fracSearchState{Name: f.Info().Name()})
 	}
 
 	// It can be empty if the replica does not contain the required data.
@@ -243,7 +237,10 @@ func (as *AsyncSearcher) doSearch(id string) error {
 }
 
 func (as *AsyncSearcher) processFrac(f frac.Fraction, r AsyncSearchRequest) error {
-	qpr, err := as.searcher.SearchDocs(context.Background(), []frac.Fraction{f}, r.Params)
+	dp, release := f.DataProvider(context.Background())
+	qpr, err := dp.Search(r.Params)
+	release()
+
 	if err != nil {
 		return err
 	}
@@ -361,7 +358,7 @@ type FetchSearchResultResponse struct {
 	Done       bool
 
 	// Stuff that needed seq-db proxy to complete async search response.
-	AggQueries   []AggQuery
+	AggQueries   []processor.AggQuery
 	HistInterval uint64
 	Order        seq.DocsOrder
 }

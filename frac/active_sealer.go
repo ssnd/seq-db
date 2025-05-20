@@ -115,7 +115,7 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 	sortedIDs, oldToNewLIDsIndex := sortSeqIDs(f, f.MIDs.GetVals(), f.RIDs.GetVals())
 
 	var blockOffsets []uint64
-	var positions map[seq.ID]DocPos
+	var positions map[seq.ID]seq.DocPos
 	if conf.SortDocs {
 		logger.Info("sorting docs...")
 		bw := getDocBlocksWriter(sdocsFile, params.DocBlockSize, params.DocBlocksZstdLevel)
@@ -240,7 +240,7 @@ func writeDocsInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.Docs
 func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
 	for _, id := range ids {
 		oldPos := pos.Get(id)
-		if oldPos == DocPosNotFound {
+		if oldPos == seq.DocPosNotFound {
 			panic(fmt.Errorf("BUG: can't find doc position"))
 		}
 
@@ -271,12 +271,12 @@ type docBlocksWriter struct {
 	blockBuf []byte
 
 	BlockOffsets []uint64
-	Positions    map[seq.ID]DocPos
+	Positions    map[seq.ID]seq.DocPos
 }
 
 var docBlocksWriterPool = sync.Pool{
 	New: func() any {
-		return &docBlocksWriter{Positions: make(map[seq.ID]DocPos)}
+		return &docBlocksWriter{Positions: make(map[seq.ID]seq.DocPos)}
 	},
 }
 
@@ -321,7 +321,7 @@ func putDocBlocksWriter(bw *docBlocksWriter) {
 }
 
 func (w *docBlocksWriter) WriteDoc(id seq.ID, doc []byte) error {
-	pos := PackDocPos(uint32(w.curBlockIndex), uint64(len(w.docs)))
+	pos := seq.PackDocPos(uint32(w.curBlockIndex), uint64(len(w.docs)))
 	w.Positions[id] = pos
 
 	w.docs = binary.LittleEndian.AppendUint32(w.docs, uint32(len(doc)))

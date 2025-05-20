@@ -9,12 +9,12 @@ import (
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/frac/processor"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/querytracer"
-	"github.com/ozontech/seq-db/searcher"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/tracing"
 	"github.com/ozontech/seq-db/util"
@@ -121,7 +121,7 @@ func (g *GrpcV1) doSearch(
 	const millisecondsInSecond = float64(time.Second / time.Millisecond)
 	metric.SearchRangesSeconds.Observe(float64(to-from) / millisecondsInSecond)
 
-	searchParams := searcher.Params{
+	searchParams := processor.SearchParams{
 		AST:          ast,
 		AggQ:         aggQ,
 		HistInterval: uint64(req.Interval),
@@ -271,8 +271,8 @@ func buildSearchResponse(qpr *seq.QPR) *storeapi.SearchResponse {
 	}
 }
 
-func aggQueriesFromProto(aggs []*storeapi.AggQuery) ([]searcher.AggQuery, error) {
-	aggQ := make([]searcher.AggQuery, 0, len(aggs))
+func aggQueriesFromProto(aggs []*storeapi.AggQuery) ([]processor.AggQuery, error) {
+	aggQ := make([]processor.AggQuery, 0, len(aggs))
 	for _, aggQuery := range aggs {
 		aggFunc, err := aggQueryFromProto(aggQuery)
 		if err != nil {
@@ -283,18 +283,18 @@ func aggQueriesFromProto(aggs []*storeapi.AggQuery) ([]searcher.AggQuery, error)
 	return aggQ, nil
 }
 
-func aggQueryFromProto(aggQuery *storeapi.AggQuery) (searcher.AggQuery, error) {
+func aggQueryFromProto(aggQuery *storeapi.AggQuery) (processor.AggQuery, error) {
 	// 'groupBy' is required for Count and Unique.
 	if aggQuery.GroupBy == "" && (aggQuery.Func == storeapi.AggFunc_AGG_FUNC_COUNT || aggQuery.Func == storeapi.AggFunc_AGG_FUNC_UNIQUE) {
-		return searcher.AggQuery{}, fmt.Errorf("%w: groupBy is required for %s func", consts.ErrInvalidAggQuery, aggQuery.Func)
+		return processor.AggQuery{}, fmt.Errorf("%w: groupBy is required for %s func", consts.ErrInvalidAggQuery, aggQuery.Func)
 	}
 	// 'field' is required for stat functions like sum, avg, max and min.
 	if aggQuery.Field == "" && aggQuery.Func != storeapi.AggFunc_AGG_FUNC_COUNT && aggQuery.Func != storeapi.AggFunc_AGG_FUNC_UNIQUE {
-		return searcher.AggQuery{}, fmt.Errorf("%w: field is required for %s func", consts.ErrInvalidAggQuery, aggQuery.Func)
+		return processor.AggQuery{}, fmt.Errorf("%w: field is required for %s func", consts.ErrInvalidAggQuery, aggQuery.Func)
 	}
 	// Check 'quantiles' is not empty for Quantile func.
 	if len(aggQuery.Quantiles) == 0 && aggQuery.Func == storeapi.AggFunc_AGG_FUNC_QUANTILE {
-		return searcher.AggQuery{}, fmt.Errorf("%w: expect an argument for Quantile func", consts.ErrInvalidAggQuery)
+		return processor.AggQuery{}, fmt.Errorf("%w: expect an argument for Quantile func", consts.ErrInvalidAggQuery)
 	}
 
 	var field *parser.Literal
@@ -315,10 +315,10 @@ func aggQueryFromProto(aggQuery *storeapi.AggQuery) (searcher.AggQuery, error) {
 
 	aggFunc, err := aggQuery.Func.ToAggFunc()
 	if err != nil {
-		return searcher.AggQuery{}, err
+		return processor.AggQuery{}, err
 	}
 
-	return searcher.AggQuery{
+	return processor.AggQuery{
 		Field:     field,
 		GroupBy:   groupBy,
 		Func:      aggFunc,

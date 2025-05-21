@@ -2,6 +2,7 @@ package frac
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync"
 
@@ -25,6 +26,35 @@ type tokenTask struct {
 	tokens        [][]byte
 	fieldsLengths []int
 	tlids         []*TokenLIDs
+}
+
+type activeTokenProvider struct {
+	inverseIndex []uint32
+	tidToVal     [][]byte
+}
+
+func (tp *activeTokenProvider) GetToken(tid uint32) []byte {
+	id := tp.inverseIndex[tid-1]
+	return tp.tidToVal[id]
+}
+
+func (tp *activeTokenProvider) FirstTID() uint32 {
+	return 1
+}
+
+func (tp *activeTokenProvider) LastTID() uint32 {
+	return uint32(len(tp.inverseIndex))
+}
+
+func (tp *activeTokenProvider) Ordered() bool {
+	return false
+}
+
+func (tp *activeTokenProvider) inverseTIDs(tids []uint32) []uint32 {
+	for i, tid := range tids {
+		tids[i] = tp.inverseIndex[tid-1]
+	}
+	return tids
 }
 
 type TokenList struct {
@@ -141,34 +171,27 @@ func (tl *TokenList) GetTIDsByField(f string) []uint32 {
 	return tl.FieldTIDs[f]
 }
 
-func (tl *TokenList) FindPattern(ctx context.Context, token parser.Token, tids []uint32) ([]uint32, error) {
-	tk := parser.GetField(token)
-
-	inverseIndex := tl.GetTIDsByField(tk)
+func (tl *TokenList) getTokenProvider(field string) *activeTokenProvider {
+	inverseIndex := tl.GetTIDsByField(field)
 
 	tl.tidMu.RLock()
 	tidToVal := tl.tidToVal
 	tl.tidMu.RUnlock()
 
-	searcher := pattern.NewSearcher(token, nil, len(inverseIndex))
-
-	doneCh := ctx.Done()
-
-	for i := searcher.Begin(); i <= searcher.End(); i++ {
-
-		select {
-		case <-doneCh:
-			return nil, ctx.Err()
-		default:
-		}
-
-		id := inverseIndex[i]
-		if searcher.Check(tidToVal[id]) {
-			tids = append(tids, id)
-		}
+	return &activeTokenProvider{
+		tidToVal:     tidToVal,
+		inverseIndex: inverseIndex,
 	}
+}
 
-	return tids, nil
+func (tl *TokenList) FindPattern(ctx context.Context, t parser.Token, tids []uint32) ([]uint32, error) {
+	field := parser.GetField(t)
+	tp := tl.getTokenProvider(field)
+	tids, err := pattern.Search(ctx, t, tp)
+	if err != nil {
+		return nil, fmt.Errorf("search error: %s field: %s, query: %s", err, field, parser.GetHint(t))
+	}
+	return tp.inverseTIDs(tids), nil
 }
 
 func getTokenHash(token []byte) uint32 {

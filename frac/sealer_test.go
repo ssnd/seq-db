@@ -85,7 +85,7 @@ func BenchmarkSealing(b *testing.B) {
 		DocBlockSize:           consts.MB * 4,
 	}
 	for i := 0; i < b.N; i++ {
-		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), indexWorkers, readLimiter, nil)
+		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), indexWorkers, readLimiter, nil, Config{})
 		err := fillActiveFraction(active)
 		assert.NoError(b, err)
 

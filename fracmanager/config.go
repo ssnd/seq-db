@@ -22,6 +22,7 @@ type Config struct {
 	CacheGCDelay      time.Duration
 	SealParams        frac.SealParams
 	SdocsCacheSize    uint64
+	Fraction          frac.Config
 }
 
 func FillConfigWithDefault(config *Config) *Config {

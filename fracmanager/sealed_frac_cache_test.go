@@ -449,6 +449,7 @@ func TestMissingCacheFilesDeleted(t *testing.T) {
 	// remove the fraction files
 	files := []string{}
 	files = appendGlob(files, dataDir, "*.docs")
+	files = appendGlob(files, dataDir, "*.sdocs")
 	files = appendGlob(files, dataDir, "*.index")
 	files = appendGlob(files, dataDir, "*.meta")
 	for _, file := range files {

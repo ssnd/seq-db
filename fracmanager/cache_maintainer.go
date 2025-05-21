@@ -25,6 +25,7 @@ const (
 	tokensName     = "tokens"
 	tokenTableName = "token_table"
 	docsName       = "docblock"
+	sdocsName      = "sdocblock" // Used when sealing for sorting documents.
 )
 
 type cleanerConf struct {
@@ -33,31 +34,37 @@ type cleanerConf struct {
 	weight    uint64 // or relative size
 }
 
-var config = []cleanerConf{
-	{
-		layers: []string{indexName},
-		weight: 3,
-	},
-	{
-		layers: []string{midsName, ridsName, paramsName},
-		weight: 8,
-	},
-	{
-		layers: []string{tokenTableName},
-		weight: 8,
-	},
-	{
-		layers: []string{tokensName},
-		weight: 36,
-	},
-	{
-		layers: []string{lidsName},
-		weight: 37,
-	},
-	{
-		layers: []string{docsName},
-		weight: 8,
-	},
+func cleanerConfig(sdocsSize uint64) []cleanerConf {
+	return []cleanerConf{
+		{
+			layers: []string{indexName},
+			weight: 3,
+		},
+		{
+			layers: []string{midsName, ridsName, paramsName},
+			weight: 8,
+		},
+		{
+			layers: []string{tokenTableName},
+			weight: 8,
+		},
+		{
+			layers: []string{tokensName},
+			weight: 36,
+		},
+		{
+			layers: []string{lidsName},
+			weight: 37,
+		},
+		{
+			layers: []string{docsName},
+			weight: 8,
+		},
+		{
+			layers:    []string{sdocsName},
+			sizeLimit: sdocsSize,
+		},
+	}
 }
 
 type CacheMaintainer struct {
@@ -112,7 +119,8 @@ func cleanersToLayers(cfg []cleanerConf, cleaners []*cache.Cleaner, metrics *Cac
 	return res
 }
 
-func NewCacheMaintainer(totalCacheSize uint64, metrics *CacheMaintainerMetrics) *CacheMaintainer {
+func NewCacheMaintainer(totalCacheSize, sdocsCacheSize uint64, metrics *CacheMaintainerMetrics) *CacheMaintainer {
+	config := cleanerConfig(sdocsCacheSize)
 	cleaners, labels := createCleaners(config, totalCacheSize, metrics)
 	return &CacheMaintainer{
 		cleanerLabels: labels,
@@ -128,6 +136,10 @@ func newCache[V any](cm *CacheMaintainer, layerName string) *cache.Cache[V] {
 
 func (cm *CacheMaintainer) CreateDocBlockCache() *cache.Cache[[]byte] {
 	return newCache[[]byte](cm, docsName)
+}
+
+func (cm *CacheMaintainer) CreateSdocBlockCache() *cache.Cache[[]byte] {
+	return newCache[[]byte](cm, sdocsName)
 }
 
 func (cm *CacheMaintainer) CreateIndexCache() *frac.IndexCache {

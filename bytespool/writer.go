@@ -4,14 +4,12 @@ import (
 	"io"
 	"sync"
 	"unsafe"
-
-	"go.uber.org/zap"
-
-	"github.com/ozontech/seq-db/logger"
 )
 
 var writerPool = sync.Pool{}
 
+// Writer is a buffered writer that can use a provided byte slice, unlike bufio.Writer.
+// This can be useful directly appending to an existing byte slice (for example strconv.AppendUint).
 type Writer struct {
 	Buf *Buffer
 	out io.Writer
@@ -31,15 +29,16 @@ func AcquireWriterSize(out io.Writer, size int) *Writer {
 	}
 }
 
-func FlushReleaseWriter(w *Writer) {
+func FlushReleaseWriter(w *Writer) error {
 	err := w.Flush()
 	if err != nil {
-		logger.Error("can't flush bytespool.Writer", zap.Error(err))
+		return err
 	}
 	Release(w.Buf)
 	w.Buf = nil
 	w.out = nil
 	writerPool.Put(w)
+	return nil
 }
 
 func (w *Writer) Write(b []byte) (int, error) {

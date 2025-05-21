@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"sync"
 
+	"github.com/ozontech/seq-db/bytespool"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
@@ -97,10 +98,13 @@ func (w *IndexWorkers) In(t *IndexTask) {
 	w.ch <- t
 }
 
-func (w *IndexWorkers) appendWorker(index int) {
-	// just a reusable buffer for unpacking
-	var metasPayload []byte
+var metaDataPool = sync.Pool{
+	New: func() any {
+		return new(MetaData)
+	},
+}
 
+func (w *IndexWorkers) appendWorker(index int) {
 	// collector of bulk meta data
 	collector := newMetaDataCollector()
 
@@ -110,27 +114,32 @@ func (w *IndexWorkers) appendWorker(index int) {
 		sw := stopwatch.New()
 		total := sw.Start("total_indexing")
 
-		if metasPayload, err = disk.DocBlock(task.Metas).DecompressTo(metasPayload); err != nil {
+		metaBuf := bytespool.AcquireReset(int(task.Metas.RawLen()))
+
+		if metaBuf.B, err = task.Metas.DecompressTo(metaBuf.B); err != nil {
 			logger.Panic("error decompressing meta", zap.Error(err)) // TODO: error handling
 		}
+		metasPayload := metaBuf.B
 
 		active := task.Frac
 		blockIndex := active.DocBlocks.Append(task.Pos)
 		collector.Init(blockIndex)
 
 		parsingMetric := sw.Start("metas_parsing")
+		meta := metaDataPool.Get().(*MetaData)
 		for len(metasPayload) > 0 {
 			n := binary.LittleEndian.Uint32(metasPayload)
 			metasPayload = metasPayload[4:]
 			documentMetadata := metasPayload[:n]
 			metasPayload = metasPayload[n:]
 
-			var meta MetaData
 			if err := meta.UnmarshalBinary(documentMetadata); err != nil {
 				logger.Panic("BUG: can't unmarshal meta", zap.Error(err))
 			}
-			collector.AppendMeta(meta)
+			collector.AppendMeta(*meta)
 		}
+		metaDataPool.Put(meta)
+		bytespool.Release(metaBuf)
 		parsingMetric.Stop()
 
 		m := sw.Start("doc_params_set")

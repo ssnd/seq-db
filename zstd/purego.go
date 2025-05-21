@@ -1,3 +1,5 @@
+//go:build !cgo
+
 // This code has been copied and modified from:
 // https://github.com/VictoriaMetrics/VictoriaMetrics/blob/7551d799f740b2b255bd0b470ffc42dd6978a6b7/lib/encoding/zstd/zstd_pure.go
 

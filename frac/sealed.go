@@ -115,36 +115,36 @@ func (f *Sealed) openDocs() {
 	}
 }
 
-func NewSealedFromActive(active *Active, readLimiter *disk.ReadLimiter, indexFile *os.File, indexCache *IndexCache) *Sealed {
-	infoCopy := *active.info
+func NewSealedFromActive(a *Active, rl *disk.ReadLimiter, indexFile *os.File, indexCache *IndexCache, docsCache *cache.Cache[[]byte]) *Sealed {
+	infoCopy := *a.info
 	f := &Sealed{
-		idsTable:      active.idsTable,
-		lidsTable:     active.lidsTable,
-		BlocksOffsets: active.DocBlocks.GetVals(),
+		idsTable:      a.idsTable,
+		lidsTable:     a.lidsTable,
+		BlocksOffsets: a.sortedBlocksOffsets,
 
-		docsFile:   active.docsFile,
-		docsCache:  active.docsCache,
-		docsReader: active.docsReader,
+		docsFile:   a.sortedDocsFile,
+		docsCache:  docsCache,
+		docsReader: disk.NewDocsReader(rl, a.sortedDocsFile, docsCache),
 
 		indexFile:   indexFile,
 		indexCache:  indexCache,
-		indexReader: disk.NewIndexReader(readLimiter, indexFile, indexCache.Registry),
+		indexReader: disk.NewIndexReader(rl, indexFile, indexCache.Registry),
 
 		loadMu:   &sync.RWMutex{},
 		isLoaded: true,
 
-		readLimiter: readLimiter,
+		readLimiter: rl,
 
 		frac: frac{
 			info:         &infoCopy,
-			BaseFileName: active.BaseFileName,
-			Config:       active.Config,
+			BaseFileName: a.BaseFileName,
+			Config:       a.Config,
 		},
 	}
 
 	// put the token table built during sealing into the cache of the sealed faction
 	indexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
-		return active.tokenTable, active.tokenTable.Size()
+		return a.tokenTable, a.tokenTable.Size()
 	})
 
 	docsCountK := float64(f.info.DocsTotal) / 1000

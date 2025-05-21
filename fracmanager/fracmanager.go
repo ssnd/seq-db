@@ -85,7 +85,7 @@ func NewFracManager(config *Config) *FracManager {
 		indexWorkers: indexWorkers,
 		readLimiter:  disk.NewReadLimiter(conf.ReaderWorkers, metric.StoreBytesRead),
 		ulidEntropy:  ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0),
-		cacheMaintainer: NewCacheMaintainer(config.CacheSize, &CacheMaintainerMetrics{
+		cacheMaintainer: NewCacheMaintainer(config.CacheSize, config.SdocsCacheSize, &CacheMaintainerMetrics{
 			HitsTotal:       metric.CacheHitsTotal,
 			MissTotal:       metric.CacheMissTotal,
 			PanicsTotal:     metric.CachePanicsTotal,
@@ -365,11 +365,16 @@ func (fm *FracManager) seal(activeRef activeRef) {
 		sealsDoneSeconds.Observe(time.Since(now).Seconds())
 	}()
 
-	indexFile, err := activeRef.frac.Seal(fm.config.SealParams)
+	sortedDocsCache := fm.cacheMaintainer.CreateSdocBlockCache()
+	indexFile, err := activeRef.frac.Seal(fm.config.SealParams, fm.readLimiter, sortedDocsCache)
 	if err != nil {
 		logger.Panic("sealing error", zap.Error(err))
 	}
-	sealed := frac.NewSealedFromActive(activeRef.frac, fm.readLimiter, indexFile, fm.cacheMaintainer.CreateIndexCache())
+	sortedDocsCache.Release()
+
+	indexCache := fm.cacheMaintainer.CreateIndexCache()
+	docsCache := fm.cacheMaintainer.CreateDocBlockCache()
+	sealed := frac.NewSealedFromActive(activeRef.frac, fm.readLimiter, indexFile, indexCache, docsCache)
 
 	stats := sealed.Info()
 	fm.fracCache.AddFraction(stats.Name(), stats)
@@ -378,7 +383,9 @@ func (fm *FracManager) seal(activeRef activeRef) {
 	activeRef.ref.instance = sealed
 	fm.fracMu.Unlock()
 
-	activeRef.frac.Release(sealed)
+	if err := activeRef.frac.Release(sealed, fm.config.ShouldRemoveMeta); err != nil {
+		logger.Fatal("failed to release active fraction", zap.Error(err))
+	}
 }
 
 func (fm *FracManager) rotate() activeRef {
@@ -393,7 +400,6 @@ func (fm *FracManager) rotate() activeRef {
 
 	active := frac.NewActive(
 		baseFilePath,
-		fm.config.ShouldRemoveMeta,
 		fm.indexWorkers,
 		fm.readLimiter,
 		fm.cacheMaintainer.CreateDocBlockCache(),

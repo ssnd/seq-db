@@ -15,8 +15,8 @@ const (
 	GB = 1024 * 1024 * 1024
 
 	DefaultMaintenanceDelay  = time.Second
-	DefaultCacheGCDelay      = 10 * time.Second
-	DefaultCacheCleanupDelay = 50 * time.Millisecond
+	DefaultCacheGCDelay      = 1 * time.Second
+	DefaultCacheCleanupDelay = 5 * time.Millisecond
 
 	// indexing
 	LIDBlockCap                = 64 * KB
@@ -67,15 +67,19 @@ const (
 )
 
 const (
-	DocsFileSuffix      = ".docs"
-	DocsDelFileSuffix   = ".docs.del"
-	SdocsFileSuffix     = ".sdocs"
-	SdocsDelFileSuffix  = ".sdocs.del"
-	SdocsTmpFileSuffix  = "._sdocs"
-	MetaFileSuffix      = ".meta"
-	IndexTmpFileSuffix  = "._index"
-	IndexFileSuffix     = ".index"
-	IndexDelFileSuffix  = ".index.del"
+	DocsFileSuffix    = ".docs"
+	DocsDelFileSuffix = ".docs.del"
+
+	MetaFileSuffix = ".meta"
+
+	SdocsFileSuffix    = ".sdocs"
+	SdocsTmpFileSuffix = "._sdocs"
+	SdocsDelFileSuffix = ".sdocs.del"
+
+	IndexFileSuffix    = ".index"
+	IndexTmpFileSuffix = "._index"
+	IndexDelFileSuffix = ".index.del"
+
 	FracCacheFileSuffix = ".frac-cache"
 )
 

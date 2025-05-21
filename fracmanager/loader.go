@@ -36,6 +36,9 @@ type loader struct {
 	indexWorkers    *frac.IndexWorkers
 	fracCache       *sealedFracCache
 	fracConfig      frac.Config
+
+	cachedFracs   int
+	uncachedFracs int
 }
 
 func NewLoader(
@@ -70,8 +73,6 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	infosList := t.filterInfos(fracIDs, infos)
 	cnt := len(infosList)
 
-	cachedFracs := 0
-	uncachedFracs := 0
 	fracs := make([]*fracRef, 0, cnt)
 	actives := make([]*frac.Active, 0)
 
@@ -79,21 +80,22 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	ts := time.Now()
 
 	for i, info := range infosList {
-		if info.hasMeta {
-			actives = append(actives, frac.NewActive(info.base, t.config.ShouldRemoveMeta, t.indexWorkers, t.readLimiter, t.cacheMaintainer.CreateDocBlockCache(), t.fracConfig))
-		} else {
-			cachedFracInfo, ok := diskFracCache.GetFracInfo(filepath.Base(info.base))
-			if ok {
-				cachedFracs++
-			} else {
-				uncachedFracs++
+		if info.hasSdocs && info.hasIndex {
+			if info.hasMeta {
+				removeFile(info.base + consts.MetaFileSuffix)
 			}
-
-			sealed := frac.NewSealed(info.base, t.readLimiter, t.cacheMaintainer.CreateIndexCache(), t.cacheMaintainer.CreateDocBlockCache(), cachedFracInfo, t.fracConfig)
+			if info.hasDocs {
+				removeFile(info.base + consts.DocsFileSuffix)
+			}
+			sealed := t.loadSealedFrac(diskFracCache, info)
 			fracs = append(fracs, &fracRef{instance: sealed})
-
-			stats := sealed.Info()
-			t.fracCache.AddFraction(stats.Name(), stats)
+		} else {
+			if info.hasMeta {
+				actives = append(actives, frac.NewActive(info.base, t.indexWorkers, t.readLimiter, t.cacheMaintainer.CreateDocBlockCache(), t.fracConfig))
+			} else {
+				sealed := t.loadSealedFrac(diskFracCache, info)
+				fracs = append(fracs, &fracRef{instance: sealed})
+			}
 		}
 
 		if time.Since(ts) >= time.Second || i == len(infosList)-1 {
@@ -108,7 +110,7 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 		}
 	}
 
-	logger.Info("fractions list created", zap.Int("cached", cachedFracs), zap.Int("uncached", uncachedFracs))
+	logger.Info("fractions list created", zap.Int("cached", t.cachedFracs), zap.Int("uncached", t.uncachedFracs))
 
 	logger.Info("replaying active fractions", zap.Int("count", len(actives)))
 	notSealed := make([]activeRef, 0)
@@ -129,6 +131,21 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 	}
 
 	return fracs, notSealed, nil
+}
+
+func (t *loader) loadSealedFrac(diskFracCache *sealedFracCache, info *fracInfo) *frac.Sealed {
+	cachedFracInfo, ok := diskFracCache.GetFracInfo(filepath.Base(info.base))
+	if ok {
+		t.cachedFracs++
+	} else {
+		t.uncachedFracs++
+	}
+
+	sealed := frac.NewSealed(info.base, t.readLimiter, t.cacheMaintainer.CreateIndexCache(), t.cacheMaintainer.CreateDocBlockCache(), cachedFracInfo, t.fracConfig)
+
+	stats := sealed.Info()
+	t.fracCache.AddFraction(stats.Name(), stats)
+	return sealed
 }
 
 func (t *loader) getFileList() []string {
@@ -190,7 +207,7 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 
 		if t.noValidDoc(info) {
 			metric.FractionLoadErrors.Inc()
-			logger.Error("fraction has .docs file without .meta and could not be read, deleting as invalid",
+			logger.Error("fraction has .docs/.sdocs file without .meta and could not be read, deleting as invalid",
 				zap.String("fraction_id", id),
 			)
 			_ = os.Remove(info.base + consts.DocsFileSuffix)
@@ -198,7 +215,7 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 			continue
 		}
 
-		logger.Fatal("fraction has valid docs but no .index or .meta file", zap.String("fraction_id", id))
+		logger.Fatal("fraction has valid docs but no .index or .meta file", zap.String("fraction_id", id), zap.Any("info", info))
 	}
 	return infoList
 }
@@ -245,6 +262,8 @@ func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 			infos[fracID] = info
 			fracIDs = append(fracIDs, fracID)
 		}
+
+		logger.Info("new file", zap.String("file", file))
 
 		switch suffix {
 		case consts.DocsFileSuffix:

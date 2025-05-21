@@ -1,13 +1,21 @@
 package frac
 
 import (
+	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/ozontech/seq-db/bytespool"
+	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/disk"
+	"github.com/ozontech/seq-db/frac/lids"
+	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/util"
@@ -19,9 +27,14 @@ type SealParams struct {
 	TokenListZstdLevel     int
 	DocsPositionsZstdLevel int
 	TokenTableZstdLevel    int
+
+	// DocBlocksZstdLevel is the zstd compress level of each document block.
+	DocBlocksZstdLevel int
+	// DocBlockSize is decompressed payload size of document block.
+	DocBlockSize int
 }
 
-func seal(f *Active, params SealParams) *os.File {
+func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 	logger.Info("sealing fraction", zap.String("fraction", f.BaseFileName))
 
 	start := time.Now()
@@ -32,10 +45,10 @@ func seal(f *Active, params SealParams) *os.File {
 
 	f.setInfoSealingTime(uint64(time.Now().UnixMilli()))
 
-	tmpFileName := f.BaseFileName + consts.IndexTmpFileSuffix
-	indexFile, err := os.OpenFile(tmpFileName, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0o776)
+	tmpIndexFileName := f.BaseFileName + consts.IndexTmpFileSuffix
+	indexFile, err := os.OpenFile(tmpIndexFileName, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0o776)
 	if err != nil {
-		logger.Fatal("can't open file", zap.String("file", tmpFileName), zap.Error(err))
+		logger.Fatal("can't open file", zap.String("file", tmpIndexFileName), zap.Error(err))
 	}
 
 	_, err = indexFile.Seek(16, io.SeekStart) // skip 16 bytes for pos and length of registry
@@ -43,38 +56,50 @@ func seal(f *Active, params SealParams) *os.File {
 		logger.Fatal("can't seek file", zap.String("file", indexFile.Name()), zap.Error(err))
 	}
 
-	if err = writeAllBlocks(f, indexFile, params); err != nil {
-		logger.Fatal("can't seek file", zap.String("file", indexFile.Name()), zap.Error(err))
+	tmpSdocsFileName := f.BaseFileName + consts.SdocsTmpFileSuffix
+	var sdocsFile *os.File
+	if conf.SortDocs {
+		sdocsFile, err = os.OpenFile(tmpSdocsFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o776)
+		if err != nil {
+			logger.Fatal("can't open file", zap.String("file", tmpSdocsFileName), zap.Error(err))
+		}
 	}
 
-	stat, err := indexFile.Stat() // refresh f.info.IndexOnDisk - it will be used later
-	if err != nil {
-		logger.Fatal("can't stat index file", zap.String("file", indexFile.Name()), zap.Error(err))
+	if err = writeSealedFraction(f, docsReader, indexFile, sdocsFile, params); err != nil {
+		logger.Fatal("can't write sealed fraction", zap.String("fraction", f.BaseFileName), zap.Error(err))
 	}
-	f.setInfoIndexOnDisk(uint64(stat.Size()))
+
+	if conf.SortDocs {
+		sdocsFileName := f.BaseFileName + consts.SdocsFileSuffix
+		if err := os.Rename(tmpSdocsFileName, sdocsFileName); err != nil {
+			logger.Fatal("can't rename sdocs file", zap.String("file", tmpSdocsFileName), zap.Error(err))
+		}
+		docsStat, err := sdocsFile.Stat()
+		if err != nil {
+			logger.Fatal("can't stat sdocs file", zap.String("file", sdocsFile.Name()), zap.Error(err))
+		}
+		f.setInfoDocsOnDisk(uint64(docsStat.Size()))
+	}
 
 	if err := indexFile.Sync(); err != nil {
 		logger.Fatal("can't sync tmp index file", zap.String("file", indexFile.Name()), zap.Error(err))
 	}
+	indexStat, err := indexFile.Stat()
+	if err != nil {
+		logger.Fatal("can't stat index file", zap.String("file", indexFile.Name()), zap.Error(err))
+	}
+	f.setInfoIndexOnDisk(uint64(indexStat.Size()))
 
 	f.close(false, "seal")
 
 	newFileName := f.BaseFileName + consts.IndexFileSuffix
-	err = os.Rename(tmpFileName, newFileName)
+	err = os.Rename(tmpIndexFileName, newFileName)
 	if err != nil {
 		logger.Error("can't rename index file",
-			zap.String("old_path", tmpFileName),
+			zap.String("old_path", tmpIndexFileName),
 			zap.String("new_path", newFileName),
 			zap.Error(err),
 		)
-	}
-
-	if f.shouldRemoveMeta {
-		rmFileName := f.BaseFileName + consts.MetaFileSuffix
-		err = os.Remove(rmFileName)
-		if err != nil {
-			logger.Error("can't delete metas file", zap.String("file", rmFileName), zap.Error(err))
-		}
 	}
 
 	logger.Info(
@@ -85,49 +110,95 @@ func seal(f *Active, params SealParams) *os.File {
 	return indexFile
 }
 
-func writeAllBlocks(f *Active, ws io.WriteSeeker, params SealParams) error {
+func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdocsFile *os.File, params SealParams) error {
 	var err error
+	sortedIDs, oldToNewLIDsIndex := sortSeqIDs(f, f.MIDs.GetVals(), f.RIDs.GetVals())
 
-	writer := NewSealedBlockWriter(ws)
-	producer := NewDiskBlocksProducer(f)
+	var blockOffsets []uint64
+	var positions map[seq.ID]seq.DocPos
+	if conf.SortDocs {
+		logger.Info("sorting docs...")
+		bw := getDocBlocksWriter(sdocsFile, params.DocBlockSize, params.DocBlocksZstdLevel)
+		defer putDocBlocksWriter(bw)
+		if err := writeDocsInOrder(f.DocsPositions, f.DocBlocks.GetVals(), docsReader, sortedIDs, bw); err != nil {
+			return fmt.Errorf("writing sorted docs: %s", err)
+		}
+		if err := sdocsFile.Sync(); err != nil {
+			return fmt.Errorf("syncing sorted docs file: %s", err)
+		}
+		f.sortedDocsFile = sdocsFile
+		blockOffsets = bw.BlockOffsets
+		positions = bw.Positions
+	} else {
+		f.sortedDocsFile = f.docsFile
+		blockOffsets = f.DocBlocks.GetVals()
+		positions = f.DocsPositions.positions
+	}
+	f.sortedBlocksOffsets = blockOffsets
 
-	logger.Info("sealing frac stats...")
-	if err = writer.writeInfoBlock(producer.getInfoBlock()); err != nil {
-		logger.Error("seal info error", zap.Error(err))
-		return err
+	producer := NewDiskBlocksProducer()
+	writer := NewSealedBlockWriter(indexFile)
+	{
+		logger.Info("sealing frac stats...")
+		f.BuildInfoDistribution(sortedIDs)
+		fracInfo := f.Info()
+		if err := writer.writeInfoBlock(producer.getInfoBlock(fracInfo)); err != nil {
+			logger.Error("seal info error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing tokens...")
-	tokenTable, err := writer.writeTokensBlocks(params.TokenListZstdLevel, producer.getTokensBlocksGenerator())
-	if err != nil {
-		logger.Error("sealing tokens error", zap.Error(err))
-		return err
+	var tokenTable token.Table
+	{
+		logger.Info("sealing tokens...")
+		generator := producer.getTokensBlocksGenerator(f.TokenList)
+		tokenTable, err = writer.writeTokensBlocks(params.TokenListZstdLevel, generator)
+		if err != nil {
+			logger.Error("sealing tokens error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing tokens table...")
-	if err = writer.writeTokenTableBlocks(params.TokenTableZstdLevel, producer.getTokenTableBlocksGenerator(tokenTable)); err != nil {
-		logger.Error("sealing tokens table error", zap.Error(err))
-		return err
+	{
+		logger.Info("sealing tokens table...")
+		generator := producer.getTokenTableBlocksGenerator(f.TokenList, tokenTable)
+		if err := writer.writeTokenTableBlocks(params.TokenTableZstdLevel, generator); err != nil {
+			logger.Error("sealing tokens table error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("writing document positions block...")
-	if err = writer.writePositionsBlock(params.DocsPositionsZstdLevel, producer.getPositionBlock()); err != nil {
-		logger.Error("document positions block error", zap.Error(err))
-		return err
+	{
+		logger.Info("writing document positions block...")
+		idsLen := f.MIDs.Len()
+		generator := producer.getPositionBlock(idsLen, blockOffsets)
+		if err := writer.writePositionsBlock(params.DocsPositionsZstdLevel, generator); err != nil {
+			logger.Error("document positions block error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing ids...")
-	minBlockIDs, err := writer.writeIDsBlocks(params.IDsZstdLevel, producer.getIDsBlocksGenerator(consts.IDsBlockSize))
-	if err != nil {
-		logger.Error("seal ids error", zap.Error(err))
-		return err
+	var minBlockIDs []seq.ID
+	{
+		logger.Info("sealing ids...")
+		ds := DocsPositions{positions: positions}
+		generator := producer.getIDsBlocksGenerator(sortedIDs, &ds, consts.IDsBlockSize)
+		minBlockIDs, err = writer.writeIDsBlocks(params.IDsZstdLevel, generator)
+		if err != nil {
+			logger.Error("seal ids error", zap.Error(err))
+			return err
+		}
 	}
 
-	logger.Info("sealing lids...")
-	lidsTable, err := writer.writeLIDsBlocks(params.LIDsZstdLevel, producer.getLIDsBlockGenerator(consts.LIDBlockCap))
-	if err != nil {
-		logger.Error("seal lids error", zap.Error(err))
-		return err
+	var lidsTable *lids.Table
+	{
+		logger.Info("sealing lids...")
+		generator := producer.getLIDsBlockGenerator(f.TokenList, oldToNewLIDsIndex, f.MIDs, f.RIDs, consts.LIDBlockCap)
+		lidsTable, err = writer.writeLIDsBlocks(params.LIDsZstdLevel, generator)
+		if err != nil {
+			logger.Error("seal lids error", zap.Error(err))
+			return err
+		}
 	}
 
 	logger.Info("write registry...")
@@ -136,7 +207,12 @@ func writeAllBlocks(f *Active, ws io.WriteSeeker, params SealParams) error {
 		return err
 	}
 
-	f.idsTable = createIDsTable(f, writer.startOfIDsBlockIndex, minBlockIDs)
+	f.idsTable = IDsTable{
+		MinBlockIDs:         minBlockIDs,
+		IDsTotal:            f.MIDs.Len(),
+		IDBlocksTotal:       f.DocBlocks.Len(),
+		DiskStartBlockIndex: writer.startOfIDsBlockIndex,
+	}
 	f.lidsTable = lidsTable
 	f.tokenTable = tokenTable
 
@@ -145,11 +221,155 @@ func writeAllBlocks(f *Active, ws io.WriteSeeker, params SealParams) error {
 	return nil
 }
 
-func createIDsTable(f *Active, startOfIDsBlockIndex uint32, minBlockIDs []seq.ID) IDsTable {
-	return IDsTable{
-		MinBlockIDs:         minBlockIDs,
-		IDsTotal:            f.MIDs.Len(),
-		IDBlocksTotal:       f.DocBlocks.Len(),
-		DiskStartBlockIndex: startOfIDsBlockIndex,
+func writeDocsInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
+	// Skip system seq.ID.
+	if len(ids) == 0 {
+		panic(fmt.Errorf("BUG: ids is empty"))
 	}
+	if ids[0] != systemSeqID {
+		panic(fmt.Errorf("BUG: system ID expected"))
+	}
+	ids = ids[1:]
+
+	if err := writeDocBlocksInOrder(pos, blocks, docsReader, ids, bw); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
+	for _, id := range ids {
+		oldPos := pos.Get(id)
+		if oldPos == seq.DocPosNotFound {
+			panic(fmt.Errorf("BUG: can't find doc position"))
+		}
+
+		blockOffsetIndex, docOffset := oldPos.Unpack()
+		blockOffset := blocks[blockOffsetIndex]
+		err := docsReader.ReadDocsFunc(blockOffset, []uint64{docOffset}, func(doc []byte) error {
+			return bw.WriteDoc(id, doc)
+		})
+		if err != nil {
+			return fmt.Errorf("writing document to block: %s", err)
+		}
+	}
+	if err := bw.Flush(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type docBlocksWriter struct {
+	w             *bytespool.Writer
+	compressLevel int
+	minBlockSize  int
+
+	curBlockIndex      int
+	currentBlockOffset uint64
+
+	docs     []byte
+	blockBuf []byte
+
+	BlockOffsets []uint64
+	Positions    map[seq.ID]seq.DocPos
+}
+
+var docBlocksWriterPool = sync.Pool{
+	New: func() any {
+		return &docBlocksWriter{Positions: make(map[seq.ID]seq.DocPos)}
+	},
+}
+
+func getDocBlocksWriter(w io.Writer, blockSize, compressLevel int) *docBlocksWriter {
+	bw := docBlocksWriterPool.Get().(*docBlocksWriter)
+
+	if blockSize <= 0 {
+		blockSize = consts.MB * 4
+	}
+
+	bufSize := consts.MB * 32
+	if bufSize < blockSize {
+		bufSize = blockSize
+	}
+
+	*bw = docBlocksWriter{
+		w:             bytespool.AcquireWriterSize(w, bufSize),
+		compressLevel: compressLevel,
+		minBlockSize:  blockSize,
+
+		curBlockIndex:      0,
+		currentBlockOffset: 0,
+
+		docs:     bw.docs[:0],
+		blockBuf: bw.blockBuf[:0],
+
+		BlockOffsets: bw.BlockOffsets[:0],
+		Positions:    bw.Positions,
+	}
+	clear(bw.Positions)
+
+	return bw
+}
+
+func putDocBlocksWriter(bw *docBlocksWriter) {
+	err := bytespool.FlushReleaseWriter(bw.w)
+	if err != nil {
+		panic(fmt.Errorf("BUG: writer must be flushed before releasing blocks writer: %s", err))
+	}
+	bw.w = nil
+	docBlocksWriterPool.Put(bw)
+}
+
+func (w *docBlocksWriter) WriteDoc(id seq.ID, doc []byte) error {
+	pos := seq.PackDocPos(uint32(w.curBlockIndex), uint64(len(w.docs)))
+	w.Positions[id] = pos
+
+	w.docs = binary.LittleEndian.AppendUint32(w.docs, uint32(len(doc)))
+	w.docs = append(w.docs, doc...)
+
+	if len(w.docs) > w.minBlockSize {
+		if err := w.flushBlock(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (w *docBlocksWriter) flushBlock() error {
+	blockLen, err := w.compressWriteBlock()
+	if err != nil {
+		return err
+	}
+
+	w.docs = w.docs[:0]
+	w.BlockOffsets = append(w.BlockOffsets, w.currentBlockOffset)
+	w.curBlockIndex++
+	w.currentBlockOffset += uint64(blockLen)
+
+	return nil
+}
+
+func (w *docBlocksWriter) compressWriteBlock() (int, error) {
+	w.blockBuf = w.blockBuf[:0]
+	w.blockBuf = disk.CompressDocBlock(w.docs, w.blockBuf, w.compressLevel)
+
+	if _, err := w.w.Write(w.blockBuf); err != nil {
+		return 0, err
+	}
+
+	blockLen := len(w.blockBuf)
+	return blockLen, nil
+}
+
+func (w *docBlocksWriter) Flush() error {
+	if len(w.docs) > 0 {
+		if err := w.flushBlock(); err != nil {
+			return err
+		}
+	}
+	if err := w.w.Flush(); err != nil {
+		return err
+	}
+	return nil
 }

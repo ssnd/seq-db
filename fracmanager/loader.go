@@ -196,7 +196,7 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 
 		if !info.hasDocs && !info.hasSdocs {
 			metric.FractionLoadErrors.Inc()
-			logger.Error("fraction doesn't have .docs/.sdocs file, skipping", zap.Any("frac_info", info))
+			logger.Error("fraction doesn't have .docs/.sdocs file, skipping", zap.String("file", info.base))
 			continue
 		}
 

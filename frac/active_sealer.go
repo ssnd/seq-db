@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -134,7 +135,7 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 		blockOffsets = f.DocBlocks.GetVals()
 		positions = f.DocsPositions.positions
 	}
-	f.sortedBlocksOffsets = blockOffsets
+	f.sortedBlocksOffsets = slices.Clone(blockOffsets)
 
 	producer := NewDiskBlocksProducer()
 	writer := NewSealedBlockWriter(indexFile)

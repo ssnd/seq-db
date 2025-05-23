@@ -239,7 +239,15 @@ func writeDocsInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.Docs
 }
 
 func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
+	var prevID seq.ID
 	for _, id := range ids {
+		if id == prevID {
+			// IDs have duplicates in case of nested index.
+			// In this case we need to store the original document once.
+			continue
+		}
+		prevID = id
+
 		oldPos := pos.Get(id)
 		if oldPos == seq.DocPosNotFound {
 			panic(fmt.Errorf("BUG: can't find doc position"))

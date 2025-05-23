@@ -21,10 +21,11 @@ build-binaries:
       ./cmd/...
 
 .PHONY: build-image
-build-image: OS = linux
-build-image: ARCH = amd64
-build-image: build-binaries
+build-image:
 	docker buildx build --platform linux/amd64 \
+		--build-arg VERSION=${VERSION} \
+		--build-arg BUILD_TIME=${TIME} \
+		--file build/package/Dockerfile \
 		-t ghcr.io/ozontech/seq-db:${VERSION} \
 		.
 

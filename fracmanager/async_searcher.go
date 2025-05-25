@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/ozontech/seq-db/bytespool"
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/frac/processor"
@@ -21,7 +23,6 @@ import (
 	"github.com/ozontech/seq-db/parser"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/zstd"
-	"go.uber.org/zap"
 )
 
 type MappingProvider interface {
@@ -250,7 +251,7 @@ func (as *AsyncSearcher) processFrac(f frac.Fraction, r AsyncSearchRequest) erro
 		panic(fmt.Errorf("BUG: can't encode async search request: %s", err))
 	}
 
-	buf := bytespool.AcquireReset(len(qprRaw))
+	buf := bytespool.Acquire(len(qprRaw))
 	defer bytespool.Release(buf)
 
 	// zstd uses level 3 as the default value, which has optimal compression ratio and speed.

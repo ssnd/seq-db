@@ -16,10 +16,6 @@ jobs:
         image:
           - name: 'ubuntu:latest'
             suffix: ''
-          - name: 'alpine'
-            suffix: '-alpine'
-          - name: 'scratch'
-            suffix: '-scratch'
     steps:
       - uses: actions/checkout@v4
 

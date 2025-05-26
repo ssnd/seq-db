@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"net"
 	_ "net/http/pprof"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"go.uber.org/atomic"
-	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/encoding"
@@ -24,6 +22,7 @@ import (
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/fracmanager"
+	"github.com/ozontech/seq-db/limits"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/mappingprovider"
 	"github.com/ozontech/seq-db/network/circuitbreaker"
@@ -66,9 +65,6 @@ func main() {
 	kingpin.Version(buildinfo.Version)
 
 	runtime.SetMutexProfileFraction(5)
-	_, _ = maxprocs.Set(maxprocs.Logger(func(tpl string, args ...any) {
-		logger.Info(fmt.Sprintf(tpl, args...))
-	}))
 
 	conf.ReaderWorkers = *flagReaderWorkers
 	conf.CaseSensitive = *flagCaseSensitive
@@ -110,7 +106,7 @@ func main() {
 	switch *flagMode {
 	case appModeStore:
 		store = startStore(ctx, *flagAddr, mappingProvider)
-	case appModeIngestor:
+	case appModeProxy:
 		ingestor = startProxy(ctx, *flagAddr, mappingProvider, nil)
 	case appModeSingle:
 		store = startStore(ctx, "", mappingProvider)
@@ -269,7 +265,7 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 			Search: storeapi.SearchConfig{
 				WorkersCount:          *flagSearchWorkers,
 				MaxFractionHits:       *flagMaxFractionHits,
-				FractionsPerIteration: conf.NumCPU,
+				FractionsPerIteration: limits.NumCPU,
 				RequestsLimit:         *flagSearchRequestsLimit,
 				LogThreshold:          time.Millisecond * time.Duration(*flagLogSearchThresholdMs),
 				Async: fracmanager.AsyncSearcherConfig{

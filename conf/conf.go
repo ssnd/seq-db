@@ -1,20 +1,17 @@
 package conf
 
 import (
-	"runtime"
-
 	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/limits"
 )
 
 func init() {
-	NumCPU := runtime.GOMAXPROCS(0)
-	IndexWorkers = NumCPU
-	FetchWorkers = NumCPU
-	ReaderWorkers = NumCPU
+	IndexWorkers = limits.NumCPU
+	FetchWorkers = limits.NumCPU
+	ReaderWorkers = limits.NumCPU
 }
 
 var (
-	NumCPU        int
 	IndexWorkers  int
 	FetchWorkers  int
 	ReaderWorkers int

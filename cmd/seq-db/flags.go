@@ -1,24 +1,30 @@
 package main
 
 import (
-	_ "net/http/pprof"
 	"strconv"
-
-	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/limits"
 	"github.com/ozontech/seq-db/storeapi"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
-	appModeIngestor = "ingestor"
-	appModeStore    = "store"
-	appModeSingle   = "single"
+	appModeProxy  = "proxy"
+	appModeStore  = "store"
+	appModeSingle = "single"
+
+	defaultCacheSizeRatio = 0.3
 )
 
 var (
-	flagMode = kingpin.Flag("mode", `operation mode`).Default(appModeIngestor).HintOptions(appModeIngestor, appModeStore).String()
+	numCPUStr = strconv.Itoa(limits.NumCPU)
+
+	defaultCacheSize    = float64(limits.TotalMemory) * defaultCacheSizeRatio
+	defaultCacheSizeStr = strconv.Itoa(int(defaultCacheSize)/1024/1024) + "MB"
+
+	flagMode = kingpin.Flag("mode", `operation mode`).Default(appModeSingle).HintOptions(appModeSingle, appModeProxy, appModeStore).String()
 
 	// addresses
 	flagAddr          = kingpin.Flag("addr", `listen addr e.g. ":9002"`).Default(":9002").String()
@@ -70,10 +76,10 @@ var (
 	flagBulkVolumeThreshold = kingpin.Flag("bulk-request-volume-threshold", "check circuitbreaker/README.md for more details").Default("5").Int64()
 
 	// resources
-	flagReaderWorkers  = kingpin.Flag("reader-workers", "size of readers pool").Default(strconv.Itoa(conf.NumCPU)).Int()
-	flagSearchWorkers  = kingpin.Flag("search-workers-count", `the number of workers that will be process factions`).Default(strconv.Itoa(conf.NumCPU)).Int()
+	flagReaderWorkers  = kingpin.Flag("reader-workers", "size of readers pool").Default(numCPUStr).Int()
+	flagSearchWorkers  = kingpin.Flag("search-workers-count", `the number of workers that will be process factions`).Default(numCPUStr).Int()
 	flagSkipFsync      = kingpin.Flag("skip-fsync", "skip fsyncs for active fraction").Default("false").Bool()
-	flagCacheSize      = kingpin.Flag("cache-size", `max size of the cache`).Default("1GB").Bytes()
+	flagCacheSize      = kingpin.Flag("cache-size", `max size of the cache`).Default(defaultCacheSizeStr).Bytes()
 	flagSdocsCacheSize = kingpin.Flag("sdocs-cache-size", `cache size that used to seal active fraction, must be lower than --cache-size parameter`).Default("2GB").Bytes()
 
 	// compress level

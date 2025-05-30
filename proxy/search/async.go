@@ -12,9 +12,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type AsyncRequest struct {
+	Retention         time.Duration
 	Query             string
 	From              time.Time
 	To                time.Time
@@ -43,6 +45,7 @@ func (si *Ingestor) StartAsyncSearch(ctx context.Context, r AsyncRequest) (Async
 		Aggs:              convertToAggsQuery(r.Aggregations),
 		Order:             storeapi.MustProtoOrder(r.Order),
 		HistogramInterval: int64(r.HistogramInterval),
+		Retention:         durationpb.New(r.Retention),
 	}
 	for i, shard := range searchStores.Shards {
 		var err error

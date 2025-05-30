@@ -2,6 +2,7 @@ package seq
 
 import (
 	"cmp"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"slices"
@@ -37,6 +38,32 @@ func (id *IDSource) Equal(check IDSource) bool {
 	return id.ID.Equal(check.ID) && id.Source == check.Source
 }
 
+func (id *IDSource) MarshalBinary(dst []byte) []byte {
+	dst = be.AppendUint64(dst, uint64(id.ID.MID))
+	dst = be.AppendUint64(dst, uint64(id.ID.RID))
+	dst = be.AppendUint64(dst, id.Source)
+	dst = be.AppendUint16(dst, uint16(len(id.Hint)))
+	dst = append(dst, id.Hint...)
+	return dst
+}
+
+func (id *IDSource) UnmarshalBinary(src []byte) ([]byte, error) {
+	if len(src) < 26 {
+		return src, fmt.Errorf("invalid ID source length; want: 26, got %d", len(src))
+	}
+	id.ID.MID = MID(be.Uint64(src))
+	src = src[8:]
+	id.ID.RID = RID(be.Uint64(src))
+	src = src[8:]
+	id.Source = be.Uint64(src)
+	src = src[8:]
+	hintLen := be.Uint16(src)
+	src = src[2:]
+	id.Hint = string(src[:hintLen])
+	src = src[hintLen:]
+	return src, nil
+}
+
 type IDSources []IDSource
 
 func (p IDSources) Len() int           { return len(p) }
@@ -60,6 +87,23 @@ func (p IDSources) ApplyHint(hint string) {
 type ErrorSource struct {
 	ErrStr string
 	Source uint64
+}
+
+func (e *ErrorSource) MarshalBinary(dst []byte) []byte {
+	dst = be.AppendUint64(dst, uint64(len(e.ErrStr)))
+	dst = append(dst, e.ErrStr...)
+	dst = be.AppendUint64(dst, e.Source)
+	return dst
+}
+
+func (e *ErrorSource) UnmarshalBinary(src []byte) ([]byte, error) {
+	n := be.Uint64(src)
+	src = src[8:]
+	e.ErrStr = string(src[:n])
+	src = src[n:]
+	e.Source = be.Uint64(src)
+	src = src[8:]
+	return src, nil
 }
 
 // QPR query partial result, stores intermediate result of running query e.g. result from only one fraction or particular store
@@ -90,6 +134,108 @@ func (q *QPR) CombineErrors() string {
 	}
 
 	return string(x)
+}
+
+var be = binary.BigEndian
+
+const qprBinVersion = 1
+
+func (q *QPR) MarshalBinary(dst []byte) []byte {
+	dst = append(dst, qprBinVersion)
+
+	dst = be.AppendUint64(dst, uint64(len(q.IDs)))
+	for _, id := range q.IDs {
+		dst = id.MarshalBinary(dst)
+	}
+
+	dst = be.AppendUint64(dst, uint64(len(q.Histogram)))
+	for mid, hist := range q.Histogram {
+		dst = be.AppendUint64(dst, uint64(mid))
+		dst = be.AppendUint64(dst, hist)
+	}
+
+	dst = be.AppendUint64(dst, uint64(len(q.Aggs)))
+	for _, agg := range q.Aggs {
+		dst = agg.MarshalBinary(dst)
+	}
+
+	dst = be.AppendUint64(dst, q.Total)
+
+	dst = be.AppendUint64(dst, uint64(len(q.Errors)))
+	for _, e := range q.Errors {
+		dst = e.MarshalBinary(dst)
+	}
+	return dst
+}
+
+func (q *QPR) UnmarshalBinary(src []byte) ([]byte, error) {
+	if len(src) < 41 {
+		return nil, fmt.Errorf("invalid QPR format; want %d bytes, got %d", 41, len(src))
+	}
+
+	version := src[0]
+	src = src[1:]
+	if version != qprBinVersion {
+		return nil, fmt.Errorf("invalid QPR version %d; want %d", version, qprBinVersion)
+	}
+
+	n := be.Uint64(src)
+	src = src[8:]
+	q.IDs = slices.Grow(q.IDs[:0], int(n))
+	for i := 0; i < int(n); i++ {
+		id := IDSource{}
+		tail, err := id.UnmarshalBinary(src)
+		if err != nil {
+			return nil, fmt.Errorf("invalid IDSource at pos %d: %v", i, err)
+		}
+		q.IDs = append(q.IDs, id)
+		src = tail
+	}
+
+	n = be.Uint64(src)
+	src = src[8:]
+	if len(q.Histogram) < int(n) {
+		q.Histogram = make(map[MID]uint64, n)
+	} else {
+		clear(q.Histogram)
+	}
+	for i := 0; i < int(n); i++ {
+		mid := be.Uint64(src)
+		src = src[8:]
+		v := be.Uint64(src)
+		src = src[8:]
+		q.Histogram[MID(mid)] = v
+	}
+
+	n = be.Uint64(src)
+	src = src[8:]
+	q.Aggs = slices.Grow(q.Aggs[:0], int(n))
+	for i := 0; i < int(n); i++ {
+		agg := QPRHistogram{}
+		tail, err := agg.UnmarshalBinary(src)
+		if err != nil {
+			return nil, fmt.Errorf("invalid QPRHistogram at pos %d: %v", i, err)
+		}
+		src = tail
+		q.Aggs = append(q.Aggs, agg)
+	}
+
+	q.Total = be.Uint64(src)
+	src = src[8:]
+
+	n = be.Uint64(src)
+	src = src[8:]
+	for i := 0; i < int(n); i++ {
+		var e ErrorSource
+		tail, err := e.UnmarshalBinary(src)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ErrorSource at pos %d: %v", i, err)
+		}
+		src = tail
+		q.Errors = append(q.Errors, e)
+	}
+
+	return src, nil
 }
 
 type AggFunc byte
@@ -229,6 +375,52 @@ func (q *QPRHistogram) Merge(agg QPRHistogram) {
 	}
 }
 
+func (q *QPRHistogram) MarshalBinary(dst []byte) []byte {
+	dst = be.AppendUint64(dst, uint64(len(q.HistogramByToken)))
+	for token, hist := range q.HistogramByToken {
+		dst = be.AppendUint64(dst, uint64(len(token)))
+		dst = append(dst, token...)
+		dst = hist.MarshalBinary(dst)
+	}
+	dst = be.AppendUint64(dst, uint64(q.NotExists))
+	return dst
+}
+
+func (q *QPRHistogram) UnmarshalBinary(src []byte) ([]byte, error) {
+	if len(src) < 16 {
+		return nil, fmt.Errorf("src too short to unmarshal QPRHistogram, want at least 16 bytes, got %d", len(src))
+	}
+
+	aggs := be.Uint64(src)
+	src = src[8:]
+	if len(q.HistogramByToken) < int(aggs) {
+		q.HistogramByToken = make(map[string]*AggregationHistogram, aggs)
+	} else {
+		clear(q.HistogramByToken)
+	}
+	hists := make([]AggregationHistogram, aggs)
+	for i := 0; i < int(aggs); i++ {
+		n := be.Uint64(src)
+		src = src[8:]
+		token := string(src[:n])
+		src = src[n:]
+
+		hist := &hists[i]
+		tail, err := hist.UnmarshalBinary(src)
+		if err != nil {
+			return nil, err
+		}
+		src = tail
+
+		q.HistogramByToken[token] = hist
+	}
+
+	q.NotExists = int64(be.Uint64(src))
+	src = src[8:]
+
+	return src, nil
+}
+
 // AggregationHistogram is a histogram that is used for aggregations.
 // Implements reservoir sampling algorithm.
 type AggregationHistogram struct {
@@ -327,6 +519,47 @@ func (h *AggregationHistogram) InsertSample(num float64) {
 	} else {
 		h.Samples[h.rng.Uint32()%maxHistogramSamples] = num
 	}
+}
+
+func (h *AggregationHistogram) MarshalBinary(dst []byte) []byte {
+	dst = be.AppendUint64(dst, math.Float64bits(h.Min))
+	dst = be.AppendUint64(dst, math.Float64bits(h.Max))
+	dst = be.AppendUint64(dst, math.Float64bits(h.Sum))
+	dst = be.AppendUint64(dst, uint64(h.Total))
+	dst = be.AppendUint64(dst, uint64(h.NotExists))
+
+	dst = be.AppendUint64(dst, uint64(len(h.Samples)))
+	for _, v := range h.Samples {
+		dst = be.AppendUint64(dst, math.Float64bits(v))
+	}
+	return dst
+}
+
+func (h *AggregationHistogram) UnmarshalBinary(src []byte) ([]byte, error) {
+	if len(src) < 48 {
+		return src, fmt.Errorf("histogram size too low")
+	}
+	h.Min = math.Float64frombits(be.Uint64(src))
+	src = src[8:]
+	h.Max = math.Float64frombits(be.Uint64(src))
+	src = src[8:]
+	h.Sum = math.Float64frombits(be.Uint64(src))
+	src = src[8:]
+	h.Total = int64(be.Uint64(src))
+	src = src[8:]
+	h.NotExists = int64(be.Uint64(src))
+	src = src[8:]
+
+	n := be.Uint64(src)
+	src = src[8:]
+	h.Samples = slices.Grow(h.Samples[:0], int(n))
+	for i := 0; i < int(n); i++ {
+		v := math.Float64frombits(be.Uint64(src))
+		h.Samples = append(h.Samples, v)
+		src = src[8:]
+	}
+
+	return src, nil
 }
 
 func MergeQPRs(dst *QPR, qprs []*QPR, limit int, histInterval MID, order DocsOrder) {

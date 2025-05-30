@@ -311,6 +311,7 @@ func (m *StartAsyncSearchRequest) CloneVT() *StartAsyncSearchRequest {
 	}
 	r := new(StartAsyncSearchRequest)
 	r.SearchId = m.SearchId
+	r.Retention = (*durationpb.Duration)((*durationpb1.Duration)(m.Retention).CloneVT())
 	r.Query = m.Query
 	r.From = m.From
 	r.To = m.To
@@ -909,6 +910,9 @@ func (this *StartAsyncSearchRequest) EqualVT(that *StartAsyncSearchRequest) bool
 		return false
 	}
 	if this.SearchId != that.SearchId {
+		return false
+	}
+	if !(*durationpb1.Duration)(this.Retention).EqualVT((*durationpb1.Duration)(that.Retention)) {
 		return false
 	}
 	if this.Query != that.Query {
@@ -2192,12 +2196,12 @@ func (m *StartAsyncSearchRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	if m.Order != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Order))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x40
 	}
 	if m.HistogramInterval != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HistogramInterval))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x38
 	}
 	if len(m.Aggs) > 0 {
 		for iNdEx := len(m.Aggs) - 1; iNdEx >= 0; iNdEx-- {
@@ -2208,23 +2212,33 @@ func (m *StartAsyncSearchRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x32
 		}
 	}
 	if m.To != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.To))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x28
 	}
 	if m.From != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.From))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x20
 	}
 	if len(m.Query) > 0 {
 		i -= len(m.Query)
 		copy(dAtA[i:], m.Query)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Retention != nil {
+		size, err := (*durationpb1.Duration)(m.Retention).MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -3379,12 +3393,12 @@ func (m *StartAsyncSearchRequest) MarshalToSizedBufferVTStrict(dAtA []byte) (int
 	if m.Order != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Order))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x40
 	}
 	if m.HistogramInterval != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HistogramInterval))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x38
 	}
 	if len(m.Aggs) > 0 {
 		for iNdEx := len(m.Aggs) - 1; iNdEx >= 0; iNdEx-- {
@@ -3395,23 +3409,33 @@ func (m *StartAsyncSearchRequest) MarshalToSizedBufferVTStrict(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x32
 		}
 	}
 	if m.To != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.To))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x28
 	}
 	if m.From != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.From))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x20
 	}
 	if len(m.Query) > 0 {
 		i -= len(m.Query)
 		copy(dAtA[i:], m.Query)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Retention != nil {
+		size, err := (*durationpb1.Duration)(m.Retention).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -4141,6 +4165,10 @@ func (m *StartAsyncSearchRequest) SizeVT() (n int) {
 	_ = l
 	l = len(m.SearchId)
 	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Retention != nil {
+		l = (*durationpb1.Duration)(m.Retention).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	l = len(m.Query)
@@ -6341,6 +6369,42 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Retention", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Retention == nil {
+				m.Retention = &durationpb.Duration{}
+			}
+			if err := (*durationpb1.Duration)(m.Retention).UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Query", wireType)
 			}
 			var stringLen uint64
@@ -6371,7 +6435,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Query = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
 			}
@@ -6390,7 +6454,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field To", wireType)
 			}
@@ -6409,7 +6473,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Aggs", wireType)
 			}
@@ -6443,7 +6507,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
+		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field HistogramInterval", wireType)
 			}
@@ -6462,7 +6526,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 7:
+		case 8:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Order", wireType)
 			}
@@ -9487,6 +9551,42 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Retention", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Retention == nil {
+				m.Retention = &durationpb.Duration{}
+			}
+			if err := (*durationpb1.Duration)(m.Retention).UnmarshalVTUnsafe(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Query", wireType)
 			}
 			var stringLen uint64
@@ -9521,7 +9621,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			}
 			m.Query = stringValue
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
 			}
@@ -9540,7 +9640,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field To", wireType)
 			}
@@ -9559,7 +9659,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Aggs", wireType)
 			}
@@ -9593,7 +9693,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
+		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field HistogramInterval", wireType)
 			}
@@ -9612,7 +9712,7 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-		case 7:
+		case 8:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Order", wireType)
 			}

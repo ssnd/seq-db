@@ -31,7 +31,6 @@ const (
 	DefaultMaxGroupsPerAggregation       = 2_000
 	DefaultMaxFieldTokensPerAggregation  = 1_000_000
 	DefaultMaxAggregatingTIDsPerFraction = 100_000
-
 	// bulk
 	BulkMaxTries = 3
 

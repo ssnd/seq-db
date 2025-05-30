@@ -119,13 +119,13 @@ enum SearchErrorCode {
 
 message StartAsyncSearchRequest {
   string search_id = 1;
-
-  string query = 2;
-  int64 from = 3;
-  int64 to = 4;
-  repeated AggQuery aggs = 5;
-  int64 histogram_interval = 6;
-  Order order = 7;
+  google.protobuf.Duration retention = 2;
+  string query = 3;
+  int64 from = 4;
+  int64 to = 5;
+  repeated AggQuery aggs = 6;
+  int64 histogram_interval = 7;
+  Order order = 8;
 }
 
 message StartAsyncSearchResponse {}

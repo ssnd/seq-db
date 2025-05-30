@@ -27,9 +27,10 @@ func (g *grpcV1) StartAsyncSearch(ctx context.Context, r *seqproxyapi.StartAsync
 	}
 
 	resp, err := g.searchIngestor.StartAsyncSearch(ctx, search.AsyncRequest{
+		Retention:         r.Retention.AsDuration(),
 		Query:             r.GetQuery().GetQuery(),
-		From:              r.GetQuery().From.AsTime(),
-		To:                r.GetQuery().To.AsTime(),
+		From:              r.GetQuery().GetFrom().AsTime(),
+		To:                r.GetQuery().GetTo().AsTime(),
 		Order:             r.Order.MustDocsOrder(),
 		Aggregations:      aggs,
 		HistogramInterval: seq.MID(histInterval.Milliseconds()),

@@ -3,7 +3,6 @@ package storeapi
 import (
 	"context"
 	"math"
-	"time"
 
 	"github.com/ozontech/seq-db/frac/processor"
 	"github.com/ozontech/seq-db/fracmanager"
@@ -35,9 +34,10 @@ func (g *GrpcV1) StartAsyncSearch(_ context.Context, r *storeapi.StartAsyncSearc
 		ID:        r.SearchId,
 		Query:     r.Query,
 		Params:    params,
-		Retention: time.Hour * 24, // todo: use value from request
+		Retention: r.Retention.AsDuration(),
 	}
-	if err := g.asyncSearcher.StartSearch(req); err != nil {
+	fracs := g.fracManager.GetAllFracs().FilterInRange(seq.MID(r.From), seq.MID(r.To))
+	if err := g.asyncSearcher.StartSearch(req, fracs); err != nil {
 		return nil, err
 	}
 
@@ -53,7 +53,7 @@ func (g *GrpcV1) FetchAsyncSearchResult(_ context.Context, r *storeapi.FetchAsyn
 	resp := buildSearchResponse(&fetchResp.QPR)
 
 	return &storeapi.FetchAsyncSearchResultResponse{
-		Done:              fetchResp.Done,
+		//Done:              fetchResp.Done,
 		Response:          resp,
 		Expiration:        timestamppb.New(fetchResp.Expiration),
 		Aggs:              convertAggQueriesToProto(fetchResp.AggQueries),

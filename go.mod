@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1
+	github.com/KimMachineGun/automemlimit v0.7.2
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cep21/circuit/v3 v3.2.2
 	github.com/golang/mock v1.6.0
@@ -32,7 +33,6 @@ require (
 )
 
 require (
-	github.com/KimMachineGun/automemlimit v0.7.2 // indirect
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect

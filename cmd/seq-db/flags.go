@@ -32,19 +32,19 @@ var (
 	flagDebugAddr     = kingpin.Flag("debug-addr", `debug listen addr e.g. ":9200"`).Default(":9200").String()
 
 	// cluster
-	flagReadStores  = kingpin.Flag("read-stores", `list of store hosts to read`).Default("").String()
-	flagWriteStores = kingpin.Flag("write-stores", `list of store hosts to write`).Default("").String()
+	flagReadStores  = kingpin.Flag("read-stores", `list of store hosts to read`).String()
+	flagWriteStores = kingpin.Flag("write-stores", `list of store hosts to write`).String()
 	flagReplicas    = kingpin.Flag("replicas", `replication factor for stores`).Default("1").Int()
 
-	flagHotStores     = kingpin.Flag("hot-stores", `list of hot store hosts`).Default("").String()
-	flagHotReadStores = kingpin.Flag("hot-read-stores", `list of hot stores to read`).Default("").String()
-	flagHotReplicas   = kingpin.Flag("hot-replicas", `replication factor for hot stores (if not set, global is used)`).Default("").Int()
+	flagHotStores     = kingpin.Flag("hot-stores", `list of hot store hosts`).String()
+	flagHotReadStores = kingpin.Flag("hot-read-stores", `list of hot stores to read`).String()
+	flagHotReplicas   = kingpin.Flag("hot-replicas", `replication factor for hot stores (if not set, global is used)`).Int()
 
 	flagStoreMode       = kingpin.Flag("store-mode", `store operation mode`).HintOptions("", storeapi.StoreModeCold, storeapi.StoreModeHot).Default("").String()
 	flagShuffleReplicas = kingpin.Flag("shuffle-replicas", `shuffle replicas before performing search`).Default("false").Bool()
 
 	// dataset
-	flagDataDir   = kingpin.Flag("data-dir", `directory to load/store data`).Default("").ExistingDir()
+	flagDataDir   = kingpin.Flag("data-dir", `directory to load/store data`).ExistingDir()
 	flagFracSize  = kingpin.Flag("frac-size", `size of one fraction`).Default("128MB").Bytes()
 	flagTotalSize = kingpin.Flag("total-size", `max size of all data`).Default("1GB").Bytes()
 
@@ -80,7 +80,7 @@ var (
 	flagSearchWorkers  = kingpin.Flag("search-workers-count", `the number of workers that will be process factions`).Default(numCPUStr).Int()
 	flagSkipFsync      = kingpin.Flag("skip-fsync", "skip fsyncs for active fraction").Default("false").Bool()
 	flagCacheSize      = kingpin.Flag("cache-size", `max size of the cache`).Default(defaultCacheSizeStr).Bytes()
-	flagSdocsCacheSize = kingpin.Flag("sdocs-cache-size", `cache size that used to seal active fraction, must be lower than --cache-size parameter`).Default("2GB").Bytes()
+	flagSdocsCacheSize = kingpin.Flag("sdocs-cache-size", `cache size that used to seal active fraction, must be lower than --cache-size parameter`).Bytes()
 
 	// compress level
 	flagDocsZstdCompressLevel      = kingpin.Flag("docs-zstd-compress-level", `ZSTD compress level for docs, change these parameters if you need to change the network load, does not affect the final size of documents or index on disk, check the doc for more details: https://facebook.github.io/zstd/zstd_manual.html`).Default("1").Int()
@@ -106,7 +106,7 @@ var (
 
 	// async search settings
 	flagAsyncSearchesDataDir     = kingpin.Flag("data-dir-async-searches", "data dir that contains async searches, default is subfolder in --data-dir").String()
-	flagAsyncSearchesConcurrency = kingpin.Flag("async-searches-concurrency", "the maximum concurrent async search requests").Int()
+	flagAsyncSearchesConcurrency = kingpin.Flag("async-searches-concurrency", "the maximum concurrent async search requests").Default(numCPUStr).Int()
 
 	// features
 	flagUseSeqQLByDefault = kingpin.Flag("use-seq-ql-by-default", "enable seq-ql as default query language").Default("false").Bool()

@@ -5,6 +5,9 @@ import (
 
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/frac"
+	"github.com/ozontech/seq-db/logger"
+	"github.com/ozontech/seq-db/util"
+	"go.uber.org/zap"
 )
 
 type Config struct {
@@ -53,6 +56,21 @@ func FillConfigWithDefault(config *Config) *Config {
 	}
 	if config.SealParams.TokenTableZstdLevel == 0 {
 		config.SealParams.TokenTableZstdLevel = zstdDefaultLevel
+	}
+
+	if config.SdocsCacheSize == 0 {
+		const (
+			SdocsCacheSizeMultiplier = 8
+			SdocsCacheSizeMaxRatio   = 0.8
+		)
+		config.SdocsCacheSize = config.FracSize * SdocsCacheSizeMultiplier
+		if config.SdocsCacheSize > config.CacheSize {
+			config.SdocsCacheSize = uint64(float64(config.CacheSize) * 0.8)
+		}
+	} else if config.SdocsCacheSize > config.CacheSize {
+		logger.Fatal("cache size misconfiguration",
+			zap.Float64("total_cache_size_mb", util.SizeToUnit(config.CacheSize, "mb")),
+			zap.Float64("sort_cache_size_mb", util.SizeToUnit(config.SdocsCacheSize, "mb")))
 	}
 
 	return config

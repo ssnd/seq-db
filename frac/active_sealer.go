@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -102,6 +103,9 @@ func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 			zap.Error(err),
 		)
 	}
+
+	parentDirPath := filepath.Dir(newFileName)
+	util.MustSyncPath(parentDirPath)
 
 	logger.Info(
 		"fraction sealed",

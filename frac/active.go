@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -83,8 +84,8 @@ func NewActive(
 	docsCache *cache.Cache[[]byte],
 	config Config,
 ) *Active {
-	docsFile, docsStats := openFile(baseFileName + consts.DocsFileSuffix)
-	metaFile, metaStats := openFile(baseFileName + consts.MetaFileSuffix)
+	docsFile, docsStats := openFile(baseFileName+consts.DocsFileSuffix, conf.SkipFsync)
+	metaFile, metaStats := openFile(baseFileName+consts.MetaFileSuffix, conf.SkipFsync)
 
 	f := &Active{
 		TokenList:     NewActiveTokenList(conf.IndexWorkers),
@@ -113,11 +114,17 @@ func NewActive(
 	return f
 }
 
-func openFile(name string) (*os.File, os.FileInfo) {
+func openFile(name string, skipFsync bool) (*os.File, os.FileInfo) {
 	file, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o776)
 	if err != nil {
 		logger.Fatal("can't create docs file", zap.String("file", name), zap.Error(err))
 	}
+
+	if !skipFsync {
+		parentDirPath := filepath.Dir(name)
+		util.MustSyncPath(parentDirPath)
+	}
+
 	stat, err := file.Stat()
 	if err != nil {
 		logger.Fatal("can't stat docs file", zap.String("file", name), zap.Error(err))

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -103,6 +104,9 @@ func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 		)
 	}
 
+	parentDirPath := filepath.Dir(newFileName)
+	util.MustSyncPath(parentDirPath)
+
 	logger.Info(
 		"fraction sealed",
 		zap.String("fraction", newFileName),
@@ -141,7 +145,7 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 	writer := NewSealedBlockWriter(indexFile)
 	{
 		logger.Info("sealing frac stats...")
-		f.BuildInfoDistribution(sortedIDs)
+		f.buildInfoDistribution(sortedIDs)
 		fracInfo := f.Info()
 		if err := writer.writeInfoBlock(producer.getInfoBlock(fracInfo)); err != nil {
 			logger.Error("seal info error", zap.Error(err))

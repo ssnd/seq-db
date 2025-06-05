@@ -1,21 +1,27 @@
 package conf
 
-import "github.com/ozontech/seq-db/consts"
+import (
+	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/limits"
+)
+
+func init() {
+	IndexWorkers = limits.NumCPU
+	FetchWorkers = limits.NumCPU
+	ReaderWorkers = limits.NumCPU
+}
 
 var (
-	BulkWorkers  = 32
-	IndexWorkers = 1
-	FetchWorkers = 32
-	ExecWorkers  = 128
+	IndexWorkers  int
+	FetchWorkers  int
+	ReaderWorkers int
 
 	CaseSensitive = false
 	SkipFsync     = false
 
-	ReaderWorkers = consts.ReaderWorkers
-
 	MaxFetchSizeBytes = 4 * consts.MB
 
-	MaxRequestedDocuments = consts.DefaultMaxRequestedDocuments
+	MaxRequestedDocuments = 100_000 // maximum number of documents that can be requested in one fetch request
 
 	UseSeqQLByDefault = false
 

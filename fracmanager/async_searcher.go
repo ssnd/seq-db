@@ -33,6 +33,7 @@ const (
 	asyncSearchExtInfo      = ".info"
 	asyncSearchExtQPR       = ".qpr"
 	asyncSearchExtMergedQPR = ".mqpr"
+	asyncSearchTmpFile      = ".tmp"
 )
 
 var (
@@ -80,6 +81,8 @@ func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, fracs List) 
 	if config.DataDir == "" {
 		logger.Fatal("can't start async searcher: DataDir is empty")
 	}
+
+	mustRemoveTmpFiles(config.DataDir)
 
 	asyncSearches, err := loadAsyncSearches(config.DataDir)
 	if err != nil {
@@ -330,7 +333,7 @@ var qprMarshalBufPool util.BufferPool
 
 func compressQPR(qpr *seq.QPR, cb func(compressed []byte)) {
 	rawQPR := qprMarshalBufPool.Get()
-	rawQPR.B = qpr.MarshalBinary(rawQPR.B)
+	rawQPR.B = marshalQPR(qpr, rawQPR.B)
 
 	compressionLevel := 3
 	if len(rawQPR.B) <= 512 {
@@ -342,7 +345,6 @@ func compressQPR(qpr *seq.QPR, cb func(compressed []byte)) {
 	compressed := bytespool.AcquireReset(len(rawQPR.B))
 	compressed.B = zstd.CompressLevel(rawQPR.B, compressed.B, compressionLevel)
 	qprMarshalBufPool.Put(rawQPR)
-
 	cb(compressed.B)
 	bytespool.Release(compressed)
 }
@@ -388,29 +390,31 @@ func (as *AsyncSearcher) findQPRs(id string) ([]string, error) {
 func loadAsyncSearches(dataDir string) (map[string]asyncSearchInfo, error) {
 	requests := make(map[string]asyncSearchInfo)
 
-	pattern := path.Join(dataDir, "*"+asyncSearchExtInfo)
-	files, err := filepath.Glob(pattern)
+	des, err := os.ReadDir(dataDir)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, fpath := range files {
-		filename := path.Base(fpath)
-
-		ext := path.Ext(filename)
-		if ext != asyncSearchExtInfo {
-			logger.Fatal("unknown file", zap.String("filename", filename))
+	for _, de := range des {
+		if de.IsDir() {
+			continue
+		}
+		filename := de.Name()
+		if path.Ext(filename) != asyncSearchExtInfo {
+			continue
 		}
 
-		requestID := filename[:len(filename)-len(ext)]
-		b, err := os.ReadFile(fpath)
+		parts := strings.Split(filename, ".")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid .info filename format: %s", filename)
+		}
+		requestID := parts[0]
+		b, err := os.ReadFile(path.Join(dataDir, filename))
 		if err != nil {
 			return nil, err
 		}
 		var req asyncSearchInfo
 		if err := json.Unmarshal(b, &req); err != nil {
-			logger.Error("can't load async search request", zap.String("filename", filename), zap.Error(err))
-			continue
+			return nil, fmt.Errorf("malformed async search info %q: %s", filename, err)
 		}
 		// It is difficult to marshal/unmarshal AST, so set it to nil and parse it later.
 		req.Request.Params.AST = nil
@@ -422,7 +426,6 @@ func loadAsyncSearches(dataDir string) (map[string]asyncSearchInfo, error) {
 
 func notProcessedTasks(tasks map[string]asyncSearchInfo) []string {
 	var toProcess []string
-
 	for id := range tasks {
 		task := tasks[id]
 		if !task.Done {
@@ -540,15 +543,16 @@ func (as *AsyncSearcher) loadSearchResult(qprsPaths []string, order seq.DocsOrde
 			logger.Fatal("can't decompress async search result", zap.String("path", qprPath), zap.Error(err))
 		}
 
+		const idsLimit = math.MaxInt
 		var tmp seq.QPR
-		tail, err := tmp.UnmarshalBinary(qprRaw)
+		tail, err := unmarshalQPR(&tmp, qprRaw, idsLimit, 0)
 		if err != nil {
 			logger.Fatal("can't unmarshal async search result", zap.String("path", qprPath), zap.Error(err))
 		}
 		if len(tail) > 0 {
 			logger.Fatal("unexpected tail when unmarshalling binary QPR", zap.String("path", qprPath))
 		}
-		seq.MergeQPRs(&qpr, []*seq.QPR{&tmp}, math.MaxInt, 1, order)
+		seq.MergeQPRs(&qpr, []*seq.QPR{&tmp}, idsLimit, 1, order)
 	}
 	return qpr
 }
@@ -688,7 +692,8 @@ func (as *AsyncSearcher) updateStats() {
 			logger.Error("can't get async search file info", zap.String("dir", as.config.DataDir), zap.Error(err))
 			continue
 		}
-		if strings.HasSuffix(info.Name(), asyncSearchExtInfo) {
+		ext := path.Ext(info.Name())
+		if ext == asyncSearchExtInfo {
 			infos++
 		}
 		diskUsageBytes += info.Size()
@@ -698,7 +703,7 @@ func (as *AsyncSearcher) updateStats() {
 }
 
 func mustWriteFileAtomic(fpath string, data []byte) {
-	fpathTmp := fpath + ".tmp"
+	fpathTmp := fpath + asyncSearchTmpFile
 
 	f, err := os.Create(fpathTmp)
 	if err != nil {
@@ -727,6 +732,30 @@ func mustWriteFileAtomic(fpath string, data []byte) {
 		logger.Fatal("can't get absolute path", zap.String("path", fpath), zap.Error(err))
 	}
 	dir := path.Dir(absFpath)
+	mustFsyncFile(dir)
+}
+
+func mustRemoveTmpFiles(dir string) {
+	des, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		logger.Fatal("can't read directory with async searches", zap.Error(err))
+	}
+	for _, de := range des {
+		if de.IsDir() {
+			continue
+		}
+		n := de.Name()
+		if path.Ext(n) != asyncSearchTmpFile {
+			continue
+		}
+		p := filepath.Join(dir, n)
+		if err := os.Remove(p); err != nil {
+			logger.Fatal("can't remove tmp file", zap.String("file", n), zap.Error(err))
+		}
+	}
 	mustFsyncFile(dir)
 }
 

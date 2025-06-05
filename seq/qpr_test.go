@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMergeQPRs(t *testing.T) {
@@ -581,74 +580,5 @@ func getRandomQPR(size uint64) QPR {
 		Aggs:      aggs,
 		Total:     size,
 		Errors:    errs,
-	}
-}
-
-func TestQPRMarshalUnmarshal(t *testing.T) {
-	test := func(qpr QPR) {
-		t.Helper()
-
-		rawQPR := qpr.MarshalBinary(nil)
-		var out QPR
-		tail, err := out.UnmarshalBinary(rawQPR)
-		require.NoError(t, err)
-		require.Equal(t, 0, len(tail))
-		require.EqualExportedValues(t, qpr, out)
-	}
-
-	test(QPR{})
-	test(QPR{
-		Errors: []ErrorSource{{ErrStr: "error", Source: 1}},
-	})
-	test(QPR{
-		IDs: IDSources{
-			{
-				ID: ID{MID: 42, RID: 13},
-			},
-		},
-		Histogram: map[MID]uint64{42: 1},
-		Total:     1,
-	})
-
-	test(QPR{
-		Aggs: []QPRHistogram{
-			{
-				HistogramByToken: map[string]*AggregationHistogram{
-					"_not_exists": {
-						Total: 1,
-					},
-					"seq-db proxy": {
-						Min:       0,
-						Max:       100,
-						Sum:       100,
-						Total:     1,
-						NotExists: 0,
-						Samples:   []float64{100},
-					},
-					"seq-db store": {
-						Min:       3,
-						Max:       5,
-						Sum:       794,
-						Total:     1,
-						NotExists: 7,
-						Samples:   []float64{324},
-					},
-				},
-				NotExists: 5412,
-			},
-		},
-	})
-
-	test(QPR{
-		IDs: IDSources{
-			IDSource{ID: ID{MID: 42, RID: 13}},
-		},
-		Total:  545454,
-		Errors: []ErrorSource{{ErrStr: "context canceled", Source: 8956}},
-	})
-
-	for i := 0; i < 100; i++ {
-		qpr := getRandomQPR(10)
-		test(qpr)
 	}
 }

@@ -61,5 +61,4 @@ func TestAsyncSearcherMaintain(t *testing.T) {
 	r.NoError(as.StartSearch(req, fracs))
 
 	as.processWg.Wait()
-
 }

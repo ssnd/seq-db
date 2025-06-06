@@ -44,7 +44,7 @@ func seal(f *Active, params SealParams) (*PreloadedData, error) {
 	}
 	info.SealingTime = uint64(start.UnixMilli())
 
-	indexFile, err := os.OpenFile(f.BaseFileName+consts.IndexTmpFileSuffix, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0o776)
+	indexFile, err := os.Create(f.BaseFileName + consts.IndexTmpFileSuffix)
 	if err != nil {
 		return nil, err
 	}
@@ -92,12 +92,14 @@ func syncRename(f *os.File, newName string) (*os.File, error) {
 	if err := os.Rename(f.Name(), newName); err != nil {
 		return nil, err
 	}
-
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
 	return os.OpenFile(newName, os.O_RDONLY, 0o776) // reopen with new name
 }
 
 func writeSortedDocs(f *Active, params SealParams, sortedIDs []seq.ID) (*os.File, []uint64, map[seq.ID]seq.DocPos, error) {
-	sdocsFile, err := os.OpenFile(f.BaseFileName+consts.SdocsTmpFileSuffix, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o776)
+	sdocsFile, err := os.Create(f.BaseFileName + consts.SdocsTmpFileSuffix)
 	if err != nil {
 		return nil, nil, nil, err
 	}

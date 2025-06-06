@@ -128,7 +128,6 @@ func makeProtoAggregation(allAggregations []seq.AggregationResult) []*seqproxyap
 		buckets := make([]*seqproxyapi.Aggregation_Bucket, len(agg.Buckets))
 		for i, item := range agg.Buckets {
 			bucket := &bucketsBuf[i]
-			bucket.DocCount = uint64(item.Value)
 			bucket.Value = item.Value
 			bucket.Key = item.Name
 			bucket.NotExists = item.NotExists

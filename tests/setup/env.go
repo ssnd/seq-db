@@ -343,15 +343,15 @@ func (t *TestingEnv) Ingestor() *Ingestor {
 // Store returns random store managed by TestingEnv
 // but guarantees that each store will return at least once
 func (t *TestingEnv) Store(hot bool) *storeapi.Store {
-	stores := flatten(t.ColdStores)
+	allStores := flatten(t.ColdStores)
 	counter := t.coldStoresAccessCounter
 
 	if hot {
-		stores = flatten(t.HotStores)
+		allStores = flatten(t.HotStores)
 		counter = t.hotStoresAccessCounter
 	}
 
-	return stores[int(counter.Inc())%len(stores)]
+	return allStores[int(counter.Inc())%len(allStores)]
 }
 
 func (t *TestingEnv) IngestorAddr() string {

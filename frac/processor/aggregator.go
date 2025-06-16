@@ -6,9 +6,24 @@ import (
 	"strconv"
 
 	"github.com/ozontech/seq-db/consts"
+	"github.com/ozontech/seq-db/metric/stopwatch"
 	"github.com/ozontech/seq-db/node"
 	"github.com/ozontech/seq-db/seq"
 )
+
+// DummyMID is used in aggregations when we do not need to build time series.
+const DummyMID = math.MaxInt64
+
+// TimeBin is a container for documents which were written in the same time interval.
+// When dealing with aggregation (without need in building time series) [TimeBin.MID] is equal to [DummyMID].
+type TimeBin[T comparable] struct {
+	MID    seq.MID
+	Source T
+}
+
+// Since in aggregators we do not have [idsIndex] interface,
+// we need a way to extract timestamp of document to build time series.
+type ExtractMIDFunc func(seq.LID) seq.MID
 
 // twoSources contains sources for groupBy and field
 // Source actually means id in the TIDs slice.
@@ -27,22 +42,26 @@ type TwoSourceAggregator struct {
 	// groupByNotExists is the map to count non-existent groups by source.
 	// Source (key in the map) actually is an index in groupByTIDs.
 	groupByNotExists map[uint32]int64
-
 	// collectSamples is a flag to indicate if collect samples is required, this is useful if you need to calculate the quantile.
 	collectSamples bool
-
 	// countBySource map to count occurrences by histogram source.
-	countBySource map[twoSources]int64
+	countBySource map[TimeBin[twoSources]]int64
+	// extractMID will be used for building time series.
+	extractMID ExtractMIDFunc
 }
 
-func NewGroupAndFieldAggregator(fieldIterator, groupByIterator *SourcedNodeIterator, collectSamples bool) *TwoSourceAggregator {
+func NewGroupAndFieldAggregator(
+	fieldIterator, groupByIterator *SourcedNodeIterator,
+	fn ExtractMIDFunc, collectSamples bool,
+) *TwoSourceAggregator {
 	return &TwoSourceAggregator{
 		collectSamples:   collectSamples,
-		countBySource:    make(map[twoSources]int64),
+		countBySource:    make(map[TimeBin[twoSources]]int64),
 		field:            fieldIterator,
 		groupNotExists:   0,
 		groupBy:          groupByIterator,
 		groupByNotExists: make(map[uint32]int64),
+		extractMID:       fn,
 	}
 }
 
@@ -62,11 +81,13 @@ func (n *TwoSourceAggregator) Next(lid uint32) error {
 		// Both group and field do not exist.
 		return nil
 	}
+
 	if !hasField {
 		// Field does not exist, but group exists.
 		n.groupByNotExists[groupBySource]++
 		return nil
 	}
+
 	if !hasGroupBy {
 		// Group does not exist, but field exists.
 		n.groupNotExists++
@@ -74,39 +95,43 @@ func (n *TwoSourceAggregator) Next(lid uint32) error {
 	}
 
 	// Both group and field exist, increment the count for the combined sources.
-	source := twoSources{
-		GroupBySource: groupBySource,
-		FieldSource:   fieldSource,
+	source := TimeBin[twoSources]{
+		MID: n.extractMID(seq.LID(lid)),
+		Source: twoSources{
+			GroupBySource: groupBySource,
+			FieldSource:   fieldSource,
+		},
 	}
+
 	n.countBySource[source]++
 	return nil
 }
 
 // Aggregate processes and returns the final aggregation result.
 func (n *TwoSourceAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[string]*seq.AggregationHistogram, n.groupBy.UniqueSources())
+	aggMap := make(map[seq.TimeBin]*seq.AggregationHistogram, n.groupBy.UniqueSources())
 
 	for groupBySource, cnt := range n.groupByNotExists {
-		groupByVal := n.groupBy.ValueBySource(groupBySource)
+		groupByVal := seq.TimeBin{Token: n.groupBy.ValueBySource(groupBySource)}
 		if aggMap[groupByVal] == nil {
 			aggMap[groupByVal] = seq.NewAggregationHistogram()
 		}
 		aggMap[groupByVal].NotExists = cnt
 	}
 
-	for source, cnt := range n.countBySource {
+	for bin, cnt := range n.countBySource {
 		// Name of the group, for example, it can be service name.
-		groupByVal := n.groupBy.ValueBySource(source.GroupBySource)
+		groupByVal := n.groupBy.ValueBySource(bin.Source.GroupBySource)
 
-		if aggMap[groupByVal] == nil {
-			aggMap[groupByVal] = seq.NewAggregationHistogram()
+		aggBin := seq.TimeBin{MID: bin.MID, Token: groupByVal}
+		if aggMap[aggBin] == nil {
+			aggMap[aggBin] = seq.NewAggregationHistogram()
 		}
+		hist := aggMap[aggBin]
 
-		hist := aggMap[groupByVal]
-
-		// For example, for a field named "request_duration" it can be "42.13"
-		field := n.field.ValueBySource(source.FieldSource)
-		num, err := parseNum(field)
+		// For example, for a value named "request_duration" it can be "42.13"
+		value := n.field.ValueBySource(bin.Source.FieldSource)
+		num, err := parseNum(value)
 		if err != nil {
 			return seq.QPRHistogram{}, err
 		}
@@ -137,17 +162,22 @@ func parseNum(str string) (float64, error) {
 // SingleSourceCountAggregator aggregates counts for a single source.
 type SingleSourceCountAggregator struct {
 	// countBySource needs to count occurrences by source.
-	countBySource map[uint32]int64
+	countBySource map[TimeBin[uint32]]int64
 	// notExists is the counter for non-existent sources.
 	notExists int64
 	group     *SourcedNodeIterator
+	// extractMID will be used for building time series.
+	extractMID ExtractMIDFunc
 }
 
-func NewSingleSourceCountAggregator(iterator *SourcedNodeIterator) *SingleSourceCountAggregator {
+func NewSingleSourceCountAggregator(
+	iterator *SourcedNodeIterator, fn ExtractMIDFunc,
+) *SingleSourceCountAggregator {
 	return &SingleSourceCountAggregator{
-		countBySource: make(map[uint32]int64),
+		countBySource: make(map[TimeBin[uint32]]int64),
 		notExists:     0,
 		group:         iterator,
+		extractMID:    fn,
 	}
 }
 
@@ -157,26 +187,46 @@ func (n *SingleSourceCountAggregator) Next(lid uint32) error {
 	if err != nil {
 		return err
 	}
+
 	if has {
-		n.countBySource[source]++
-	} else {
-		n.notExists++
+		mid := n.extractMID(seq.LID(lid))
+
+		n.countBySource[TimeBin[uint32]{
+			MID:    mid,
+			Source: source,
+		}]++
+
+		return nil
 	}
+
+	n.notExists++
 	return nil
 }
 
 func (n *SingleSourceCountAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[string]*seq.AggregationHistogram, n.group.UniqueSources())
-	for source, cnt := range n.countBySource {
-		field := n.group.ValueBySource(source)
-		if aggMap[field] == nil {
-			aggMap[field] = seq.NewAggregationHistogram()
+	aggMap := make(map[seq.TimeBin]*seq.AggregationHistogram, n.group.UniqueSources())
+
+	for bin, cnt := range n.countBySource {
+		aggBin := seq.TimeBin{
+			Token: n.group.ValueBySource(bin.Source),
+			MID:   bin.MID,
 		}
-		aggMap[field].Total = cnt
+
+		if aggMap[aggBin] == nil {
+			aggMap[aggBin] = seq.NewAggregationHistogram()
+		}
+
+		aggMap[aggBin].Total = cnt
 	}
+
+	// FIXME(dkharms): It will not work correctly with time series, since
+	// we also have to spread [notExists] accross different time bins.
 	if n.notExists > 0 {
 		// Handle non-existent sources in legacy format.
-		aggMap["_not_exists"] = &seq.AggregationHistogram{Total: n.notExists}
+		aggMap[seq.TimeBin{
+			Token: "_not_exists",
+			MID:   0,
+		}] = &seq.AggregationHistogram{Total: n.notExists}
 	}
 
 	return seq.QPRHistogram{
@@ -206,20 +256,26 @@ func (n *SingleSourceUniqueAggregator) Next(lid uint32) error {
 	if err != nil {
 		return err
 	}
+
 	if has {
 		n.values[source] = struct{}{}
-	} else {
-		n.notExists++
+		return nil
 	}
+
+	n.notExists++
 	return nil
 }
 
 func (n *SingleSourceUniqueAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[string]*seq.AggregationHistogram, n.group.UniqueSources())
+	aggMap := make(map[seq.TimeBin]*seq.AggregationHistogram, n.group.UniqueSources())
+
 	for val := range n.values {
-		field := n.group.ValueBySource(val)
-		if aggMap[field] == nil {
-			aggMap[field] = &seq.AggregationHistogram{}
+		aggBin := seq.TimeBin{
+			Token: n.group.ValueBySource(val),
+		}
+
+		if aggMap[aggBin] == nil {
+			aggMap[aggBin] = seq.NewAggregationHistogram()
 		}
 	}
 
@@ -231,15 +287,19 @@ func (n *SingleSourceUniqueAggregator) Aggregate() (seq.QPRHistogram, error) {
 
 type SingleSourceHistogramAggregator struct {
 	field          *SourcedNodeIterator
-	histogram      *seq.AggregationHistogram
+	histogram      map[seq.MID]*seq.AggregationHistogram
 	collectSamples bool
+	extractMID     ExtractMIDFunc
 }
 
-func NewSingleSourceHistogramAggregator(field *SourcedNodeIterator, collectSamples bool) *SingleSourceHistogramAggregator {
+func NewSingleSourceHistogramAggregator(
+	field *SourcedNodeIterator, collectSamples bool, fn ExtractMIDFunc,
+) *SingleSourceHistogramAggregator {
 	return &SingleSourceHistogramAggregator{
 		field:          field,
-		histogram:      seq.NewAggregationHistogram(),
+		histogram:      make(map[seq.MID]*seq.AggregationHistogram),
 		collectSamples: collectSamples,
+		extractMID:     fn,
 	}
 }
 
@@ -248,30 +308,44 @@ func (n *SingleSourceHistogramAggregator) Next(lid uint32) error {
 	if err != nil {
 		return err
 	}
+
+	mid := n.extractMID(seq.LID(lid))
+	if _, ok := n.histogram[mid]; !ok {
+		n.histogram[mid] = seq.NewAggregationHistogram()
+	}
+	histogram := n.histogram[mid]
+
 	if !has {
-		n.histogram.NotExists++
+		histogram.NotExists++
 		return nil
 	}
 
-	field := n.field.ValueBySource(source)
-	num, err := parseNum(field)
+	value := n.field.ValueBySource(source)
+	num, err := parseNum(value)
 	if err != nil {
 		return err
 	}
 
-	n.histogram.InsertNTimes(num, 1)
+	histogram.InsertNTimes(num, 1)
 	if n.collectSamples {
-		n.histogram.InsertSample(num)
+		histogram.InsertSample(num)
 	}
 
 	return nil
 }
 
 func (n *SingleSourceHistogramAggregator) Aggregate() (seq.QPRHistogram, error) {
-	return seq.QPRHistogram{
-		NotExists:        0,
-		HistogramByToken: map[string]*seq.AggregationHistogram{"": n.histogram},
-	}, nil
+	qprHist := seq.QPRHistogram{
+		HistogramByToken: make(map[seq.TimeBin]*seq.AggregationHistogram, len(n.histogram)),
+	}
+
+	for mid, histogram := range n.histogram {
+		qprHist.HistogramByToken[seq.TimeBin{
+			MID: mid,
+		}] = histogram
+	}
+
+	return qprHist, nil
 }
 
 // SourcedNodeIterator can iterate the sourced node that returns source, which means index in a tids slice.
@@ -348,4 +422,20 @@ func (s *SourcedNodeIterator) ValueBySource(source uint32) string {
 
 func (s *SourcedNodeIterator) UniqueSources() int {
 	return len(s.countBySource)
+}
+
+func provideExtractTimeFunc(sw *stopwatch.Stopwatch, idx idsIndex, interval int64) ExtractMIDFunc {
+	if interval <= 0 {
+		// Dummy implementation for aggregation without time series.
+		return ExtractMIDFunc(func(seq.LID) seq.MID {
+			return seq.MID(DummyMID)
+		})
+	}
+
+	return ExtractMIDFunc(func(lid seq.LID) seq.MID {
+		m := sw.Start("get_mid")
+		mid := idx.GetMID(seq.LID(lid))
+		m.Stop()
+		return mid - (mid % seq.MID(interval))
+	})
 }

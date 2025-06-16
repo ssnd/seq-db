@@ -11,6 +11,7 @@ type AggQuery struct {
 	GroupBy   string
 	Func      seq.AggFunc
 	Quantiles []float64
+	Interval  seq.MID
 }
 
 //nolint:revive // TODO: ***REMOVED***
@@ -46,19 +47,26 @@ func (sr *SearchRequest) GetAPISearchRequest() *storeapi.SearchRequest {
 func convertToAggsQuery(aggs []AggQuery) []*storeapi.AggQuery {
 	buf := make([]storeapi.AggQuery, len(aggs))
 	aggQ := make([]*storeapi.AggQuery, len(aggs))
+
 	for i, query := range aggs {
 		groupBy := query.GroupBy
 		field := query.Field
+
 		// Support legacy format in which field means groupBy.
 		if query.Func == seq.AggFuncCount && query.Field != "" {
 			groupBy = query.Field
 			field = ""
 		}
+
 		buf[i].Field = field
 		buf[i].GroupBy = groupBy
+
 		buf[i].Func = storeapi.AggFunc(query.Func)
 		buf[i].Quantiles = query.Quantiles
+		buf[i].Interval = int64(query.Interval)
+
 		aggQ[i] = &buf[i]
 	}
+
 	return aggQ
 }

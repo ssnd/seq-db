@@ -23,15 +23,18 @@ func (g *grpcV1) GetAggregation(
 		Query: req.Query,
 		Aggs:  req.Aggs,
 	}
+
 	sResp, err := g.doSearch(ctx, proxyReq, false, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	if sResp.err != nil && !shouldHaveResponse(sResp.err.Code) {
 		return &seqproxyapi.GetAggregationResponse{Error: sResp.err}, nil
 	}
 
 	allAggregations := sResp.qpr.Aggregate(aggregationArgsFromProto(req.Aggs))
+
 	resp := &seqproxyapi.GetAggregationResponse{
 		Aggs:  makeProtoAggregation(allAggregations),
 		Total: int64(sResp.qpr.Total),
@@ -39,6 +42,7 @@ func (g *grpcV1) GetAggregation(
 			Code: seqproxyapi.ErrorCode_ERROR_CODE_NO,
 		},
 	}
+
 	if sResp.err != nil {
 		resp.Error = sResp.err
 		resp.PartialResponse = sResp.err.Code == seqproxyapi.ErrorCode_ERROR_CODE_PARTIAL_RESPONSE

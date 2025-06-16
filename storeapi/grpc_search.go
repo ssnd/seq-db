@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func (g *GrpcV1) Search(ctx context.Context, req *storeapi.SearchRequest) (*storeapi.SearchResponse, error) {
@@ -242,25 +243,43 @@ func buildSearchResponse(qpr *seq.QPR) *storeapi.SearchResponse {
 
 	aggsBuf := make([]storeapi.SearchResponse_Agg, len(qpr.Aggs))
 	aggs := make([]*storeapi.SearchResponse_Agg, len(qpr.Aggs))
+
 	for i, fromAgg := range qpr.Aggs {
+		curAgg := &aggsBuf[i]
+
 		from := fromAgg.HistogramByToken
 		to := make(map[string]*storeapi.SearchResponse_Histogram, len(from))
+
+		// TODO(dkharms): We can remove this variable since [Agg] is deprecated.
 		toAgg := make(map[string]uint64, len(from))
-		for k, v := range from {
-			to[k] = &storeapi.SearchResponse_Histogram{
-				Min:       v.Min,
-				Max:       v.Max,
-				Sum:       v.Sum,
-				Total:     v.Total,
-				Samples:   v.Samples,
-				NotExists: v.NotExists,
+
+		for bin, hist := range from {
+			pbhist := &storeapi.SearchResponse_Histogram{
+				Min:       hist.Min,
+				Max:       hist.Max,
+				Sum:       hist.Sum,
+				Total:     hist.Total,
+				Samples:   hist.Samples,
+				NotExists: hist.NotExists,
 			}
-			toAgg[k] = uint64(v.Total)
+
+			curAgg.Timeseries = append(curAgg.Timeseries,
+				&storeapi.SearchResponse_Bin{
+					Label: bin.Token,
+					Ts:    timestamppb.New(bin.MID.Time()),
+					Hist:  pbhist,
+				},
+			)
+
+			to[bin.Token] = pbhist
+			toAgg[bin.Token] = uint64(hist.Total)
 		}
-		aggsBuf[i].NotExists = fromAgg.NotExists
-		aggsBuf[i].AggHistogram = to
-		aggsBuf[i].Agg = toAgg
-		aggs[i] = &aggsBuf[i]
+
+		curAgg.NotExists = fromAgg.NotExists
+		curAgg.AggHistogram = to
+		curAgg.Agg = toAgg
+
+		aggs[i] = curAgg
 	}
 
 	return &storeapi.SearchResponse{
@@ -288,10 +307,12 @@ func aggQueryFromProto(aggQuery *storeapi.AggQuery) (processor.AggQuery, error) 
 	if aggQuery.GroupBy == "" && (aggQuery.Func == storeapi.AggFunc_AGG_FUNC_COUNT || aggQuery.Func == storeapi.AggFunc_AGG_FUNC_UNIQUE) {
 		return processor.AggQuery{}, fmt.Errorf("%w: groupBy is required for %s func", consts.ErrInvalidAggQuery, aggQuery.Func)
 	}
+
 	// 'field' is required for stat functions like sum, avg, max and min.
 	if aggQuery.Field == "" && aggQuery.Func != storeapi.AggFunc_AGG_FUNC_COUNT && aggQuery.Func != storeapi.AggFunc_AGG_FUNC_UNIQUE {
 		return processor.AggQuery{}, fmt.Errorf("%w: field is required for %s func", consts.ErrInvalidAggQuery, aggQuery.Func)
 	}
+
 	// Check 'quantiles' is not empty for Quantile func.
 	if len(aggQuery.Quantiles) == 0 && aggQuery.Func == storeapi.AggFunc_AGG_FUNC_QUANTILE {
 		return processor.AggQuery{}, fmt.Errorf("%w: expect an argument for Quantile func", consts.ErrInvalidAggQuery)
@@ -322,6 +343,7 @@ func aggQueryFromProto(aggQuery *storeapi.AggQuery) (processor.AggQuery, error) 
 		Field:     field,
 		GroupBy:   groupBy,
 		Func:      aggFunc,
+		Interval:  aggQuery.Interval,
 		Quantiles: aggQuery.Quantiles,
 	}, nil
 }

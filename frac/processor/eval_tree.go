@@ -85,34 +85,57 @@ type AggLimits struct {
 }
 
 // evalAgg evaluates aggregation with given limits. Returns a suitable aggregator.
-func evalAgg(ti tokenIndex, query AggQuery, sw *stopwatch.Stopwatch, stats *searchStats, minLID, maxLID uint32, limits AggLimits, order seq.DocsOrder) (Aggregator, error) {
+func evalAgg(
+	ti tokenIndex, query AggQuery, sw *stopwatch.Stopwatch,
+	stats *searchStats, minLID, maxLID uint32, limits AggLimits,
+	extractMID ExtractMIDFunc, order seq.DocsOrder,
+) (Aggregator, error) {
 	switch query.Func {
 	case seq.AggFuncCount, seq.AggFuncUnique:
-		groupIterator, err := iteratorFromLiteral(ti, query.GroupBy, sw, stats, minLID, maxLID, limits.MaxTIDsPerFraction, limits.MaxGroupTokens, order)
-		if err != nil {
-			return nil, err
-		}
-		if query.Func == seq.AggFuncCount {
-			return NewSingleSourceCountAggregator(groupIterator), nil
-		}
-		return NewSingleSourceUniqueAggregator(groupIterator), nil
-	case seq.AggFuncMin, seq.AggFuncMax, seq.AggFuncSum, seq.AggFuncAvg, seq.AggFuncQuantile:
-		fieldIterator, err := iteratorFromLiteral(ti, query.Field, sw, stats, minLID, maxLID, limits.MaxTIDsPerFraction, limits.MaxFieldTokens, order)
+		groupIterator, err := iteratorFromLiteral(
+			ti, query.GroupBy, sw, stats, minLID, maxLID,
+			limits.MaxTIDsPerFraction, limits.MaxGroupTokens, order,
+		)
 		if err != nil {
 			return nil, err
 		}
 
-		collectSamples := query.Func == seq.AggFuncQuantile && haveNotMinMaxQuantiles(query.Quantiles)
+		if query.Func == seq.AggFuncCount {
+			return NewSingleSourceCountAggregator(groupIterator, extractMID), nil
+		}
+
+		return NewSingleSourceUniqueAggregator(groupIterator), nil
+
+	case seq.AggFuncMin, seq.AggFuncMax, seq.AggFuncSum, seq.AggFuncAvg, seq.AggFuncQuantile:
+		fieldIterator, err := iteratorFromLiteral(
+			ti, query.Field, sw, stats, minLID, maxLID,
+			limits.MaxTIDsPerFraction, limits.MaxFieldTokens, order,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		collectSamples := query.Func == seq.AggFuncQuantile &&
+			haveNotMinMaxQuantiles(query.Quantiles)
 
 		if query.GroupBy == nil {
-			return NewSingleSourceHistogramAggregator(fieldIterator, collectSamples), nil
+			return NewSingleSourceHistogramAggregator(
+				fieldIterator, collectSamples, extractMID,
+			), nil
 		}
 
-		groupIterator, err := iteratorFromLiteral(ti, query.GroupBy, sw, stats, minLID, maxLID, limits.MaxTIDsPerFraction, limits.MaxGroupTokens, order)
+		groupIterator, err := iteratorFromLiteral(
+			ti, query.GroupBy, sw, stats, minLID, maxLID,
+			limits.MaxTIDsPerFraction, limits.MaxGroupTokens, order,
+		)
 		if err != nil {
 			return nil, err
 		}
-		return NewGroupAndFieldAggregator(fieldIterator, groupIterator, collectSamples), nil
+
+		return NewGroupAndFieldAggregator(
+			fieldIterator, groupIterator, extractMID, collectSamples,
+		), nil
+
 	default:
 		panic(fmt.Errorf("BUG: unknown aggregation function: %d", query.Func))
 	}

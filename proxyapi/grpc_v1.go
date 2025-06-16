@@ -123,22 +123,31 @@ func makeProtoHistogram(qpr *seq.QPR) *seqproxyapi.Histogram {
 
 func makeProtoAggregation(allAggregations []seq.AggregationResult) []*seqproxyapi.Aggregation {
 	aggs := make([]*seqproxyapi.Aggregation, 0, len(allAggregations))
+
 	for _, agg := range allAggregations {
+		// TODO(dkharms): WTF is this [bucketsBuf]? Delete it.
 		bucketsBuf := make([]seqproxyapi.Aggregation_Bucket, len(agg.Buckets))
 		buckets := make([]*seqproxyapi.Aggregation_Bucket, len(agg.Buckets))
+
 		for i, item := range agg.Buckets {
 			bucket := &bucketsBuf[i]
-			bucket.Value = item.Value
+
 			bucket.Key = item.Name
+			bucket.Ts = timestamppb.New(item.MID.Time())
+			bucket.Value = item.Value
+
 			bucket.NotExists = item.NotExists
 			bucket.Quantiles = item.Quantiles
+
 			buckets[i] = bucket
 		}
+
 		aggs = append(aggs, &seqproxyapi.Aggregation{
 			Buckets:   buckets,
 			NotExists: agg.NotExists,
 		})
 	}
+
 	return aggs
 }
 
@@ -221,6 +230,7 @@ func (g *grpcV1) doSearch(
 		ShouldFetch: shouldFetch,
 		Order:       req.Order.MustDocsOrder(),
 	}
+
 	if len(req.Aggs) > 0 {
 		aggs, err := convertAggsQuery(req.Aggs)
 		if err != nil {
@@ -228,6 +238,7 @@ func (g *grpcV1) doSearch(
 		}
 		proxyReq.AggQ = aggs
 	}
+
 	if req.Hist != nil {
 		intervalDuration, err := util.ParseDuration(req.Hist.Interval)
 		if err != nil {
@@ -292,12 +303,29 @@ func convertAggsQuery(aggs []*seqproxyapi.AggQuery) ([]search.AggQuery, error) {
 			return nil, err
 		}
 
-		result = append(result, search.AggQuery{
+		aggQuery := search.AggQuery{
 			Field:     agg.Field,
 			GroupBy:   agg.GroupBy,
 			Func:      aggFunc,
 			Quantiles: agg.Quantiles,
-		})
+		}
+
+		if agg.Interval == nil {
+			result = append(result, aggQuery)
+			continue
+		}
+
+		interval, err := util.ParseDuration(*agg.Interval)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.InvalidArgument,
+				"failed to parse 'interval': %v",
+				err,
+			)
+		}
+
+		aggQuery.Interval = seq.MID(interval.Milliseconds())
+		result = append(result, aggQuery)
 	}
 	return result, nil
 }

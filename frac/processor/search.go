@@ -72,7 +72,10 @@ func IndexSearch(
 	if params.HasAgg() {
 		m = sw.Start("eval_agg")
 		for i, query := range params.AggQ {
-			aggs[i], err = evalAgg(index, query, sw, stats, minLID, maxLID, aggLimits, params.Order)
+			aggs[i], err = evalAgg(
+				index, query, sw, stats, minLID, maxLID, aggLimits,
+				provideExtractTimeFunc(sw, index, query.Interval), params.Order,
+			)
 			if err != nil {
 				m.Stop()
 				return nil, err

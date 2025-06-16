@@ -79,6 +79,7 @@ func (m *Aggregation_Bucket) CloneVT() *Aggregation_Bucket {
 	r.Key = m.Key
 	r.Value = m.Value
 	r.NotExists = m.NotExists
+	r.Ts = (*timestamppb.Timestamp)((*timestamppb1.Timestamp)(m.Ts).CloneVT())
 	if rhs := m.Quantiles; rhs != nil {
 		tmpContainer := make([]float64, len(rhs))
 		copy(tmpContainer, rhs)
@@ -192,6 +193,10 @@ func (m *AggQuery) CloneVT() *AggQuery {
 		tmpContainer := make([]float64, len(rhs))
 		copy(tmpContainer, rhs)
 		r.Quantiles = tmpContainer
+	}
+	if rhs := m.Interval; rhs != nil {
+		tmpVal := *rhs
+		r.Interval = &tmpVal
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -829,6 +834,9 @@ func (this *Aggregation_Bucket) EqualVT(that *Aggregation_Bucket) bool {
 			return false
 		}
 	}
+	if !(*timestamppb1.Timestamp)(this.Ts).EqualVT((*timestamppb1.Timestamp)(that.Ts)) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -981,6 +989,9 @@ func (this *AggQuery) EqualVT(that *AggQuery) bool {
 		if vx != vy {
 			return false
 		}
+	}
+	if p, q := this.Interval, that.Interval; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -2420,6 +2431,16 @@ func (m *Aggregation_Bucket) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Ts != nil {
+		size, err := (*timestamppb1.Timestamp)(m.Ts).MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Quantiles) > 0 {
 		for iNdEx := len(m.Quantiles) - 1; iNdEx >= 0; iNdEx-- {
 			f1 := math.Float64bits(float64(m.Quantiles[iNdEx]))
@@ -2693,6 +2714,13 @@ func (m *AggQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Interval != nil {
+		i -= len(*m.Interval)
+		copy(dAtA[i:], *m.Interval)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Interval)))
+		i--
+		dAtA[i] = 0x32
 	}
 	if len(m.Quantiles) > 0 {
 		for iNdEx := len(m.Quantiles) - 1; iNdEx >= 0; iNdEx-- {
@@ -4318,6 +4346,16 @@ func (m *Aggregation_Bucket) MarshalToSizedBufferVTStrict(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Ts != nil {
+		size, err := (*timestamppb1.Timestamp)(m.Ts).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Quantiles) > 0 {
 		for iNdEx := len(m.Quantiles) - 1; iNdEx >= 0; iNdEx-- {
 			f1 := math.Float64bits(float64(m.Quantiles[iNdEx]))
@@ -4591,6 +4629,13 @@ func (m *AggQuery) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Interval != nil {
+		i -= len(*m.Interval)
+		copy(dAtA[i:], *m.Interval)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(*m.Interval)))
+		i--
+		dAtA[i] = 0x32
 	}
 	if len(m.Quantiles) > 0 {
 		for iNdEx := len(m.Quantiles) - 1; iNdEx >= 0; iNdEx-- {
@@ -6142,6 +6187,10 @@ func (m *Aggregation_Bucket) SizeVT() (n int) {
 	if len(m.Quantiles) > 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.Quantiles)*8)) + len(m.Quantiles)*8
 	}
+	if m.Ts != nil {
+		l = (*timestamppb1.Timestamp)(m.Ts).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -6242,6 +6291,10 @@ func (m *AggQuery) SizeVT() (n int) {
 	}
 	if len(m.Quantiles) > 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.Quantiles)*8)) + len(m.Quantiles)*8
+	}
+	if m.Interval != nil {
+		l = len(*m.Interval)
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7180,6 +7233,42 @@ func (m *Aggregation_Bucket) UnmarshalVT(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field Quantiles", wireType)
 			}
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Ts == nil {
+				m.Ts = &timestamppb.Timestamp{}
+			}
+			if err := (*timestamppb1.Timestamp)(m.Ts).UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -7838,6 +7927,39 @@ func (m *AggQuery) UnmarshalVT(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field Quantiles", wireType)
 			}
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Interval", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(dAtA[iNdEx:postIndex])
+			m.Interval = &s
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -11608,6 +11730,42 @@ func (m *Aggregation_Bucket) UnmarshalVTUnsafe(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field Quantiles", wireType)
 			}
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Ts == nil {
+				m.Ts = &timestamppb.Timestamp{}
+			}
+			if err := (*timestamppb1.Timestamp)(m.Ts).UnmarshalVTUnsafe(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -12278,6 +12436,43 @@ func (m *AggQuery) UnmarshalVTUnsafe(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field Quantiles", wireType)
 			}
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Interval", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var stringValue string
+			if intStringLen > 0 {
+				stringValue = unsafe.String(&dAtA[iNdEx], intStringLen)
+			}
+			s := stringValue
+			m.Interval = &s
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

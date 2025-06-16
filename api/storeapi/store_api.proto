@@ -53,6 +53,7 @@ message AggQuery {
   string group_by = 3;
   AggFunc func = 4;
   repeated double quantiles = 5;
+  int64 interval = 6;
 }
 
 message SearchRequest {
@@ -75,6 +76,7 @@ message SearchResponse {
     uint64 mid = 1;
     uint64 rid = 2;
   }
+
   message IdWithHint {
     Id     id = 1;
     string hint = 3;
@@ -88,10 +90,24 @@ message SearchResponse {
     int64 not_exists = 5;
     repeated double samples = 6;
   }
+
+  message Bin {
+    string label = 1;
+    google.protobuf.Timestamp ts = 2;
+    Histogram hist = 3;
+  }
+
   message Agg {
     map<string, uint64> agg = 1 [deprecated = true];
     map<string, Histogram> agg_histogram = 2;
     int64 not_exists = 3;
+    // Timeseries will be presented as:
+    // [
+    //   { (foo, ts1) -> (val) },
+    //   { (bar, ts1) -> (val) },
+    //   { (foo, ts2) -> (val) }
+    // ]
+    repeated Bin timeseries = 4;
   }
 
   bytes data = 1 [deprecated = true];

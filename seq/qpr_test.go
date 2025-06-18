@@ -500,12 +500,14 @@ func TestRemoveRepetitionsAdvancedCombined(t *testing.T) {
 }
 
 func qprHistogramFromMap(other map[string]uint64) QPRHistogram {
-	histByToken := make(map[string]*AggregationHistogram, len(other))
+	histByToken := make(map[TimeBin]*AggregationHistogram, len(other))
+
 	for k, cnt := range other {
 		hist := NewAggregationHistogram()
 		hist.Total = int64(cnt)
-		histByToken[k] = hist
+		histByToken[TimeBin{Token: k}] = hist
 	}
+
 	return QPRHistogram{
 		HistogramByToken: histByToken,
 		NotExists:        int64(other["_not_exists"]),

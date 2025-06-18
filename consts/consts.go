@@ -6,6 +6,9 @@ import (
 )
 
 const (
+	// DummyMID is used in aggregations when we do not need to build time series.
+	DummyMID = 0
+
 	IDsBlockSize     = 4 * KB
 	RegularBlockSize = 16 * KB
 	IDsPerBlock      = 4 * KB

@@ -11,9 +11,6 @@ import (
 	"github.com/ozontech/seq-db/seq"
 )
 
-// DummyMID is used in aggregations when we do not need to build time series.
-const DummyMID = math.MaxInt64
-
 // TimeBin is a container for documents which were written in the same time interval.
 // When dealing with aggregation (without need in building time series) [TimeBin.MID] is equal to [DummyMID].
 type TimeBin[T comparable] struct {
@@ -428,7 +425,7 @@ func provideExtractTimeFunc(sw *stopwatch.Stopwatch, idx idsIndex, interval int6
 	if interval <= 0 {
 		// Dummy implementation for aggregation without time series.
 		return ExtractMIDFunc(func(seq.LID) seq.MID {
-			return seq.MID(DummyMID)
+			return seq.MID(consts.DummyMID)
 		})
 	}
 

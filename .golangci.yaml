@@ -1,80 +1,90 @@
-# More info on config here: https://golangci-lint.run/usage/configuration/#config-file
+version: "2"
 run:
-  concurrency: 8
-  timeout: 10m
   issues-exit-code: 1
   tests: true
-
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-
-linters-settings:
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
-    disabled-checks:
-      - unnamedResult
-      - hugeParam
-      - exitAfterDefer
-      - ifElseChain
-  unused:
-    field-writes-are-uses: false
-    post-statements-are-reads: false
-    exported-fields-are-used: false
-    # Disable due to false-positive cases
-    parameters-are-used: true
-    local-variables-are-used: false
-    generated-is-used: false
-
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
 linters:
-  disable-all: true
+  default: none
   enable:
-    - gofmt
-    - goimports
     - errcheck
     - goconst
-    # - gosec  # See https://jit.***REMOVED***/browse/SRE-3806
+    - gocritic
     - govet
     - ineffassign
     - revive
-    - typecheck
     - unused
-    - gocritic
-
+  settings:
+    gocritic:
+      disabled-checks:
+        - unnamedResult
+        - hugeParam
+        - exitAfterDefer
+        - ifElseChain
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    unused:
+      field-writes-are-uses: false
+      post-statements-are-reads: false
+      exported-fields-are-used: false
+      parameters-are-used: true
+      local-variables-are-used: false
+      generated-is-used: false
+  exclusions:
+    generated: lax
+    rules:
+      - path: (.+)\.go$
+        text: G104
+      - path: (.+)\.go$
+        text: exported func .* returns unexported type .*, which can be annoying to use
+      - path: (.+)\.go$
+        text: don't use an underscore in package name
+      - path: (.+)\.go$
+        text: Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked
+      - path: (.+)\.go$
+        text: should check returned error before deferring
+      - path: (.+)\.go$
+        text: should have a package comment
+      - path: (.+)\.go$
+        text: declaration of "err" shadows declaration at line
+      - path: (.+)\.go$
+        text: should have a package comment, unless it's in another file for this package
+      - path: (.+)\.go$
+        text: exported .+ should have comment.* or be unexported
+      - path: (.+)\.go$
+        text: comment on exported const .+ should be of the form
+    paths:
+      - \.pb\.go$
+      - bin
+      - vendor
+      - var
+      - tmp
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-use-default: false
-  exclude:
-    # _ instead of err checks
-    - G104
-    # for "public interface + private struct implementation" cases only!
-    - exported func .* returns unexported type .*, which can be annoying to use
-    - don't use an underscore in package name
-    # EXC0001 errcheck: Almost all programs ignore errors on these functions and in most cases it's ok
-    - Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked
-    - should check returned error before deferring
-    # EXC0015 revive: Annoying issue about not having a comment. The rare codebase has such comments
-    - should have a package comment
-    # err variable is used almost every time for error checking
-    - declaration of "err" shadows declaration at line
-    # remove after stabilization
-    - should have a package comment, unless it's in another file for this package
-    - exported .+ should have comment.* or be unexported
-    - comment on exported const .+ should be of the form
-
-  exclude-files:
-    - \.pb\.go$
-
-  exclude-dirs:
-    - bin
-    - vendor
-    - var
-    - tmp
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - \.pb\.go$
+      - bin
+      - vendor
+      - var
+      - tmp
+      - third_party$
+      - builtin$
+      - examples$

@@ -76,7 +76,6 @@ func (m *Aggregation_Bucket) CloneVT() *Aggregation_Bucket {
 		return (*Aggregation_Bucket)(nil)
 	}
 	r := new(Aggregation_Bucket)
-	r.DocCount = m.DocCount
 	r.Key = m.Key
 	r.Value = m.Value
 	r.NotExists = m.NotExists
@@ -814,9 +813,6 @@ func (this *Aggregation_Bucket) EqualVT(that *Aggregation_Bucket) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.DocCount != that.DocCount {
 		return false
 	}
 	if this.Key != that.Key {
@@ -2467,11 +2463,6 @@ func (m *Aggregation_Bucket) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
 		i--
 		dAtA[i] = 0x12
-	}
-	if m.DocCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DocCount))
-		i--
-		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -4397,11 +4388,6 @@ func (m *Aggregation_Bucket) MarshalToSizedBufferVTStrict(dAtA []byte) (int, err
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.DocCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DocCount))
-		i--
-		dAtA[i] = 0x8
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -6211,9 +6197,6 @@ func (m *Aggregation_Bucket) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.DocCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DocCount))
-	}
 	l = len(m.Key)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -7163,25 +7146,6 @@ func (m *Aggregation_Bucket) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: Aggregation_Bucket: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DocCount", wireType)
-			}
-			m.DocCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DocCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
@@ -11707,25 +11671,6 @@ func (m *Aggregation_Bucket) UnmarshalVTUnsafe(dAtA []byte) error {
 			return fmt.Errorf("proto: Aggregation_Bucket: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DocCount", wireType)
-			}
-			m.DocCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DocCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)

@@ -3,10 +3,6 @@ ARG APP_IMAGE=ubuntu:latest
 # Build
 FROM golang:1.24 AS build
 
-ARG VERSION
-ARG BUILD_TIME
-ARG TARGETARCH
-
 WORKDIR /seq-db
 
 COPY go.mod go.sum ./
@@ -14,6 +10,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+ARG VERSION
+ARG BUILD_TIME
+ARG TARGETARCH
 
 ENV CGO_ENABLED=1
 ENV GOOS=linux

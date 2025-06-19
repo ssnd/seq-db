@@ -123,7 +123,7 @@ message Document {
 message Aggregation {
   // Key-value pair containing result of single aggregation.
   message Bucket {
-    uint64 doc_count = 1 [deprecated = true]; // Number of documents satisfying request. Deprecated, use `value` field instead.
+    reserved 1;
     string key = 2;                           // Field name.
     double value = 3;                         // Calculated aggregation value.
     int64 not_exists = 4;                     // Number of documents without presence of that field.

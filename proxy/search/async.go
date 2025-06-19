@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/pkg/storeapi"
 	"github.com/ozontech/seq-db/seq"
@@ -76,10 +77,18 @@ type FetchAsyncSearchResultRequest struct {
 }
 
 type FetchAsyncSearchResultResponse struct {
-	Done       bool
-	Expiration time.Time
+	Status     fracmanager.AsyncSearchStatus
 	QPR        seq.QPR
-	AggResult  []seq.AggregationResult
+	CanceledAt time.Time
+	Error      string
+
+	StartedAt time.Time
+	ExpiredAt time.Time
+
+	Progress  float64
+	DiskUsage uint64
+
+	AggResult []seq.AggregationResult
 }
 
 func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSearchResultRequest) (FetchAsyncSearchResultResponse, error) {
@@ -95,15 +104,12 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 		Offset:   int32(r.Offset),
 	}
 
-	done := true
-	var expiration time.Time
+	fracsDone := 0
+	fracsInQueue := 0
 	var aggQueries []seq.AggregateArgs
-
-	var qprs []*seq.QPR
 	anyResponse := false
 	histInterval := seq.MID(0)
-	aggsCount := 0
-	order := seq.DocsOrderAsc
+	resp := FetchAsyncSearchResultResponse{}
 	for _, shard := range searchStores.Shards {
 		var storeResp *storeapi.FetchAsyncSearchResultResponse
 		var err error
@@ -122,47 +128,59 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 			logger.Warn("shard does not have async search request")
 			continue
 		}
-
 		anyResponse = true
 
+		resp.DiskUsage += storeResp.DiskUsage
+		fracsInQueue += int(storeResp.FracsQueue)
+		fracsDone += int(storeResp.FracsDone)
+
 		histInterval = seq.MID(storeResp.HistogramInterval)
-		aggsCount = len(storeResp.Aggs)
-		order = storeResp.Order.MustDocsOrder()
+		order := storeResp.Order.MustDocsOrder()
 
-		if !storeResp.Done {
-			done = false
+		ss := storeResp.Status.MustAsyncSearchStatus()
+		resp.Status = mergeAsyncSearchStatus(resp.Status, ss)
+
+		t := storeResp.ExpiredAt.AsTime()
+		if resp.ExpiredAt.IsZero() || resp.ExpiredAt.After(t) {
+			resp.ExpiredAt = t
 		}
 
-		storeExpiration := storeResp.Expiration.AsTime()
-		if expiration.IsZero() || expiration.After(storeExpiration) {
-			expiration = storeExpiration
+		if len(aggQueries) == 0 {
+			for _, agg := range storeResp.Aggs {
+				aggQueries = append(aggQueries, seq.AggregateArgs{
+					Func:      agg.Func.MustAggFunc(),
+					Quantiles: agg.Quantiles,
+				})
+			}
 		}
-
-		for _, agg := range storeResp.Aggs {
-			aggQueries = append(aggQueries, seq.AggregateArgs{
-				Func:      agg.Func.MustAggFunc(),
-				Quantiles: agg.Quantiles,
-			})
-		}
-		qpr := responseToQPR(storeResp.Response, si.sourceByClient[replica], false) // todo pass args
-		qprs = append(qprs, qpr)
+		qpr := responseToQPR(storeResp.Response, si.sourceByClient[replica], false)
+		seq.MergeQPRs(&resp.QPR, []*seq.QPR{qpr}, r.Size, histInterval, order)
 	}
-
 	if !anyResponse {
 		return FetchAsyncSearchResultResponse{}, status.Error(codes.NotFound, "async search result not found")
 	}
 
-	qpr := seq.QPR{
-		Aggs: make([]seq.QPRHistogram, aggsCount),
+	resp.Progress = (float64(fracsDone) + float64(fracsInQueue)) / float64(fracsDone)
+	if resp.Status == fracmanager.AsyncSearchStatusDone {
+		resp.Progress = 1
 	}
-	seq.MergeQPRs(&qpr, qprs, r.Size, histInterval, order)
 
-	aggResult := qpr.Aggregate(aggQueries)
+	resp.AggResult = resp.QPR.Aggregate(aggQueries)
+	return resp, nil
+}
 
-	return FetchAsyncSearchResultResponse{
-		Done:       done,
-		Expiration: expiration,
-		QPR:        qpr,
-		AggResult:  aggResult,
-	}, nil
+func mergeAsyncSearchStatus(a, b fracmanager.AsyncSearchStatus) fracmanager.AsyncSearchStatus {
+	statusWeight := []fracmanager.AsyncSearchStatus{
+		0:                                       0,
+		fracmanager.AsyncSearchStatusDone:       1,
+		fracmanager.AsyncSearchStatusInProgress: 2,
+		fracmanager.AsyncSearchStatusCanceled:   3,
+		fracmanager.AsyncSearchStatusError:      4,
+	}
+	weightA := statusWeight[a]
+	weightB := statusWeight[b]
+	if weightA >= weightB {
+		return a
+	}
+	return b
 }

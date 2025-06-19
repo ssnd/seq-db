@@ -54,9 +54,13 @@ func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.Fetc
 		return nil, err
 	}
 
+	canceledAt := timestamppb.New(resp.CanceledAt)
+	if resp.CanceledAt.IsZero() {
+		canceledAt = nil
+	}
+
 	return &seqproxyapi.FetchAsyncSearchResultResponse{
-		Done:       resp.Done,
-		Expiration: timestamppb.New(resp.Expiration),
+		Status: seqproxyapi.MustProtoAsyncSearchStatus(resp.Status),
 		Response: &seqproxyapi.ComplexSearchResponse{
 			Total:   0,
 			Docs:    makeProtoDocs(&resp.QPR, nil),
@@ -65,5 +69,10 @@ func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.Fetc
 			Error:   nil,
 			Explain: nil,
 		},
+		StartedAt:  timestamppb.New(resp.StartedAt),
+		ExpiredAt:  timestamppb.New(resp.ExpiredAt),
+		CanceledAt: canceledAt,
+		Progress:   resp.Progress,
+		DiskUsage:  resp.DiskUsage,
 	}, nil
 }

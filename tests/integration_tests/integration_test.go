@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"github.com/ozontech/seq-db/fracmanager"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ozontech/seq-db/consts"
@@ -1793,7 +1794,7 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 	for ctx.Err() == nil {
 		fetchResp, err := searcher.FetchAsyncSearchResult(ctx, fr)
 		r.NoError(err)
-		if fetchResp.Done {
+		if fetchResp.Status == fracmanager.AsyncSearchStatusDone {
 			break
 		}
 		time.Sleep(time.Millisecond * 200)
@@ -1803,8 +1804,8 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 	fetchResp, err := searcher.FetchAsyncSearchResult(ctx, fr)
 	r.NoError(err)
 
-	r.True(fetchResp.Done)
-	r.True(fetchResp.Expiration.After(time.Now()))
+	r.True(fetchResp.Status == fracmanager.AsyncSearchStatusDone)
+	r.True(fetchResp.ExpiredAt.After(time.Now()))
 	r.Equal([]seq.AggregationResult{
 		{Buckets: []seq.AggregationBucket{
 			{Name: "226.166.207.153", Value: 5116},
@@ -1826,4 +1827,5 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 
 	r.True(len(fetchResp.QPR.Histogram) != 0)
 	r.Equal(len(docs), fetchResp.QPR.IDs.Len())
+	r.Equal(float64(1), fetchResp.Progress)
 }

@@ -547,13 +547,17 @@ const (
 )
 
 type FetchSearchResultResponse struct {
+	Status     AsyncSearchStatus
 	QPR        seq.QPR
-	Expiration time.Time
+	CanceledAt time.Time
+	Error      string
 
-	Status  AsyncSearchStatus
-	Done    int
-	InQueue int
-	Error   string
+	StartedAt time.Time
+	ExpiredAt time.Time
+
+	FracsDone    int
+	FracsInQueue int
+	DiskUsage    int
 
 	// Stuff that needed seq-db proxy to complete async search response.
 	AggQueries   []processor.AggQuery
@@ -578,7 +582,7 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 		}
 		qprsPaths = v
 	}
-	qpr := as.loadSearchResult(qprsPaths, info.Request.Params.Order)
+	qpr, size := as.loadSearchResult(qprsPaths, info.Request.Params.Order)
 
 	var status AsyncSearchStatus
 	var fracsDone, fracsInQueue int
@@ -603,25 +607,30 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 	}
 
 	return FetchSearchResultResponse{
-		QPR:          qpr,
-		Expiration:   info.Expiration(),
 		Status:       status,
+		QPR:          qpr,
+		StartedAt:    info.StartedAt,
+		ExpiredAt:    info.Expiration(),
+		CanceledAt:   info.CanceledAt,
+		FracsDone:    fracsDone,
+		FracsInQueue: fracsInQueue,
+		DiskUsage:    size,
 		Error:        info.Error,
-		Done:         fracsDone,
-		InQueue:      fracsInQueue,
 		AggQueries:   info.Request.Params.AggQ,
 		HistInterval: info.Request.Params.HistInterval,
 		Order:        info.Request.Params.Order,
 	}, true
 }
 
-func (as *AsyncSearcher) loadSearchResult(qprsPaths []string, order seq.DocsOrder) seq.QPR {
+func (as *AsyncSearcher) loadSearchResult(qprsPaths []string, order seq.DocsOrder) (seq.QPR, int) {
 	qpr := seq.QPR{}
+	size := 0
 	for _, qprPath := range qprsPaths {
 		compressedQPR, err := os.ReadFile(qprPath)
+		size += len(compressedQPR)
 		if err != nil {
 			logger.Error("can't read async search result from file", zap.String("path", qprPath), zap.Error(err))
-			return seq.QPR{}
+			return seq.QPR{}, 0
 		}
 		qprRaw, err := zstd.Decompress(compressedQPR, nil)
 		if err != nil {
@@ -639,7 +648,7 @@ func (as *AsyncSearcher) loadSearchResult(qprsPaths []string, order seq.DocsOrde
 		}
 		seq.MergeQPRs(&qpr, []*seq.QPR{&tmp}, idsLimit, 1, order)
 	}
-	return qpr
+	return qpr, size
 }
 
 var timeNow = time.Now
@@ -690,20 +699,22 @@ func (as *AsyncSearcher) mergeQPRs() {
 	for _, job := range mergeJobs {
 		as.mergeQPR(job)
 	}
-	logger.Info("QPRs have been merged", zap.Int("count", len(mergeJobs)), zap.Duration("took", time.Since(now)))
 }
 
 func (as *AsyncSearcher) mergeQPR(job mergeJob) {
+	start := time.Now()
 	var qprs []string
 	for _, f := range job.Fracs {
 		qprFilename := getQPRFilename(job.ID, f.Name)
 		qprPath := path.Join(as.config.DataDir, qprFilename)
 		qprs = append(qprs, qprPath)
 	}
-	qpr := as.loadSearchResult(qprs, seq.DocsOrderAsc)
+	qpr, sizeBefore := as.loadSearchResult(qprs, seq.DocsOrderAsc)
 
 	mqprPath := path.Join(as.config.DataDir, job.ID+asyncSearchExtMergedQPR)
+	var sizeAfter int
 	compressQPR(&qpr, func(compressed []byte) {
+		sizeAfter = len(compressed)
 		mustWriteFileAtomic(mqprPath, compressed)
 	})
 	as.updateSearchInfo(job.ID, func(info *asyncSearchInfo) {
@@ -716,6 +727,13 @@ func (as *AsyncSearcher) mergeQPR(job mergeJob) {
 			logger.Fatal("can't remove async search result", zap.Error(err))
 		}
 	}
+
+	logger.Info("QPRs have been merged",
+		zap.String("id", job.ID),
+		zap.Float64("ratio", float64(sizeBefore)/float64(sizeAfter)),
+		zap.Int("fracs", len(job.Fracs)),
+		zap.Duration("took", time.Since(start)),
+	)
 }
 
 func (as *AsyncSearcher) removeExpiredResults(now time.Time) {

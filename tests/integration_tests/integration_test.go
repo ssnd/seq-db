@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/rand"
 	"net/http"
@@ -745,6 +746,178 @@ func (s *IntegrationTestSuite) TestAgg() {
 		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
 		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.TimeBin{Token: "y1"}].Total, "wrong doc count")
 	}
+}
+
+func (s *IntegrationTestSuite) TestTimeseries() {
+	t := s.T()
+
+	env := setup.NewTestingEnv(s.Config)
+	defer env.StopAll()
+
+	timeBinsCount := 10
+	timeBins := []time.Time{time.Now().Truncate(time.Second)}
+
+	// We have [timeBinsCount] intervals and each document will have timestamp
+	// that equals to some value in [timeBins].
+	//
+	// Each [nextBin] documents we are going to advance select time interval in one position
+	// to the right.
+	for i := 1; i < timeBinsCount; i++ {
+		timeBins = append(timeBins, timeBins[i-1].Add(time.Second*30))
+	}
+
+	var (
+		docs      []string
+		nextBin   = 10
+		batchSize = timeBinsCount * nextBin
+	)
+
+	bulkDataset := func(service string, level func(i int) int) {
+		for i := range batchSize {
+			first, err := json.Marshal(map[string]any{
+				"ts":      timeBins[i/nextBin],
+				"service": service,
+				"level":   level(i),
+			})
+			require.NoError(t, err)
+
+			second, err := json.Marshal(map[string]any{
+				"ts":      timeBins[i/nextBin],
+				"service": fmt.Sprintf("%s-noise", service),
+				"level":   level(i),
+			})
+			require.NoError(t, err)
+
+			docs = append(docs, string(first), string(second))
+		}
+		setup.Bulk(t, env.IngestorBulkAddr(), docs)
+		env.WaitIdle()
+	}
+
+	t.Run("count", func(t *testing.T) {
+		bulkDataset("nginx-count", func(int) int { return 1 })
+
+		qpr, _, _, err := env.Search(`service:"nginx-count"`, 1024, setup.WithAggQuery(search.AggQuery{
+			GroupBy:  "level",
+			Func:     seq.AggFuncCount,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, int64(nextBin), hist[bins[i]].Total)
+		}
+	})
+
+	t.Run("min", func(t *testing.T) {
+		bulkDataset("nginx-min", func(i int) int { return i })
+
+		qpr, _, _, err := env.Search(`service:"nginx-min"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			GroupBy:  "service",
+			Func:     seq.AggFuncMin,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin*i), hist[bins[i]].Min)
+			require.Equal(t, "nginx-min", bins[i].Token)
+		}
+	})
+
+	t.Run("max", func(t *testing.T) {
+		bulkDataset("nginx-max", func(i int) int { return i })
+
+		qpr, _, _, err := env.Search(`service:"nginx-max"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			Func:     seq.AggFuncMax,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin*(i+1)-1), hist[bins[i]].Max)
+		}
+	})
+
+	t.Run("avg", func(t *testing.T) {
+		bulkDataset("nginx-avg", func(int) int { return 1 })
+
+		qpr, _, _, err := env.Search(`service:"nginx-avg"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			Func:     seq.AggFuncAvg,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(1), hist[bins[i]].Sum/float64(hist[bins[i]].Total))
+		}
+	})
+
+	t.Run("sum", func(t *testing.T) {
+		bulkDataset("nginx-sum", func(int) int { return 1 })
+
+		qpr, _, _, err := env.Search(`service:"nginx-sum"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			Func:     seq.AggFuncSum,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin), hist[bins[i]].Sum)
+		}
+	})
+
+	t.Run("quantile", func(t *testing.T) {
+		bulkDataset("nginx-quantile", func(i int) int { return i })
+
+		qpr, _, _, err := env.Search(`service:"nginx-quantile"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:     "level",
+			Func:      seq.AggFuncQuantile,
+			Quantiles: []float64{0.5},
+			Interval:  30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin*i+5), hist[bins[i]].Quantile(0.5))
+		}
+	})
+}
+
+func sortedTimeBins(hist map[seq.TimeBin]*seq.AggregationHistogram) []seq.TimeBin {
+	keys := slices.Collect(maps.Keys(hist))
+	slices.SortFunc(keys, func(a, b seq.TimeBin) int {
+		return a.MID.Time().Compare(b.MID.Time())
+	})
+	return keys
 }
 
 func (s *IntegrationTestSuite) TestAggStat() {

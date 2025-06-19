@@ -35,6 +35,36 @@ func TestSingleSourceCountAggregator(t *testing.T) {
 	assert.Equal(t, int64(1), agg.notExists)
 }
 
+func TestSingleSourceCountAggregatorWithInterval(t *testing.T) {
+	searchDocs := []uint32{2, 3, 5, 8, 10, 12, 15}
+	sources := [][]uint32{
+		{2, 3, 5, 8, 10, 12},
+		{1, 4, 6, 9, 11, 13},
+		{1, 2, 4, 5, 8, 11, 12},
+	}
+
+	source := node.BuildORTreeAgg(node.MakeStaticNodes(sources))
+	iter := NewSourcedNodeIterator(source, nil, nil, 0, false)
+
+	agg := NewSingleSourceCountAggregator(iter, func(l seq.LID) seq.MID {
+		return seq.MID(l) % 3
+	})
+
+	for _, id := range searchDocs {
+		if err := agg.Next(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	assert.Equal(t, map[TimeBin[uint32]]int64{
+		{Source: 0, MID: 0}: 2,
+		{Source: 0, MID: 1}: 1,
+		{Source: 0, MID: 2}: 3,
+	}, agg.countBySource)
+
+	assert.Equal(t, int64(1), agg.notExists)
+}
+
 func Generate(n int) ([]uint32, uint32) {
 	v := make([]uint32, n)
 	last := uint32(1)

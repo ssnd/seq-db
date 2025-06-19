@@ -12,36 +12,6 @@ import (
 	"github.com/ozontech/seq-db/zstd"
 )
 
-type idsCodec byte
-
-const (
-	idsCodecDelta idsCodec = iota + 1
-	idsCodecDeltaZstd
-)
-
-type idsBlockHeader struct {
-	Codec idsCodec
-	// Length of ids block in bytes.
-	Length uint32
-}
-
-func (h *idsBlockHeader) MarshalBinary(dst []byte) []byte {
-	dst = append(dst, byte(h.Codec))
-	dst = be.AppendUint32(dst, h.Length)
-	return dst
-}
-
-func (h *idsBlockHeader) UnmarshalBinary(src []byte) ([]byte, error) {
-	if len(src) < 2 {
-		return src, errors.New("too few bytes")
-	}
-	h.Codec = idsCodec(src[0])
-	src = src[1:]
-	h.Length = be.Uint32(src)
-	src = src[4:]
-	return src, nil
-}
-
 var be = binary.BigEndian
 
 const qprBinVersion = uint8(1)
@@ -116,6 +86,36 @@ func unmarshalQPR(dst *seq.QPR, src []byte, idsLimit, idsOffset int) (_ []byte, 
 	return src, nil
 }
 
+type idsCodec byte
+
+const (
+	idsCodecDelta     = 1
+	idsCodecDeltaZstd = 2
+)
+
+type idsBlockHeader struct {
+	Codec idsCodec
+	// Length of ids block in bytes.
+	Length uint32
+}
+
+func (h *idsBlockHeader) MarshalBinary(dst []byte) []byte {
+	dst = append(dst, byte(h.Codec))
+	dst = be.AppendUint32(dst, h.Length)
+	return dst
+}
+
+func (h *idsBlockHeader) UnmarshalBinary(src []byte) ([]byte, error) {
+	if len(src) < 2 {
+		return src, errors.New("too few bytes")
+	}
+	h.Codec = idsCodec(src[0])
+	src = src[1:]
+	h.Length = be.Uint32(src)
+	src = src[4:]
+	return src, nil
+}
+
 func marshalIDsBlocks(dst []byte, ids seq.IDSources) []byte {
 	b := idsBlockBufPool.Get()
 	defer idsBlockBufPool.Put(b)
@@ -159,13 +159,7 @@ func marshalIDsBlock(dst []byte, ids []seq.IDSource) ([]byte, idsCodec) {
 		b.B = append(b.B, id.Hint...)
 	}
 
-	level := 3
-	if len(b.B) <= 512 {
-		level = 1
-	} else if len(b.B) <= 4*1024 {
-		level = 2
-	}
-
+	level := getCompressLevel(len(b.B))
 	orig := dst
 	dst = zstd.CompressLevel(b.B, dst, level)
 	compressRatio := float64(len(dst)-len(orig)) / float64(len(b.B))
@@ -290,25 +284,103 @@ func unmarshalHistogram(src []byte) (map[seq.MID]uint64, []byte, error) {
 	return dst, src, nil
 }
 
-func marshalAggs(dst []byte, aggs []seq.QPRHistogram) []byte {
-	dst = be.AppendUint64(dst, uint64(len(aggs)))
-	for _, agg := range aggs {
-		dst = marshalQPRHistogram(agg, dst)
-	}
+type aggsCodec byte
+
+const (
+	aggsCodecNone aggsCodec = 1
+	aggsCodecZstd aggsCodec = 2
+)
+
+type aggsBlockHeader struct {
+	Codec aggsCodec
+	// Length if block in bytes.
+	Length uint64
+}
+
+func (h *aggsBlockHeader) Marshal(dst []byte) []byte {
+	dst = append(dst, byte(h.Codec))
+	dst = be.AppendUint64(dst, h.Length)
 	return dst
 }
 
-func unmarshalAggs(dst []seq.QPRHistogram, src []byte) ([]seq.QPRHistogram, []byte, error) {
-	n := be.Uint64(src)
+func (h *aggsBlockHeader) Unmarshal(src []byte) ([]byte, error) {
+	if len(src) < 9 {
+		return nil, fmt.Errorf("malformed aggs header")
+	}
+	h.Codec = aggsCodec(src[0])
+	src = src[1:]
+	h.Length = be.Uint64(src)
 	src = src[8:]
-	dst = slices.Grow(dst, int(n))
-	for i := 0; i < int(n); i++ {
+	return src, nil
+}
+
+var aggsCompressBufferPool util.BufferPool
+
+func marshalAggs(dst []byte, aggs []seq.QPRHistogram) []byte {
+	if len(aggs) == 0 {
+		header := aggsBlockHeader{
+			Codec:  aggsCodecNone,
+			Length: 0,
+		}
+		dst = header.Marshal(dst)
+		return dst
+	}
+
+	headerPos := len(dst)
+	header := aggsBlockHeader{}
+	dst = header.Marshal(dst)
+
+	bb := aggsCompressBufferPool.Get()
+	defer aggsCompressBufferPool.Put(bb)
+	for _, agg := range aggs {
+		bb.B = marshalQPRHistogram(agg, bb.B)
+	}
+
+	level := getCompressLevel(len(bb.B))
+	n := len(dst)
+	dst = zstd.CompressLevel(bb.B, dst, level)
+	length := len(dst) - n
+
+	header = aggsBlockHeader{
+		Codec:  aggsCodecZstd,
+		Length: uint64(length),
+	}
+	_ = header.Marshal(dst[:headerPos])
+
+	return dst
+}
+
+func unmarshalAggs(dst []seq.QPRHistogram, src []byte) (_ []seq.QPRHistogram, _ []byte, err error) {
+	var header aggsBlockHeader
+	src, err = header.Unmarshal(src)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var block []byte
+	switch header.Codec {
+	case aggsCodecNone:
+		block = src[:header.Length]
+	case aggsCodecZstd:
+		bb := aggsCompressBufferPool.Get()
+		defer aggsCompressBufferPool.Put(bb)
+		compressedBlock := src[:header.Length]
+		bb.B, err = zstd.Decompress(compressedBlock, bb.B)
+		if err != nil {
+			return nil, nil, err
+		}
+		block = bb.B
+	default:
+		panic(fmt.Errorf("unknown aggregation codec: %d", header.Codec))
+	}
+	src = src[header.Length:]
+
+	for i := 0; len(block) > 0; i++ {
 		agg := seq.QPRHistogram{}
-		tail, err := unmarshalQPRHistogram(&agg, src)
+		block, err = unmarshalQPRHistogram(&agg, block)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid QPRHistogram at pos %d: %v", i, err)
 		}
-		src = tail
 		dst = append(dst, agg)
 	}
 	return dst, src, nil
@@ -336,6 +408,9 @@ func unmarshalQPRHistogram(q *seq.QPRHistogram, src []byte) ([]byte, error) {
 	hists := make([]seq.AggregationHistogram, aggs)
 	for i := 0; i < int(aggs); i++ {
 		v, n := binary.Uvarint(src)
+		if n <= 0 {
+			return nil, fmt.Errorf("invalid token size")
+		}
 		src = src[n:]
 		token := string(src[:v])
 		src = src[v:]
@@ -396,6 +471,9 @@ func unmarshalAggregationHistogram(h *seq.AggregationHistogram, src []byte) ([]b
 	h.NotExists = int64(v)
 
 	samples, n := binary.Uvarint(src)
+	if n <= 0 {
+		return src, fmt.Errorf("malformed samples length: %d", n)
+	}
 	src = src[n:]
 	h.Samples = slices.Grow(h.Samples[:0], int(samples))
 	for i := 0; i < int(samples); i++ {
@@ -407,30 +485,50 @@ func unmarshalAggregationHistogram(h *seq.AggregationHistogram, src []byte) ([]b
 }
 
 func marshalErrorSource(dst []byte, errSrcs []seq.ErrorSource) []byte {
-	dst = be.AppendUint64(dst, uint64(len(errSrcs)))
+	dst = be.AppendUint32(dst, uint32(len(errSrcs)))
 	for _, e := range errSrcs {
-		dst = be.AppendUint64(dst, uint64(len(e.ErrStr)))
+		dst = binary.AppendUvarint(dst, uint64(len(e.ErrStr)))
 		dst = append(dst, e.ErrStr...)
-		dst = be.AppendUint64(dst, e.Source)
+		dst = binary.AppendUvarint(dst, e.Source)
 	}
 	return dst
 }
 
 func unmarshalErrorSources(dst []seq.ErrorSource, src []byte) ([]byte, []seq.ErrorSource, error) {
-	n := be.Uint64(src)
-	src = src[8:]
+	n := be.Uint32(src)
+	src = src[4:]
 	if len(src) < int(n) {
 		return nil, nil, fmt.Errorf("src too short to unmarshal ErrorSource")
 	}
 	for i := 0; i < int(n); i++ {
-		var e seq.ErrorSource
-		n := be.Uint64(src)
-		src = src[8:]
-		e.ErrStr = string(src[:n])
+		length, n := binary.Uvarint(src)
+		if n <= 0 {
+			return nil, nil, fmt.Errorf("malformed length of error")
+		}
 		src = src[n:]
-		e.Source = be.Uint64(src)
-		src = src[8:]
-		dst = append(dst, e)
+		errStr := string(src[:length])
+		src = src[length:]
+
+		source, n := binary.Uvarint(src)
+		if n <= 0 {
+			return nil, nil, fmt.Errorf("malformed source")
+		}
+		src = src[n:]
+
+		dst = append(dst, seq.ErrorSource{
+			ErrStr: errStr,
+			Source: source,
+		})
 	}
 	return src, dst, nil
+}
+
+func getCompressLevel(size int) int {
+	level := 3
+	if size <= 512 {
+		level = 1
+	} else if size <= 4*1024 {
+		level = 2
+	}
+	return level
 }

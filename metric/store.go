@@ -282,12 +282,6 @@ var (
 		Name:      "panics_total",
 		Help:      "",
 	})
-	StoreBytesRead = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "common",
-		Name:      "bytes_read",
-		Help:      "",
-	})
 
 	skippedIndexes = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "seq_db_store",

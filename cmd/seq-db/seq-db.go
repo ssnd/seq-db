@@ -71,7 +71,6 @@ func main() {
 	conf.SkipFsync = *flagSkipFsync
 	conf.MaxRequestedDocuments = *flagMaxSearchDocs
 	conf.UseSeqQLByDefault = *flagUseSeqQLByDefault
-	conf.SortDocs = *flagSortDocs
 
 	backoff.DefaultConfig.MaxDelay = 10 * time.Second
 
@@ -230,10 +229,9 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 			FracSize:          uint64(*flagFracSize),
 			TotalSize:         uint64(*flagTotalSize),
 			CacheSize:         uint64(*flagCacheSize),
-			SdocsCacheSize:    uint64(*flagSdocsCacheSize),
+			SortCacheSize:     uint64(*flagSortCacheSize),
 			FracLoadLimit:     0,
 			ShouldReplay:      true,
-			ShouldRemoveMeta:  true,
 			MaintenanceDelay:  0,
 			CacheGCDelay:      0,
 			CacheCleanupDelay: 0,
@@ -254,6 +252,8 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 						MaxTIDsPerFraction: *flagAggMaxTIDsPerFraction,
 					},
 				},
+				SkipSortDocs: !*flagSortDocs,
+				KeepMetaFile: false,
 			},
 		},
 		API: storeapi.APIConfig{

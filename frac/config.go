@@ -2,6 +2,9 @@ package frac
 
 type Config struct {
 	Search SearchConfig
+
+	SkipSortDocs bool
+	KeepMetaFile bool
 }
 
 type SearchConfig struct {

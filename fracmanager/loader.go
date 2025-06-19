@@ -2,7 +2,6 @@ package fracmanager
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ozontech/seq-db/consts"
-	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
@@ -30,53 +28,40 @@ type fracInfo struct {
 }
 
 type loader struct {
-	config          *Config
-	readLimiter     *disk.ReadLimiter
-	cacheMaintainer *CacheMaintainer
-	indexWorkers    *frac.IndexWorkers
-	fracCache       *sealedFracCache
-	fracConfig      frac.Config
+	config       *Config
+	fracProvider *fractionProvider
+	fracCache    *sealedFracCache
 
 	cachedFracs   int
 	uncachedFracs int
 }
 
-func NewLoader(
-	config *Config,
-	readLimiter *disk.ReadLimiter,
-	cacheMaintainer *CacheMaintainer,
-	indexWorkers *frac.IndexWorkers,
-	fracCache *sealedFracCache,
-	fracConfig frac.Config,
-) *loader {
+func NewLoader(config *Config, fracProvider *fractionProvider, fracCache *sealedFracCache) *loader {
 	return &loader{
-		config:          config,
-		readLimiter:     readLimiter,
-		cacheMaintainer: cacheMaintainer,
-		indexWorkers:    indexWorkers,
-		fracCache:       fracCache,
-		fracConfig:      fracConfig,
+		config:       config,
+		fracProvider: fracProvider,
+		fracCache:    fracCache,
 	}
 }
 
-func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
-	fracIDs, infos := t.makeInfos(t.getFileList())
+func (l *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
+	fracIDs, infos := l.makeInfos(l.getFileList())
 	sort.Strings(fracIDs)
 
-	if t.config.FracLoadLimit > 0 {
-		logger.Info("preloading fractions", zap.Uint64("limit", t.config.FracLoadLimit))
-		if len(fracIDs) > int(t.config.FracLoadLimit) {
-			fracIDs = fracIDs[len(fracIDs)-int(t.config.FracLoadLimit):]
+	if l.config.FracLoadLimit > 0 {
+		logger.Info("preloading fractions", zap.Uint64("limit", l.config.FracLoadLimit))
+		if len(fracIDs) > int(l.config.FracLoadLimit) {
+			fracIDs = fracIDs[len(fracIDs)-int(l.config.FracLoadLimit):]
 		}
 	}
 
-	infosList := t.filterInfos(fracIDs, infos)
+	infosList := l.filterInfos(fracIDs, infos)
 	cnt := len(infosList)
 
 	fracs := make([]*fracRef, 0, cnt)
 	actives := make([]*frac.Active, 0)
 
-	diskFracCache := NewFracCacheFromDisk(filepath.Join(t.config.DataDir, consts.FracCacheFileSuffix))
+	diskFracCache := NewFracCacheFromDisk(filepath.Join(l.config.DataDir, consts.FracCacheFileSuffix))
 	ts := time.Now()
 
 	for i, info := range infosList {
@@ -87,13 +72,13 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 			if info.hasDocs {
 				removeFile(info.base + consts.DocsFileSuffix)
 			}
-			sealed := t.loadSealedFrac(diskFracCache, info)
+			sealed := l.loadSealedFrac(diskFracCache, info)
 			fracs = append(fracs, &fracRef{instance: sealed})
 		} else {
 			if info.hasMeta {
-				actives = append(actives, frac.NewActive(info.base, t.indexWorkers, t.readLimiter, t.cacheMaintainer.CreateDocBlockCache(), t.fracConfig))
+				actives = append(actives, l.fracProvider.NewActive(info.base))
 			} else {
-				sealed := t.loadSealedFrac(diskFracCache, info)
+				sealed := l.loadSealedFrac(diskFracCache, info)
 				fracs = append(fracs, &fracRef{instance: sealed})
 			}
 		}
@@ -110,7 +95,7 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 		}
 	}
 
-	logger.Info("fractions list created", zap.Int("cached", t.cachedFracs), zap.Int("uncached", t.uncachedFracs))
+	logger.Info("fractions list created", zap.Int("cached", l.cachedFracs), zap.Int("uncached", l.uncachedFracs))
 
 	logger.Info("replaying active fractions", zap.Int("count", len(actives)))
 	notSealed := make([]activeRef, 0)
@@ -122,35 +107,32 @@ func (t *loader) load(ctx context.Context) ([]*fracRef, []activeRef, error) {
 			removeFractionFiles(a.BaseFileName)
 			continue
 		}
-		active := activeRef{
-			frac: a,
-			ref:  &fracRef{instance: a},
-		}
-		fracs = append(fracs, active.ref)
-		notSealed = append(notSealed, active)
+		activeRef := l.fracProvider.newActiveRef(a)
+		fracs = append(fracs, activeRef.ref)
+		notSealed = append(notSealed, activeRef)
 	}
 
 	return fracs, notSealed, nil
 }
 
-func (t *loader) loadSealedFrac(diskFracCache *sealedFracCache, info *fracInfo) *frac.Sealed {
-	cachedFracInfo, ok := diskFracCache.GetFracInfo(filepath.Base(info.base))
+func (l *loader) loadSealedFrac(diskFracCache *sealedFracCache, info *fracInfo) *frac.Sealed {
+	cachedInfo, ok := diskFracCache.GetFracInfo(filepath.Base(info.base))
 	if ok {
-		t.cachedFracs++
+		l.cachedFracs++
 	} else {
-		t.uncachedFracs++
+		l.uncachedFracs++
 	}
 
-	sealed := frac.NewSealed(info.base, t.readLimiter, t.cacheMaintainer.CreateIndexCache(), t.cacheMaintainer.CreateDocBlockCache(), cachedFracInfo, t.fracConfig)
+	sealed := l.fracProvider.NewSealed(info.base, cachedInfo)
 
 	stats := sealed.Info()
-	t.fracCache.AddFraction(stats.Name(), stats)
+	l.fracCache.AddFraction(stats.Name(), stats)
 	return sealed
 }
 
-func (t *loader) getFileList() []string {
+func (l *loader) getFileList() []string {
 	filePatten := fmt.Sprintf("%s*", fileBasePattern)
-	pattern := filepath.Join(t.config.DataDir, filePatten)
+	pattern := filepath.Join(l.config.DataDir, filePatten)
 
 	files, err := filepath.Glob(pattern)
 	if err != nil {
@@ -178,7 +160,7 @@ func removeFile(file string) {
 	}
 }
 
-func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fracInfo {
+func (l *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fracInfo {
 	infoList := make([]*fracInfo, 0)
 
 	for _, id := range fracIDs {
@@ -205,53 +187,16 @@ func (t *loader) filterInfos(fracIDs []string, infos map[string]*fracInfo) []*fr
 			continue
 		}
 
-		if t.noValidDoc(info) {
-			metric.FractionLoadErrors.Inc()
-			logger.Error("fraction has .docs/.sdocs file without .meta and could not be read, deleting as invalid",
-				zap.String("fraction_id", id),
-			)
-			_ = os.Remove(info.base + consts.DocsFileSuffix)
-			_ = os.Remove(info.base + consts.SdocsFileSuffix)
-			continue
-		}
-
 		logger.Fatal("fraction has valid docs but no .index or .meta file", zap.String("fraction_id", id), zap.Any("info", info))
 	}
 	return infoList
 }
 
-// noValidDoc return true if disk.Reader.ReadDocBlock fails
-// this captures cases when doc file size is zero, or doc file header is invalid
-func (t *loader) noValidDoc(info *fracInfo) (invalid bool) {
-	docFile, err := os.Open(info.base + consts.DocsFileSuffix)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return true
-		}
-		docFile, err = os.Open(info.base + consts.SdocsFileSuffix)
-		if err != nil {
-			return true
-		}
-	}
-
-	defer docFile.Close()
-
-	defer func() {
-		if recover() != nil {
-			invalid = true
-		}
-	}()
-
-	docsReader := disk.NewDocBlocksReader(t.readLimiter, docFile)
-	_, _, err = docsReader.ReadDocBlockPayload(0)
-	return err != nil
-}
-
-func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
+func (l *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 	fracIDs := make([]string, 0, len(files))
 	infos := make(map[string]*fracInfo)
 	for _, file := range files {
-		base, suffix, fracID := t.extractInfo(file)
+		base, suffix, fracID := l.extractInfo(file)
 		if suffix == consts.IndexTmpFileSuffix || suffix == consts.SdocsTmpFileSuffix {
 			continue
 		}
@@ -288,7 +233,7 @@ func (t *loader) makeInfos(files []string) ([]string, map[string]*fracInfo) {
 	return fracIDs, infos
 }
 
-func (t *loader) extractInfo(file string) (string, string, string) {
+func (l *loader) extractInfo(file string) (string, string, string) {
 	base := filepath.Base(file)
 
 	if len(base) < len(fileBasePattern) {

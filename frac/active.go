@@ -18,8 +18,6 @@ import (
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/disk"
-	"github.com/ozontech/seq-db/frac/lids"
-	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/seq"
@@ -27,7 +25,7 @@ import (
 )
 
 type Active struct {
-	Config Config
+	Config *Config
 
 	BaseFileName string
 
@@ -49,7 +47,9 @@ type Active struct {
 
 	docsFile   *os.File
 	docsReader disk.DocsReader
+	sortReader disk.DocsReader
 	docsCache  *cache.Cache[[]byte]
+	sortCache  *cache.Cache[[]byte]
 
 	metaFile   *os.File
 	metaReader disk.DocBlocksReader
@@ -59,13 +59,6 @@ type Active struct {
 
 	sealingMu sync.RWMutex
 	isSealed  bool
-
-	// to transfer data to sealed frac
-	idsTable            IDsTable
-	lidsTable           *lids.Table
-	tokenTable          token.Table
-	sortedDocsFile      *os.File
-	sortedBlocksOffsets []uint64
 }
 
 const (
@@ -83,7 +76,8 @@ func NewActive(
 	indexWorkers *IndexWorkers,
 	readLimiter *disk.ReadLimiter,
 	docsCache *cache.Cache[[]byte],
-	config Config,
+	sortCache *cache.Cache[[]byte],
+	config *Config,
 ) *Active {
 	docsFile, docsStats := openFile(baseFileName+consts.DocsFileSuffix, conf.SkipFsync)
 	metaFile, metaStats := openFile(baseFileName+consts.MetaFileSuffix, conf.SkipFsync)
@@ -97,7 +91,9 @@ func NewActive(
 
 		docsFile:   docsFile,
 		docsCache:  docsCache,
+		sortCache:  sortCache,
 		docsReader: disk.NewDocsReader(readLimiter, docsFile, docsCache),
+		sortReader: disk.NewDocsReader(readLimiter, docsFile, sortCache),
 
 		metaFile:   metaFile,
 		metaReader: disk.NewDocBlocksReader(readLimiter, metaFile),
@@ -261,7 +257,7 @@ func (f *Active) setSealed() error {
 	return nil
 }
 
-func (f *Active) Seal(params SealParams, readLimiter *disk.ReadLimiter, sdocsCache *cache.Cache[[]byte]) (*os.File, error) {
+func (f *Active) Seal(params SealParams) (*PreloadedData, error) {
 	if err := f.setSealed(); err != nil {
 		return nil, err
 	}
@@ -271,16 +267,14 @@ func (f *Active) Seal(params SealParams, readLimiter *disk.ReadLimiter, sdocsCac
 	f.WaitWriteIdle()
 	logger.Info("write is stopped", zap.Float64("time_wait_s", util.DurationToUnit(time.Since(start), "s")))
 
-	docsReader := disk.NewDocsReader(readLimiter, f.docsFile, sdocsCache)
-
-	return seal(f, params, docsReader), nil
+	return seal(f, params)
 }
 
 func (f *Active) GetAllDocuments() []uint32 {
 	return f.TokenList.GetAllTokenLIDs().GetLIDs(f.MIDs, f.RIDs)
 }
 
-func (f *Active) Release(sealed Fraction, removeMeta bool) error {
+func (f *Active) Release(sealed Fraction) error {
 	f.useMu.Lock()
 	f.sealed = sealed
 	f.useMu.Unlock()
@@ -295,7 +289,7 @@ func (f *Active) Release(sealed Fraction, removeMeta bool) error {
 	// Once frac is released, it is safe to remove the docs file,
 	// since search queries will use the sealed implementation.
 
-	if conf.SortDocs {
+	if !f.Config.SkipSortDocs {
 		if err := f.docsFile.Close(); err != nil {
 			return fmt.Errorf("closing docs file: %w", err)
 		}
@@ -308,8 +302,9 @@ func (f *Active) Release(sealed Fraction, removeMeta bool) error {
 	}
 
 	f.docsCache.Release()
+	f.sortCache.Release()
 
-	if removeMeta {
+	if !f.Config.KeepMetaFile {
 		rmFileName := f.BaseFileName + consts.MetaFileSuffix
 		if err := os.Remove(rmFileName); err != nil {
 			logger.Error("can't delete metas file", zap.String("file", rmFileName), zap.Error(err))
@@ -326,12 +321,6 @@ func (f *Active) UpdateDiskStats(docsLen, metaLen uint64) uint64 {
 	f.info.MetaOnDisk += metaLen
 	f.infoMu.Unlock()
 	return pos
-}
-
-func (f *Active) setInfoDocsOnDisk(v uint64) {
-	f.useMu.Lock()
-	defer f.useMu.Unlock()
-	f.info.DocsOnDisk = v
 }
 
 func (f *Active) close(closeDocs bool, hint string) {
@@ -389,15 +378,6 @@ func (f *Active) UpdateStats(minMID, maxMID seq.MID, docCount uint32, sizeCount 
 	}
 	f.info.DocsTotal += docCount
 	f.info.DocsRaw += sizeCount
-}
-
-func (f *Active) buildInfoDistribution(ids []seq.ID) {
-	// We must update `info` inside active fraction because we are passing this `info`
-	// with built `distribution` to derivative sealed fraction.
-	// In fact we must not call this method concurrently so no one else should wait for Lock().
-	f.infoMu.Lock()
-	f.info.BuildDistribution(ids)
-	f.infoMu.Unlock()
 }
 
 func (f *Active) Suicide() { // it seams we never call this method (of Active fraction)
@@ -477,7 +457,7 @@ func (f *Active) DataProvider(ctx context.Context) (DataProvider, func()) {
 func (f *Active) createDataProvider(ctx context.Context) *activeDataProvider {
 	return &activeDataProvider{
 		ctx:    ctx,
-		config: &f.Config,
+		config: f.Config,
 		info:   f.Info(),
 
 		mids:      f.MIDs,
@@ -488,18 +468,6 @@ func (f *Active) createDataProvider(ctx context.Context) *activeDataProvider {
 		docsPositions: f.DocsPositions,
 		docsReader:    &f.docsReader,
 	}
-}
-
-func (f *Active) setInfoSealingTime(newTime uint64) {
-	f.infoMu.Lock()
-	f.info.SealingTime = newTime
-	f.infoMu.Unlock()
-}
-
-func (f *Active) setInfoIndexOnDisk(newSize uint64) {
-	f.infoMu.Lock()
-	f.info.IndexOnDisk = newSize
-	f.infoMu.Unlock()
 }
 
 func (f *Active) Info() *Info {

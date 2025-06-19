@@ -76,11 +76,11 @@ var (
 	flagBulkVolumeThreshold = kingpin.Flag("bulk-request-volume-threshold", "check circuitbreaker/README.md for more details").Default("5").Int64()
 
 	// resources
-	flagReaderWorkers  = kingpin.Flag("reader-workers", "size of readers pool").Default(numCPUStr).Int()
-	flagSearchWorkers  = kingpin.Flag("search-workers-count", `the number of workers that will be process factions`).Default(numCPUStr).Int()
-	flagSkipFsync      = kingpin.Flag("skip-fsync", "skip fsyncs for active fraction").Default("false").Bool()
-	flagCacheSize      = kingpin.Flag("cache-size", `max size of the cache`).Default(defaultCacheSizeStr).Bytes()
-	flagSdocsCacheSize = kingpin.Flag("sdocs-cache-size", `cache size that used to seal active fraction, must be lower than --cache-size parameter`).Bytes()
+	flagReaderWorkers = kingpin.Flag("reader-workers", "size of readers pool").Default(numCPUStr).Int()
+	flagSearchWorkers = kingpin.Flag("search-workers-count", `the number of workers that will be process factions`).Default(numCPUStr).Int()
+	flagSkipFsync     = kingpin.Flag("skip-fsync", "skip fsyncs for active fraction").Default("false").Bool()
+	flagCacheSize     = kingpin.Flag("cache-size", `max size of the cache`).Default(defaultCacheSizeStr).Bytes()
+	flagSortCacheSize = kingpin.Flag("sdocs-cache-size", `cache size that used to seal active fraction, must be lower than --cache-size parameter`).Bytes()
 
 	// compress level
 	flagDocsZstdCompressLevel      = kingpin.Flag("docs-zstd-compress-level", `ZSTD compress level for docs, change these parameters if you need to change the network load, does not affect the final size of documents or index on disk, check the doc for more details: https://facebook.github.io/zstd/zstd_manual.html`).Default("1").Int()

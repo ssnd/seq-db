@@ -22,7 +22,7 @@ import (
 const seqDBMagic = "SEQM"
 
 type Sealed struct {
-	Config Config
+	Config *Config
 
 	BaseFileName string
 
@@ -65,8 +65,8 @@ func NewSealed(
 	readLimiter *disk.ReadLimiter,
 	indexCache *IndexCache,
 	docsCache *cache.Cache[[]byte],
-	fracInfoCache *Info,
-	config Config,
+	info *Info,
+	config *Config,
 ) *Sealed {
 	f := &Sealed{
 		loadMu: &sync.RWMutex{},
@@ -75,7 +75,7 @@ func NewSealed(
 		docsCache:   docsCache,
 		indexCache:  indexCache,
 
-		info:         fracInfoCache,
+		info:         info,
 		BaseFileName: baseFile,
 		Config:       config,
 
@@ -83,7 +83,7 @@ func NewSealed(
 	}
 
 	// fast path if fraction-info cache exists AND it has valid index size
-	if fracInfoCache != nil && fracInfoCache.IndexOnDisk > 0 {
+	if info != nil && info.IndexOnDisk > 0 {
 		return f
 	}
 
@@ -122,34 +122,50 @@ func (f *Sealed) openDocs() {
 	}
 }
 
-func NewSealedFromActive(a *Active, rl *disk.ReadLimiter, indexFile *os.File, indexCache *IndexCache, docsCache *cache.Cache[[]byte]) *Sealed {
-	infoCopy := *a.info
+type PreloadedData struct {
+	info          *Info
+	idsTable      IDsTable
+	lidsTable     *lids.Table
+	tokenTable    token.Table
+	blocksOffsets []uint64
+	indexFile     *os.File
+	docsFile      *os.File
+}
+
+func NewSealedPreloaded(
+	baseFile string,
+	preloaded *PreloadedData,
+	rl *disk.ReadLimiter,
+	indexCache *IndexCache,
+	docsCache *cache.Cache[[]byte],
+	config *Config,
+) *Sealed {
 	f := &Sealed{
-		idsTable:      a.idsTable,
-		lidsTable:     a.lidsTable,
-		BlocksOffsets: a.sortedBlocksOffsets,
+		idsTable:      preloaded.idsTable,
+		lidsTable:     preloaded.lidsTable,
+		BlocksOffsets: preloaded.blocksOffsets,
 
-		docsFile:   a.sortedDocsFile,
+		docsFile:   preloaded.docsFile,
 		docsCache:  docsCache,
-		docsReader: disk.NewDocsReader(rl, a.sortedDocsFile, docsCache),
+		docsReader: disk.NewDocsReader(rl, preloaded.docsFile, docsCache),
 
-		indexFile:   indexFile,
+		indexFile:   preloaded.indexFile,
 		indexCache:  indexCache,
-		indexReader: disk.NewIndexReader(rl, indexFile, indexCache.Registry),
+		indexReader: disk.NewIndexReader(rl, preloaded.indexFile, indexCache.Registry),
 
 		loadMu:   &sync.RWMutex{},
 		isLoaded: true,
 
 		readLimiter: rl,
 
-		info:         &infoCopy,
-		BaseFileName: a.BaseFileName,
-		Config:       a.Config,
+		info:         preloaded.info,
+		BaseFileName: baseFile,
+		Config:       config,
 	}
 
 	// put the token table built during sealing into the cache of the sealed faction
 	indexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
-		return a.tokenTable, a.tokenTable.Size()
+		return preloaded.tokenTable, preloaded.tokenTable.Size()
 	})
 
 	docsCountK := float64(f.info.DocsTotal) / 1000
@@ -338,7 +354,7 @@ func (f *Sealed) createDataProvider(ctx context.Context) *sealedDataProvider {
 	return &sealedDataProvider{
 		ctx:              ctx,
 		info:             f.info,
-		config:           &f.Config,
+		config:           f.Config,
 		docsReader:       &f.docsReader,
 		blocksOffsets:    f.BlocksOffsets,
 		fracVersion:      f.info.BinaryDataVer,

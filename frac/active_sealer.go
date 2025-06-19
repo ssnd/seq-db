@@ -36,7 +36,7 @@ type SealParams struct {
 	DocBlockSize int
 }
 
-func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
+func seal(f *Active, params SealParams, docsReader disk.DocsReader) *os.File {
 	logger.Info("sealing fraction", zap.String("fraction", f.BaseFileName))
 
 	start := time.Now()
@@ -115,7 +115,7 @@ func seal(f *Active, params SealParams, docsReader *disk.DocsReader) *os.File {
 	return indexFile
 }
 
-func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdocsFile *os.File, params SealParams) error {
+func writeSealedFraction(f *Active, docsReader disk.DocsReader, indexFile, sdocsFile *os.File, params SealParams) error {
 	var err error
 	sortedIDs, oldToNewLIDsIndex := sortSeqIDs(f, f.MIDs.GetVals(), f.RIDs.GetVals())
 
@@ -226,7 +226,7 @@ func writeSealedFraction(f *Active, docsReader *disk.DocsReader, indexFile, sdoc
 	return nil
 }
 
-func writeDocsInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
+func writeDocsInOrder(pos *DocsPositions, blocks []uint64, docsReader disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
 	// Skip system seq.ID.
 	if len(ids) == 0 {
 		panic(fmt.Errorf("BUG: ids is empty"))
@@ -242,7 +242,7 @@ func writeDocsInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.Docs
 	return nil
 }
 
-func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader *disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
+func writeDocBlocksInOrder(pos *DocsPositions, blocks []uint64, docsReader disk.DocsReader, ids []seq.ID, bw *docBlocksWriter) error {
 	var prevID seq.ID
 	for _, id := range ids {
 		if id == prevID {

@@ -43,7 +43,7 @@ func (w *BlocksWriter) WriteBlock(blockType string, data []byte, compress bool, 
 	finalData := data
 	if compress {
 		codec = CodecZSTD
-		compressed := bytespool.AcquireReset(len(data) + consts.RegularBlockSize)
+		compressed := bytespool.Acquire(len(data) + consts.RegularBlockSize)
 		defer bytespool.Release(compressed)
 		finalData = zstd.CompressLevel(data, compressed.B, zstdLevel)
 		if len(finalData) >= len(data) {

@@ -11,16 +11,17 @@ import (
 
 var bytesPool = New()
 
-// Acquire gets a byte buffer with given length from the global pool.
-func Acquire(length int) *Buffer {
-	return bytesPool.Acquire(length)
+// AcquireLen gets a byte buffer with given length from the global pool.
+func AcquireLen(length int) *Buffer {
+	b := bytesPool.Acquire(length)
+	b.B = b.B[:length]
+	return b
 }
 
-// AcquireReset gets a byte buffer with zero length from the global pool.
-func AcquireReset(length int) *Buffer {
-	s := bytesPool.Acquire(length)
-	s.Reset()
-	return s
+// Acquire gets a byte buffer with zero length from the global pool.
+func Acquire(capacity int) *Buffer {
+	b := bytesPool.Acquire(capacity)
+	return b
 }
 
 // Release puts the byte buffer to the global pool.
@@ -77,26 +78,20 @@ func (b *Buffer) Write(buf []byte) (int, error) {
 }
 
 const (
-	pools       = 32
-	maxCapacity = 1 << (pools - 1)
+	pools       = 24
+	maxCapacity = 1 << (pools + 8 - 1)
 )
 
 // Pool consists of N sync.Pool's,
-// each pool is a set of temporary Buffer[T] with capacity from [2^n, 2^n+1),
-// where the n is the pool index.
+// each pool is a set of temporary Buffer with at least 2^n+8 capacity where the n is the pool index.
 type Pool struct {
 	// pools contains pools for byte slices of various capacities.
 	//
-	//	pools[0] [1,  2)
-	//	pools[1] [2,  4)
-	//	pools[2] [4,  8)
-	//	pools[3] [8,  16)
-	//	pools[4] [16, 32)
-	//	pools[5] [32, 64)
-	//	pools[6] [64, 128)
+	//	pools[0] at least 256 capacity
+	//	pools[1] at least 512 capacity
 	//	...
-	//	pools[30] [1 073 741 824, 2 147 483 648)
-	//	pools[31] [2 147 483 648, 4 294 967 296)
+	//	pools[22] at least 1 073 741 824 capacity
+	//	pools[23] at least 2 147 483 648 capacity
 	pools [pools]sync.Pool
 
 	metrics [pools]poolMetrics
@@ -126,16 +121,18 @@ func New() *Pool {
 }
 
 // Acquire retrieves a Buffer with given length and rounded up capacity of the power of two.
-// Panics when length < 0.
-func (p *Pool) Acquire(length int) *Buffer {
-	if length <= 0 || length > maxCapacity {
-		return &Buffer{B: make([]byte, length)}
+func (p *Pool) Acquire(capacity int) *Buffer {
+	if capacity < 0 {
+		panic(fmt.Errorf("invalid capacity: %d", capacity))
+	}
+	if capacity > maxCapacity {
+		return &Buffer{B: make([]byte, 0, capacity)}
 	}
 
-	idx, poolCapacity := index(length)
+	idx, poolCapacity := index(capacity)
 	buf := p.getByIndex(idx)
 	if buf != nil {
-		buf.B = buf.B[:length]
+		buf.Reset()
 		return buf
 	}
 
@@ -144,12 +141,12 @@ func (p *Pool) Acquire(length int) *Buffer {
 	if idx < pools {
 		buf := p.getByIndex(idx)
 		if buf != nil {
-			buf.B = buf.B[:length]
+			buf.Reset()
 			return buf
 		}
 	}
 
-	return &Buffer{B: make([]byte, length, poolCapacity)}
+	return &Buffer{B: make([]byte, 0, poolCapacity)}
 }
 
 func (p *Pool) getByIndex(idx int) *Buffer {
@@ -165,28 +162,30 @@ func (p *Pool) getByIndex(idx int) *Buffer {
 // Release returns Buffer to the pool.
 func (p *Pool) Release(buf *Buffer) {
 	capacity := cap(buf.B)
-	if capacity == 0 {
-		return
-	}
 	if capacity > maxCapacity {
 		putOversizeCounter.Inc()
 		return
 	}
 
-	idx, leftBorder := index(capacity)
-	if capacity != leftBorder {
-		// Put to the previous internal
-		// because capacity is not power of 2, and it is lower than left border
+	idx, poolCapacity := index(capacity)
+	if capacity != poolCapacity && idx != 0 {
+		// buf is not from the pool, put to the previous interval.
 		idx--
 	}
 	p.metrics[idx].putCounter.Inc()
 	p.pools[idx].Put(buf)
 }
 
-// index returns pool index and left border of the range
+// index returns pool index and at least capacity size of it.
 func index(size int) (idx, leftBorder int) {
-	idx = bits.Len(uint(size - 1))
-	return idx, 1 << idx
+	if size <= 0 {
+		return 0, 1 << 8
+	}
+	idx = bits.Len(uint(size-1)) - 8
+	if idx < 0 {
+		idx = 0
+	}
+	return idx, 1 << (idx + 8)
 }
 
 func byteCountIEC(b int) string {

@@ -65,7 +65,7 @@ func (is *inverser) Release() {
 
 func getSlice(size int) (*bytespool.Buffer, []int) {
 	const sizeOfInt = unsafe.Sizeof(int(0))
-	buf := bytespool.Acquire(size * int(sizeOfInt))
+	buf := bytespool.AcquireLen(size * int(sizeOfInt))
 	s := unsafe.Slice((*int)(unsafe.Pointer(unsafe.SliceData(buf.B))), size)
 	clear(s)
 	return buf, s

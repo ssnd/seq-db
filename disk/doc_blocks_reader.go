@@ -19,7 +19,7 @@ func NewDocBlocksReader(reader *ReadLimiter, file *os.File) DocBlocksReader {
 }
 
 func (r *DocBlocksReader) getDocBlockLen(offset int64) (uint64, error) {
-	buf := bytespool.Acquire(DocBlockHeaderLen)
+	buf := bytespool.AcquireLen(DocBlockHeaderLen)
 	defer bytespool.Release(buf)
 
 	n, err := r.limiter.ReadAt(r.file, buf.B, offset)
@@ -48,7 +48,7 @@ func (r *DocBlocksReader) ReadDocBlockPayload(offset int64) ([]byte, uint64, err
 		return nil, 0, err
 	}
 
-	buf := bytespool.Acquire(int(l))
+	buf := bytespool.AcquireLen(int(l))
 	defer bytespool.Release(buf)
 
 	n, err := r.limiter.ReadAt(r.file, buf.B, offset)

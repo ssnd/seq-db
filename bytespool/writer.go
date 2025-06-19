@@ -19,13 +19,13 @@ func AcquireWriterSize(out io.Writer, size int) *Writer {
 	if w := writerPool.Get(); w != nil {
 		w := w.(*Writer)
 		w.out = out
-		w.Buf = AcquireReset(size)
+		w.Buf = Acquire(size)
 		return w
 	}
 
 	return &Writer{
 		out: out,
-		Buf: AcquireReset(size),
+		Buf: Acquire(size),
 	}
 }
 
@@ -42,21 +42,23 @@ func FlushReleaseWriter(w *Writer) error {
 }
 
 func (w *Writer) Write(b []byte) (int, error) {
+	n := len(b)
 	if len(w.Buf.B)+len(b) < cap(w.Buf.B) {
 		// We fit into buffer
 		w.Buf.B = append(w.Buf.B, b...)
-		return len(b), nil
+		return n, nil
 	}
 
 	if len(w.Buf.B) == 0 {
 		// No need to flush, write directly
-		return w.writeCheckShort(b)
+		err := w.writeCheckShort(b)
+		return n, err
 	}
 
 	// Buffer is not empty, fill and flush it
-	n := cap(w.Buf.B) - len(w.Buf.B)
-	w.Buf.B = append(w.Buf.B, b[:n]...)
-	b = b[n:]
+	v := cap(w.Buf.B) - len(w.Buf.B)
+	w.Buf.B = append(w.Buf.B, b[:v]...)
+	b = b[v:]
 	if err := w.Flush(); err != nil {
 		return 0, err
 	}
@@ -64,10 +66,11 @@ func (w *Writer) Write(b []byte) (int, error) {
 	// Check we can fit into buffer
 	if len(b) < cap(w.Buf.B) {
 		w.Buf.B = append(w.Buf.B, b...)
-		return n + len(b), nil
+		return n, nil
 	}
 	// Buffer is empty, and we can't append byte slice, so write directly
-	return w.writeCheckShort(b)
+	err := w.writeCheckShort(b)
+	return n, err
 }
 
 func (w *Writer) WriteString(s string) (int, error) {
@@ -78,22 +81,20 @@ func (w *Writer) Flush() error {
 	if len(w.Buf.B) == 0 {
 		return nil
 	}
-
-	_, err := w.writeCheckShort(w.Buf.B)
-	if err != nil {
+	if err := w.writeCheckShort(w.Buf.B); err != nil {
 		return err
 	}
 	w.Buf.Reset()
 	return nil
 }
 
-func (w *Writer) writeCheckShort(b []byte) (int, error) {
+func (w *Writer) writeCheckShort(b []byte) error {
 	n, err := w.out.Write(b)
 	if err != nil {
-		return n, err
+		return err
 	}
 	if n != len(b) {
-		return n, io.ErrShortWrite
+		return io.ErrShortWrite
 	}
-	return n, nil
+	return nil
 }

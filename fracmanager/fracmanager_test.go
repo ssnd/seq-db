@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/atomic"
 
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/seq"
@@ -28,7 +27,7 @@ func addDummyDoc(t *testing.T, fm *FracManager, dp *frac.DocProvider, seqID seq.
 	doc := []byte("document")
 	dp.Append(doc, nil, seqID, seq.Tokens("service:100500", "k8s_pod", "_all_:"))
 	docs, metas := dp.Provide()
-	err := fm.Append(context.Background(), docs, metas, atomic.NewUint64(0))
+	err := fm.Append(context.Background(), docs, metas)
 	assert.NoError(t, err)
 }
 

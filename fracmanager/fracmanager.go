@@ -312,14 +312,13 @@ func (fm *FracManager) Load(ctx context.Context) error {
 	return nil
 }
 
-func (fm *FracManager) Append(ctx context.Context, docs, metas disk.DocBlock, writeQueue *atomic.Uint64) error {
+func (fm *FracManager) Append(ctx context.Context, docs, metas disk.DocBlock) error {
 	for {
 		select {
 		case <-ctx.Done():
-			writeQueue.Dec()
 			return ctx.Err()
 		default:
-			if err := fm.GetActiveFrac().Append(docs, metas, writeQueue); err != nil { // can get fail if fraction already sealed
+			if err := fm.GetActiveFrac().Append(docs, metas); err != nil { // can get fail if fraction already sealed
 				logger.Info("append fail", zap.Error(err))
 				continue
 			}

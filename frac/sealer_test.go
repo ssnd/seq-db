@@ -10,9 +10,8 @@ import (
 
 	insaneJSON "github.com/ozontech/insane-json"
 	"github.com/stretchr/testify/assert"
-	"github.com/ozontech/seq-db/consts"
-	"go.uber.org/atomic"
 
+	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/tests/common"
@@ -50,7 +49,7 @@ func fillActiveFraction(active *Active) error {
 			dp.Append(doc, docRoot, seq.SimpleID(0), nil)
 		}
 		docs, metas := dp.Provide()
-		if err := active.Append(docs, metas, atomic.NewUint64(0)); err != nil {
+		if err := active.Append(docs, metas); err != nil {
 			return err
 		}
 	}

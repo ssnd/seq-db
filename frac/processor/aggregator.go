@@ -18,7 +18,7 @@ type TimeBin[T comparable] struct {
 	Source T
 }
 
-// Since in aggregators we do not have [idsIndex] interface,
+// ExtractMIDFunc is necessary since in aggregators we do not have [idsIndex] interface,
 // we need a way to extract timestamp of document to build time series.
 type ExtractMIDFunc func(seq.LID) seq.MID
 

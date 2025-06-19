@@ -2,10 +2,13 @@ package seq
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/valyala/fastrand"
 
@@ -104,14 +107,69 @@ const (
 	AggFuncUnique
 )
 
+const TimeBinSeparator = "|"
+
 type TimeBin struct {
 	MID   MID
 	Token string
 }
 
+func (tb *TimeBin) toKey() string {
+	mid := strconv.Itoa(int(tb.MID))
+	return mid + TimeBinSeparator + tb.Token
+}
+
+func (tb *TimeBin) fromKey(k string) {
+	smid, token, found := strings.Cut(k, TimeBinSeparator)
+	if !found {
+		panic("BUG: key for histogram missing separator")
+	}
+
+	tb.Token = token
+	mid, _ := strconv.Atoi(smid)
+
+	tb.MID = MID(mid)
+}
+
 type QPRHistogram struct {
 	HistogramByToken map[TimeBin]*AggregationHistogram
 	NotExists        int64
+}
+
+type qprHistogram struct {
+	HistogramByToken map[string]*AggregationHistogram
+	NotExists        int64
+}
+
+func (q *QPRHistogram) MarshalJSON() ([]byte, error) {
+	qh := qprHistogram{
+		HistogramByToken: make(map[string]*AggregationHistogram),
+		NotExists:        q.NotExists,
+	}
+
+	for bin, hist := range q.HistogramByToken {
+		qh.HistogramByToken[bin.toKey()] = hist
+	}
+
+	return json.Marshal(qh)
+}
+
+func (q *QPRHistogram) UnmarshalJSON(b []byte) error {
+	var qh qprHistogram
+	if err := json.Unmarshal(b, &qh); err != nil {
+		return err
+	}
+
+	q.HistogramByToken = make(map[TimeBin]*AggregationHistogram, len(qh.HistogramByToken))
+	q.NotExists = qh.NotExists
+
+	for bKey, hist := range qh.HistogramByToken {
+		var tb TimeBin
+		(&tb).fromKey(bKey)
+		q.HistogramByToken[tb] = hist
+	}
+
+	return nil
 }
 
 type AggregationBucket struct {

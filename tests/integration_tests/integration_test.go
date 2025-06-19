@@ -1725,9 +1725,6 @@ func (s *IntegrationTestSuite) TestTimeField() {
 }
 
 func (s *IntegrationTestSuite) TestAsyncSearch() {
-	// TODO(dkharms): do not skip this test.
-	s.T().Skip()
-
 	t := s.T()
 	r := require.New(t)
 

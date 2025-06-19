@@ -125,7 +125,6 @@ func makeProtoAggregation(allAggregations []seq.AggregationResult) []*seqproxyap
 	aggs := make([]*seqproxyapi.Aggregation, 0, len(allAggregations))
 
 	for _, agg := range allAggregations {
-		// TODO(dkharms): WTF is this [bucketsBuf]? Delete it.
 		bucketsBuf := make([]seqproxyapi.Aggregation_Bucket, len(agg.Buckets))
 		buckets := make([]*seqproxyapi.Aggregation_Bucket, len(agg.Buckets))
 

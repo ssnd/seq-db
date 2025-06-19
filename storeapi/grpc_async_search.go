@@ -52,10 +52,20 @@ func (g *GrpcV1) FetchAsyncSearchResult(_ context.Context, r *storeapi.FetchAsyn
 
 	resp := buildSearchResponse(&fetchResp.QPR)
 
+	var canceledAt *timestamppb.Timestamp
+	if fetchResp.CanceledAt.IsZero() {
+		canceledAt = timestamppb.New(fetchResp.CanceledAt)
+	}
+
 	return &storeapi.FetchAsyncSearchResultResponse{
-		//Done:              fetchResp.Done,
+		Status:            storeapi.MustProtoAsyncSearchStatus(fetchResp.Status),
 		Response:          resp,
-		Expiration:        timestamppb.New(fetchResp.Expiration),
+		StartedAt:         timestamppb.New(fetchResp.StartedAt),
+		ExpiredAt:         timestamppb.New(fetchResp.ExpiredAt),
+		CanceledAt:        canceledAt,
+		FracsDone:         uint64(fetchResp.FracsDone),
+		FracsQueue:        uint64(fetchResp.FracsInQueue),
+		DiskUsage:         uint64(fetchResp.DiskUsage),
 		Aggs:              convertAggQueriesToProto(fetchResp.AggQueries),
 		HistogramInterval: int64(fetchResp.HistInterval),
 		Order:             storeapi.MustProtoOrder(fetchResp.Order),

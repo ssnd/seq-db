@@ -1760,15 +1760,15 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 
 	ctx := t.Context()
 	resp, err := searcher.StartAsyncSearch(ctx, search.AsyncRequest{
-		Query: "* | fields ip, method, uri",
-		From:  time.UnixMilli(0),
-		To:    time.Now().Add(time.Hour),
+		Query:     "* | fields ip, method, uri",
+		From:      time.UnixMilli(0),
+		To:        time.Now().Add(time.Hour),
+		Retention: time.Minute * 5,
 		Aggregations: []search.AggQuery{
 			{
-				Field:     "size",
-				GroupBy:   "ip",
-				Func:      seq.AggFuncSum,
-				Quantiles: nil,
+				Field:   "size",
+				GroupBy: "ip",
+				Func:    seq.AggFuncSum,
 			},
 			{
 				Field:     "size",
@@ -1782,16 +1782,14 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 	r.NoError(err)
 	r.NotEmpty(resp.ID)
 
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
-
 	fr := search.FetchAsyncSearchResultRequest{
 		ID:       resp.ID,
 		WithDocs: true,
 		Size:     100,
 		Offset:   0,
 	}
-
 	for ctx.Err() == nil {
 		fetchResp, err := searcher.FetchAsyncSearchResult(ctx, fr)
 		r.NoError(err)
@@ -1800,7 +1798,6 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 		}
 		time.Sleep(time.Millisecond * 200)
 	}
-
 	r.NoError(ctx.Err())
 
 	fetchResp, err := searcher.FetchAsyncSearchResult(ctx, fr)

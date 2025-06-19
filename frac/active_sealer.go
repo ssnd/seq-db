@@ -141,12 +141,11 @@ func writeSealedFraction(f *Active, info *Info, indexFile io.WriteSeeker, params
 
 	producer := NewDiskBlocksProducer()
 	writer := NewSealedBlockWriter(indexFile)
-	{
-		logger.Info("sealing frac stats...")
-		info.BuildDistribution(sortedIDs)
-		if err := writer.writeInfoBlock(producer.getInfoBlock(info)); err != nil {
-			return nil, fmt.Errorf("seal info error: %w", err)
-		}
+
+	logger.Info("sealing frac stats...")
+	info.BuildDistribution(sortedIDs)
+	if err := writer.writeInfoBlock(producer.getInfoBlock(info)); err != nil {
+		return nil, fmt.Errorf("seal info error: %w", err)
 	}
 
 	var tokenTable token.Table

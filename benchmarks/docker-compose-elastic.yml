@@ -1,0 +1,48 @@
+version: "3"
+
+services:
+  elastic-setup:
+    image: curlimages/curl:8.13.0
+    entrypoint: sh
+    command: /usr/share/elasticsearch/setup.sh
+    volumes:
+      - ./configs/elasticsearch/setup.sh:/usr/share/elasticsearch/setup.sh
+    depends_on:
+      elastic:
+        condition: service_healthy
+
+  elastic:
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: "8GB"
+    image: elasticsearch:8.17.4
+    volumes:
+      - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - elastic-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: [ "CMD-SHELL", "curl http://localhost:9200/_cat" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      ES_JAVA_OPTS: "-Xmx8192m -XX:+UnlockExperimentalVMOptions -XX:NewRatio=1 -XX:MaxMetaspaceSize=256m -server -XX:+ResizeTLAB -XX:+UseG1GC -XX:+UseStringDeduplication"
+
+  filed:
+    image: 'ghcr.io/ozontech/file.d:v0.58.1-alpine'
+    deploy:
+      resources:
+        limits:
+          memory: "12GB"
+    volumes:
+      - ./dataset/:/var/file.d/logs/
+      - filed-offsets:/var/file.d/offsets
+      - ./configs/file.d/elastic.yaml:/usr/share/file.d/elastic.yaml
+    command: ./file.d --config=/usr/share/file.d/elastic.yaml
+    depends_on:
+      - elastic-setup
+
+volumes:
+  elastic-data:
+  filed-offsets:

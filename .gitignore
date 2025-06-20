@@ -12,7 +12,6 @@ mem.out
 *.meta
 .frac-cache
 *.log
-logs/
 *.test
 /bin
 .DS_Store

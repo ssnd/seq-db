@@ -1,0 +1,7 @@
+cluster.name: "bench"
+network.host: 0.0.0.0
+xpack.security.enabled: false
+discovery.type: single-node
+bootstrap.memory_lock: true
+thread_pool.write.size: 5
+thread_pool.write.queue_size: -1

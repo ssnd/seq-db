@@ -269,8 +269,10 @@ func startStore(ctx context.Context, addr string, mp storeapi.MappingProvider) *
 				RequestsLimit:         *flagSearchRequestsLimit,
 				LogThreshold:          time.Millisecond * time.Duration(*flagLogSearchThresholdMs),
 				Async: fracmanager.AsyncSearcherConfig{
-					DataDir:     *flagAsyncSearchesDataDir,
-					Parallelism: *flagAsyncSearchesConcurrency,
+					DataDir:           *flagAsyncSearchesDataDir,
+					Parallelism:       *flagAsyncSearchesConcurrency,
+					MaxSize:           *flagAsyncSearchesMaxSize,
+					MaxSizePerRequest: *flagAsyncSearchesMaxSizePerRequest,
 				},
 			},
 			Fetch: storeapi.FetchConfig{

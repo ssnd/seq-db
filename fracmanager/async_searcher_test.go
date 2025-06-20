@@ -2,12 +2,10 @@ package fracmanager
 
 import (
 	"context"
-	"math"
-	"math/rand/v2"
-	"strconv"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/frac/processor"
@@ -50,9 +48,9 @@ func TestAsyncSearcherMaintain(t *testing.T) {
 	as := MustStartAsync(cfg, mp, nil)
 
 	req := AsyncSearchRequest{
-		ID:        strconv.Itoa(rand.N(math.MaxInt)),
+		ID:        uuid.New().String(),
 		Params:    processor.SearchParams{},
-		Query:     "",
+		Query:     "*",
 		Retention: time.Hour,
 	}
 	fracs := []frac.Fraction{

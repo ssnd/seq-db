@@ -21,9 +21,9 @@ type AsyncRequest struct {
 	Query             string
 	From              time.Time
 	To                time.Time
-	Order             seq.DocsOrder
 	Aggregations      []AggQuery
 	HistogramInterval seq.MID
+	WithDocs          bool
 }
 
 type AsyncResponse struct {
@@ -44,9 +44,9 @@ func (si *Ingestor) StartAsyncSearch(ctx context.Context, r AsyncRequest) (Async
 		From:              r.From.UnixMilli(),
 		To:                r.To.UnixMilli(),
 		Aggs:              convertToAggsQuery(r.Aggregations),
-		Order:             storeapi.MustProtoOrder(r.Order),
 		HistogramInterval: int64(r.HistogramInterval),
 		Retention:         durationpb.New(r.Retention),
+		WithDocs:          r.WithDocs,
 	}
 	for i, shard := range searchStores.Shards {
 		var err error
@@ -70,20 +70,19 @@ func (si *Ingestor) StartAsyncSearch(ctx context.Context, r AsyncRequest) (Async
 }
 
 type FetchAsyncSearchResultRequest struct {
-	ID       string
-	WithDocs bool
-	Size     int
-	Offset   int
+	ID     string
+	Size   int
+	Offset int
+	Order  seq.DocsOrder
 }
 
 type FetchAsyncSearchResultResponse struct {
 	Status     fracmanager.AsyncSearchStatus
 	QPR        seq.QPR
 	CanceledAt time.Time
-	Error      string
 
 	StartedAt time.Time
-	ExpiredAt time.Time
+	ExpiresAt time.Time
 
 	Progress  float64
 	DiskUsage uint64
@@ -99,74 +98,74 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 
 	req := storeapi.FetchAsyncSearchResultRequest{
 		SearchId: r.ID,
-		WithDocs: r.WithDocs,
 		Size:     int32(r.Size),
 		Offset:   int32(r.Offset),
 	}
 
 	fracsDone := 0
 	fracsInQueue := 0
+	histInterval := seq.MID(0)
+	pr := FetchAsyncSearchResultResponse{}
+	mergeStoreResp := func(sr *storeapi.FetchAsyncSearchResultResponse, replica string) {
+		pr.DiskUsage += sr.DiskUsage
+		fracsInQueue += int(sr.FracsQueue)
+		fracsDone += int(sr.FracsDone)
+
+		histInterval = seq.MID(sr.HistogramInterval)
+
+		ss := sr.Status.MustAsyncSearchStatus()
+		pr.Status = mergeAsyncSearchStatus(pr.Status, ss)
+
+		for _, errStr := range sr.GetResponse().GetErrors() {
+			pr.QPR.Errors = append(pr.QPR.Errors, seq.ErrorSource{
+				ErrStr: errStr,
+				Source: si.sourceByClient[replica],
+			})
+		}
+
+		t := sr.ExpiresAt.AsTime()
+		if pr.ExpiresAt.IsZero() || pr.ExpiresAt.After(t) {
+			pr.ExpiresAt = t
+		}
+
+		qpr := responseToQPR(sr.Response, si.sourceByClient[replica], false)
+		seq.MergeQPRs(&pr.QPR, []*seq.QPR{qpr}, r.Size, histInterval, r.Order)
+	}
+
 	var aggQueries []seq.AggregateArgs
 	anyResponse := false
-	histInterval := seq.MID(0)
-	resp := FetchAsyncSearchResultResponse{}
 	for _, shard := range searchStores.Shards {
-		var storeResp *storeapi.FetchAsyncSearchResultResponse
-		var err error
-		var replica string
-		for _, replica = range shard {
-			storeResp, err = si.clients[replica].FetchAsyncSearchResult(ctx, &req)
+		for _, replica := range shard {
+			storeResp, err := si.clients[replica].FetchAsyncSearchResult(ctx, &req)
 			if err != nil {
 				if status.Code(err) == codes.NotFound {
 					continue
 				}
 				return FetchAsyncSearchResultResponse{}, err
 			}
+			anyResponse = true
+			mergeStoreResp(storeResp, replica)
+			if len(aggQueries) == 0 {
+				for _, agg := range storeResp.Aggs {
+					aggQueries = append(aggQueries, seq.AggregateArgs{
+						Func:      agg.Func.MustAggFunc(),
+						Quantiles: agg.Quantiles,
+					})
+				}
+			}
 			break
 		}
-		if err != nil {
-			logger.Warn("shard does not have async search request")
-			continue
-		}
-		anyResponse = true
-
-		resp.DiskUsage += storeResp.DiskUsage
-		fracsInQueue += int(storeResp.FracsQueue)
-		fracsDone += int(storeResp.FracsDone)
-
-		histInterval = seq.MID(storeResp.HistogramInterval)
-		order := storeResp.Order.MustDocsOrder()
-
-		ss := storeResp.Status.MustAsyncSearchStatus()
-		resp.Status = mergeAsyncSearchStatus(resp.Status, ss)
-
-		t := storeResp.ExpiredAt.AsTime()
-		if resp.ExpiredAt.IsZero() || resp.ExpiredAt.After(t) {
-			resp.ExpiredAt = t
-		}
-
-		if len(aggQueries) == 0 {
-			for _, agg := range storeResp.Aggs {
-				aggQueries = append(aggQueries, seq.AggregateArgs{
-					Func:      agg.Func.MustAggFunc(),
-					Quantiles: agg.Quantiles,
-				})
-			}
-		}
-		qpr := responseToQPR(storeResp.Response, si.sourceByClient[replica], false)
-		seq.MergeQPRs(&resp.QPR, []*seq.QPR{qpr}, r.Size, histInterval, order)
 	}
 	if !anyResponse {
 		return FetchAsyncSearchResultResponse{}, status.Error(codes.NotFound, "async search result not found")
 	}
 
-	resp.Progress = (float64(fracsDone) + float64(fracsInQueue)) / float64(fracsDone)
-	if resp.Status == fracmanager.AsyncSearchStatusDone {
-		resp.Progress = 1
+	pr.Progress = (float64(fracsDone) + float64(fracsInQueue)) / float64(fracsDone)
+	if pr.Status == fracmanager.AsyncSearchStatusDone {
+		pr.Progress = 1
 	}
-
-	resp.AggResult = resp.QPR.Aggregate(aggQueries)
-	return resp, nil
+	pr.AggResult = pr.QPR.Aggregate(aggQueries)
+	return pr, nil
 }
 
 func mergeAsyncSearchStatus(a, b fracmanager.AsyncSearchStatus) fracmanager.AsyncSearchStatus {

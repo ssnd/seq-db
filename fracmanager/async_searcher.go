@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,15 +44,20 @@ var (
 		Name:      "in_progress",
 		Help:      "Amount of active async searches in progress",
 	})
-	diskUsage = promauto.NewGauge(prometheus.GaugeOpts{
+	diskUsage = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "seq_db_store",
 		Subsystem: "async_search",
-		Name:      "disk_usage_bytes",
-	})
+		Name:      "disk_usage_bytes_total",
+	}, []string{"file_type"})
 	storedRequests = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "seq_db_store",
 		Subsystem: "async_search",
 		Name:      "stored_requests",
+	})
+	readOnly = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "seq_db_store",
+		Subsystem: "async_search",
+		Name:      "read_only",
 	})
 )
 
@@ -68,6 +74,7 @@ type AsyncSearcher struct {
 	requestsMu *sync.RWMutex
 	requests   map[string]asyncSearchInfo
 	rateLimit  chan struct{}
+	readOnly   atomic.Bool
 
 	processWg *sync.WaitGroup
 }
@@ -75,6 +82,9 @@ type AsyncSearcher struct {
 type AsyncSearcherConfig struct {
 	DataDir     string
 	Parallelism int
+
+	MaxSize           int
+	MaxSizePerRequest int
 }
 
 func MustStartAsync(config AsyncSearcherConfig, mp MappingProvider, fracs List) *AsyncSearcher {
@@ -144,7 +154,11 @@ type asyncSearchInfo struct {
 	StartedAt time.Time
 
 	// merged is true if QPRs have been merged into a single one.
-	merged bool
+	merged *atomic.Bool
+	// qprsSize is the total size of mqpr or qpr files on disk.
+	qprsSize *atomic.Int64
+	// infoSize is the total size of the info file on disk.
+	infoSize *atomic.Int64
 }
 
 func newAsyncSearchInfo(r AsyncSearchRequest, list List) asyncSearchInfo {
@@ -162,7 +176,9 @@ func newAsyncSearchInfo(r AsyncSearchRequest, list List) asyncSearchInfo {
 		Request:    r,
 		Fractions:  fracsToSearch,
 		StartedAt:  time.Now(),
-		merged:     false,
+		merged:     &atomic.Bool{},
+		qprsSize:   &atomic.Int64{},
+		infoSize:   &atomic.Int64{},
 	}
 }
 
@@ -170,7 +186,7 @@ func (i *asyncSearchInfo) Canceled() bool {
 	return !i.CanceledAt.IsZero()
 }
 
-func (i *asyncSearchInfo) ExpiredAt() bool {
+func (i *asyncSearchInfo) Expired() bool {
 	expiration := i.Expiration()
 	return expiration.Before(time.Now())
 }
@@ -180,6 +196,9 @@ func (i *asyncSearchInfo) Expiration() time.Time {
 }
 
 func (as *AsyncSearcher) StartSearch(r AsyncSearchRequest, fracs List) error {
+	if as.readOnly.Load() {
+		return fmt.Errorf("cannot start search on read-only mode")
+	}
 	as.requestsMu.RLock()
 	_, ok := as.requests[r.ID]
 	as.requestsMu.RUnlock()
@@ -230,7 +249,7 @@ func (as *AsyncSearcher) saveSearchInfo(r AsyncSearchRequest, fracs List) bool {
 		return false
 	}
 	info := newAsyncSearchInfo(r, fracs)
-	as.updateSearchInfoLocked(r.ID, info)
+	as.storeSearchInfoLocked(r.ID, info)
 	return true
 }
 
@@ -239,7 +258,7 @@ func (as *AsyncSearcher) updateSearchInfo(id string, update func(info *asyncSear
 	defer as.requestsMu.Unlock()
 	info := as.requests[id]
 	update(&info)
-	as.updateSearchInfoLocked(id, info)
+	as.storeSearchInfoLocked(id, info)
 }
 
 func (as *AsyncSearcher) getSearchInfo(id string) (asyncSearchInfo, bool) {
@@ -249,12 +268,7 @@ func (as *AsyncSearcher) getSearchInfo(id string) (asyncSearchInfo, bool) {
 	return v, ok
 }
 
-func (as *AsyncSearcher) updateSearchInfoLocked(id string, info asyncSearchInfo) {
-	as.mustWriteSearchInfo(id, info)
-	as.requests[id] = info
-}
-
-func (as *AsyncSearcher) mustWriteSearchInfo(id string, info asyncSearchInfo) {
+func (as *AsyncSearcher) storeSearchInfoLocked(id string, info asyncSearchInfo) {
 	as.createDataDir()
 	b, err := json.Marshal(info)
 	if err != nil {
@@ -262,6 +276,8 @@ func (as *AsyncSearcher) mustWriteSearchInfo(id string, info asyncSearchInfo) {
 	}
 	fpath := path.Join(as.config.DataDir, id+asyncSearchExtInfo)
 	mustWriteFileAtomic(fpath, b)
+	info.infoSize.Store(int64(len(b)))
+	as.requests[id] = info
 }
 
 // createDataDir creates dir data lazily to avoid creating extra folders.
@@ -327,25 +343,20 @@ func (as *AsyncSearcher) doSearch(id string, fracs List) {
 			continue
 		}
 
-		info, ok := as.getSearchInfo(id)
+		infoCopy, ok := as.getSearchInfo(id)
 		if !ok {
 			panic(fmt.Errorf("can't find async search request for id %s", id))
 		}
-		stop := info.Canceled() || info.ExpiredAt()
-		if stop {
-			as.updateSearchInfo(id, func(info *asyncSearchInfo) {
-				info.Finished = true
-			})
-			return
+		if infoCopy.Canceled() || infoCopy.Expired() {
+			break
 		}
 
 		f := fracsByName[fracInfo.Name]
-		if err := as.processFrac(info.ctx, f, info.Request); err != nil {
+		if err := as.processFrac(infoCopy.ctx, f, infoCopy); err != nil {
 			as.updateSearchInfo(id, func(info *asyncSearchInfo) {
-				info.Finished = true
 				info.Error = err.Error()
 			})
-			return
+			break
 		}
 	}
 	as.updateSearchInfo(id, func(info *asyncSearchInfo) {
@@ -355,31 +366,47 @@ func (as *AsyncSearcher) doSearch(id string, fracs List) {
 
 var qprMarshalBufPool util.BufferPool
 
-func compressQPR(qpr *seq.QPR, cb func(compressed []byte)) {
+func compressQPR(qpr *seq.QPR, cb func(compressed []byte) error) error {
 	rawQPR := qprMarshalBufPool.Get()
+	defer qprMarshalBufPool.Put(rawQPR)
+
 	rawQPR.B = marshalQPR(qpr, rawQPR.B)
 
-	level := getCompressLevel(len(rawQPR.B))
 	compressed := bytespool.AcquireReset(len(rawQPR.B))
+	defer bytespool.Release(compressed)
+
+	level := getCompressLevel(len(rawQPR.B))
 	compressed.B = zstd.CompressLevel(rawQPR.B, compressed.B, level)
-	qprMarshalBufPool.Put(rawQPR)
-	cb(compressed.B)
-	bytespool.Release(compressed)
+	if err := cb(compressed.B); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (as *AsyncSearcher) processFrac(ctx context.Context, f frac.Fraction, r AsyncSearchRequest) error {
+func (as *AsyncSearcher) processFrac(ctx context.Context, f frac.Fraction, info asyncSearchInfo) error {
 	dp, release := f.DataProvider(ctx)
-	qpr, err := dp.Search(r.Params)
+	qpr, err := dp.Search(info.Request.Params)
 	release()
 	if err != nil {
 		return err
 	}
 
-	name := getQPRFilename(r.ID, f.Info().Name())
-	fpath := path.Join(as.config.DataDir, name)
-	compressQPR(qpr, func(compressed []byte) {
-		mustWriteFileAtomic(fpath, compressed)
-	})
+	storeQPR := func(rawQPR []byte) error {
+		du := int(info.qprsSize.Load() + info.infoSize.Load())
+		if as.config.MaxSizePerRequest != 0 && du+len(rawQPR) > as.config.MaxSizePerRequest {
+			return fmt.Errorf("cannot complete async search request since it requires more than %dMiB of memory", as.config.MaxSizePerRequest)
+		}
+
+		name := getQPRFilename(info.Request.ID, f.Info().Name())
+		fpath := path.Join(as.config.DataDir, name)
+		mustWriteFileAtomic(fpath, rawQPR)
+
+		info.qprsSize.Add(int64(len(rawQPR)))
+		return nil
+	}
+	if err := compressQPR(qpr, storeQPR); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -432,17 +459,17 @@ func loadAsyncSearches(dataDir string) (map[string]asyncSearchInfo, error) {
 		return nil, err
 	}
 
-	areQPRsMerged := make(map[string]struct{})
-	loadMergedQPRs := func(name string) error {
+	areQPRsMerged := make(map[string]bool)
+	loadMergedQPRsInfo := func(name string) error {
 		parts := strings.Split(name, ".")
 		if len(parts) != 2 {
 			return fmt.Errorf("unknown mqpr filename format: %s", name)
 		}
 		requestID := parts[0]
-		areQPRsMerged[requestID] = struct{}{}
+		areQPRsMerged[requestID] = true
 		return nil
 	}
-	if err := visitFilesWithExt(des, asyncSearchExtMergedQPR, loadMergedQPRs); err != nil {
+	if err := visitFilesWithExt(des, asyncSearchExtMergedQPR, loadMergedQPRsInfo); err != nil {
 		return nil, err
 	}
 
@@ -481,6 +508,37 @@ func loadAsyncSearches(dataDir string) (map[string]asyncSearchInfo, error) {
 		mustFsyncFile(dataDir)
 	}
 
+	qprsDuByID := make(map[string]int)
+	infoDuByID := make(map[string]int)
+	for _, de := range des {
+		if de.IsDir() {
+			continue
+		}
+		name := de.Name()
+		ext := path.Ext(name)
+		if ext != asyncSearchExtQPR && ext != asyncSearchExtMergedQPR && ext != asyncSearchExtInfo {
+			continue
+		}
+		n := strings.IndexByte(name, '.')
+		if n <= 0 {
+			continue
+		}
+		id := name[:n]
+		info, err := de.Info()
+		if err != nil {
+			return nil, fmt.Errorf("cannot get disk usage: %s", err)
+		}
+		size := int(info.Size())
+		switch ext {
+		case asyncSearchExtQPR, asyncSearchExtMergedQPR:
+			qprsDuByID[id] += size
+		case asyncSearchExtInfo:
+			infoDuByID[id] = size
+		default:
+			panic("unreachable")
+		}
+	}
+
 	requests := make(map[string]asyncSearchInfo)
 	loadInfos := func(name string) error {
 		parts := strings.Split(name, ".")
@@ -497,8 +555,10 @@ func loadAsyncSearches(dataDir string) (map[string]asyncSearchInfo, error) {
 			return fmt.Errorf("malformed async search info %q: %s", name, err)
 		}
 
-		_, merged := areQPRsMerged[requestID]
-		info.merged = merged
+		info.merged.Store(areQPRsMerged[requestID])
+		info.qprsSize.Store(int64(qprsDuByID[requestID]))
+		info.infoSize.Store(int64(infoDuByID[requestID]))
+		info.Request.ID = requestID
 		requests[requestID] = info
 		return nil
 	}
@@ -553,7 +613,7 @@ type FetchSearchResultResponse struct {
 	Error      string
 
 	StartedAt time.Time
-	ExpiredAt time.Time
+	ExpiresAt time.Time
 
 	FracsDone    int
 	FracsInQueue int
@@ -562,7 +622,6 @@ type FetchSearchResultResponse struct {
 	// Stuff that needed seq-db proxy to complete async search response.
 	AggQueries   []processor.AggQuery
 	HistInterval uint64
-	Order        seq.DocsOrder
 }
 
 func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSearchResultResponse, bool) {
@@ -572,7 +631,7 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 	}
 
 	var qprsPaths []string
-	if info.merged {
+	if info.merged.Load() {
 		qprsPaths = []string{path.Join(as.config.DataDir, r.ID+asyncSearchExtMergedQPR)}
 	} else {
 		// todo do not conflict with the merge stage
@@ -606,11 +665,17 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 		fracsInQueue = len(info.Fractions)
 	}
 
+	if info.Error != "" {
+		qpr.Errors = append(qpr.Errors, seq.ErrorSource{
+			ErrStr: info.Error,
+		})
+	}
+
 	return FetchSearchResultResponse{
 		Status:       status,
 		QPR:          qpr,
 		StartedAt:    info.StartedAt,
-		ExpiredAt:    info.Expiration(),
+		ExpiresAt:    info.Expiration(),
 		CanceledAt:   info.CanceledAt,
 		FracsDone:    fracsDone,
 		FracsInQueue: fracsInQueue,
@@ -618,7 +683,6 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 		Error:        info.Error,
 		AggQueries:   info.Request.Params.AggQ,
 		HistInterval: info.Request.Params.HistInterval,
-		Order:        info.Request.Params.Order,
 	}, true
 }
 
@@ -657,25 +721,20 @@ func (as *AsyncSearcher) startMaintenance() {
 	for {
 		now := timeNow()
 		as.removeExpiredResults(now)
-		as.mergeQPRs()
-		as.updateStats()
+		as.merge()
+		as.checkDiskUsage()
 		const maintenanceInterval = 5 * time.Second
 		time.Sleep(maintenanceInterval)
 	}
 }
 
-type mergeJob struct {
-	ID    string
-	Fracs []fracSearchState
-}
-
-func (as *AsyncSearcher) mergeQPRs() {
+func (as *AsyncSearcher) merge() {
 	now := timeNow()
 	var mergeJobs []mergeJob
 	as.requestsMu.RLock()
 	for id := range as.requests {
 		r := as.requests[id]
-		if !r.Finished || r.merged {
+		if !r.Finished || r.merged.Load() {
 			continue
 		}
 		if len(r.Fractions) < 2 {
@@ -696,12 +755,20 @@ func (as *AsyncSearcher) mergeQPRs() {
 	if len(mergeJobs) == 0 {
 		return
 	}
-	for _, job := range mergeJobs {
-		as.mergeQPR(job)
+	for id := range mergeJobs {
+		job := mergeJobs[id]
+		as.mergeQPRs(job)
 	}
 }
 
-func (as *AsyncSearcher) mergeQPR(job mergeJob) {
+type mergeJob struct {
+	ID    string
+	Fracs []fracSearchState
+
+	Info asyncSearchInfo
+}
+
+func (as *AsyncSearcher) mergeQPRs(job mergeJob) {
 	start := time.Now()
 	var qprs []string
 	for _, f := range job.Fracs {
@@ -709,17 +776,21 @@ func (as *AsyncSearcher) mergeQPR(job mergeJob) {
 		qprPath := path.Join(as.config.DataDir, qprFilename)
 		qprs = append(qprs, qprPath)
 	}
-	qpr, sizeBefore := as.loadSearchResult(qprs, seq.DocsOrderAsc)
+	qpr, sizeBefore := as.loadSearchResult(qprs, seq.DocsOrderDesc)
 
-	mqprPath := path.Join(as.config.DataDir, job.ID+asyncSearchExtMergedQPR)
 	var sizeAfter int
-	compressQPR(&qpr, func(compressed []byte) {
+	storeMQPR := func(compressed []byte) error {
 		sizeAfter = len(compressed)
+		mqprPath := path.Join(as.config.DataDir, job.ID+asyncSearchExtMergedQPR)
 		mustWriteFileAtomic(mqprPath, compressed)
-	})
-	as.updateSearchInfo(job.ID, func(info *asyncSearchInfo) {
-		info.merged = true
-	})
+		return nil
+	}
+	if err := compressQPR(&qpr, storeMQPR); err != nil {
+		panic(fmt.Errorf("can't compress async search result: %s", err))
+	}
+
+	job.Info.merged.Store(true)
+	job.Info.qprsSize.Add(int64(sizeAfter))
 
 	for _, qprPath := range qprs {
 		// Remove unnecessary QPRs since we have merged QPR result
@@ -785,34 +856,30 @@ func (as *AsyncSearcher) removeExpiredResults(now time.Time) {
 	logger.Info("async search results have been removed", zap.Int("count", len(toRemove)), zap.Duration("took", time.Since(now)))
 }
 
-func (as *AsyncSearcher) updateStats() {
-	files, err := os.ReadDir(as.config.DataDir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return
-		}
-		logger.Fatal("can't read dir", zap.String("dir", as.config.DataDir), zap.Error(err))
-	}
+func (as *AsyncSearcher) checkDiskUsage() {
+	as.requestsMu.RLock()
+	defer as.requestsMu.RUnlock()
 
-	diskUsageBytes := int64(0)
-	infos := 0
-	for _, f := range files {
-		if f.IsDir() {
-			continue
-		}
-		info, err := f.Info()
-		if err != nil {
-			logger.Error("can't get async search file info", zap.String("dir", as.config.DataDir), zap.Error(err))
-			continue
-		}
-		ext := path.Ext(info.Name())
-		if ext == asyncSearchExtInfo {
-			infos++
-		}
-		diskUsageBytes += info.Size()
+	infoDu := 0
+	qprsDu := 0
+	for id := range as.requests {
+		r := as.requests[id]
+		infoDu += int(r.infoSize.Load())
+		qprsDu += int(r.qprsSize.Load())
 	}
-	diskUsage.Set(float64(diskUsageBytes))
-	storedRequests.Set(float64(infos))
+	diskUsage.WithLabelValues("info").Set(float64(infoDu))
+	diskUsage.WithLabelValues("qpr").Set(float64(qprsDu))
+	storedRequests.Set(float64(len(as.requests)))
+
+	du := infoDu + qprsDu
+	if as.config.MaxSize != 0 && du >= as.config.MaxSize {
+		as.readOnly.Store(true)
+		logger.Error("disk usage limit exceeded, read-only mode enabled", zap.Int("current", du), zap.Int("limit", as.config.MaxSize))
+		readOnly.Set(1)
+	} else {
+		as.readOnly.Store(false)
+		readOnly.Set(0)
+	}
 }
 
 func mustWriteFileAtomic(fpath string, data []byte) {

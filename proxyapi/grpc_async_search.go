@@ -31,9 +31,9 @@ func (g *grpcV1) StartAsyncSearch(ctx context.Context, r *seqproxyapi.StartAsync
 		Query:             r.GetQuery().GetQuery(),
 		From:              r.GetQuery().GetFrom().AsTime(),
 		To:                r.GetQuery().GetTo().AsTime(),
-		Order:             r.Order.MustDocsOrder(),
 		Aggregations:      aggs,
 		HistogramInterval: seq.MID(histInterval.Milliseconds()),
+		WithDocs:          r.WithDocs,
 	})
 	if err != nil {
 		return nil, err
@@ -45,10 +45,9 @@ func (g *grpcV1) StartAsyncSearch(ctx context.Context, r *seqproxyapi.StartAsync
 
 func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.FetchAsyncSearchResultRequest) (*seqproxyapi.FetchAsyncSearchResultResponse, error) {
 	resp, err := g.searchIngestor.FetchAsyncSearchResult(ctx, search.FetchAsyncSearchResultRequest{
-		ID:       r.SearchId,
-		WithDocs: r.WithDocs,
-		Size:     int(r.Size),
-		Offset:   int(r.Offset),
+		ID:     r.SearchId,
+		Size:   int(r.Size),
+		Offset: int(r.Offset),
 	})
 	if err != nil {
 		return nil, err
@@ -70,7 +69,7 @@ func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.Fetc
 			Explain: nil,
 		},
 		StartedAt:  timestamppb.New(resp.StartedAt),
-		ExpiredAt:  timestamppb.New(resp.ExpiredAt),
+		ExpiresAt:  timestamppb.New(resp.ExpiresAt),
 		CanceledAt: canceledAt,
 		Progress:   resp.Progress,
 		DiskUsage:  resp.DiskUsage,

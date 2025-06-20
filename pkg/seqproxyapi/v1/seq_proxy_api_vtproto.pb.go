@@ -365,7 +365,7 @@ func (m *StartAsyncSearchRequest) CloneVT() *StartAsyncSearchRequest {
 	r.Retention = (*durationpb.Duration)((*durationpb1.Duration)(m.Retention).CloneVT())
 	r.Query = m.Query.CloneVT()
 	r.Hist = m.Hist.CloneVT()
-	r.Order = m.Order
+	r.WithDocs = m.WithDocs
 	if rhs := m.Aggs; rhs != nil {
 		tmpContainer := make([]*AggQuery, len(rhs))
 		for k, v := range rhs {
@@ -407,9 +407,9 @@ func (m *FetchAsyncSearchResultRequest) CloneVT() *FetchAsyncSearchResultRequest
 	}
 	r := new(FetchAsyncSearchResultRequest)
 	r.SearchId = m.SearchId
-	r.WithDocs = m.WithDocs
 	r.Size = m.Size
 	r.Offset = m.Offset
+	r.Order = m.Order
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -429,7 +429,7 @@ func (m *FetchAsyncSearchResultResponse) CloneVT() *FetchAsyncSearchResultRespon
 	r.Status = m.Status
 	r.Response = m.Response.CloneVT()
 	r.StartedAt = (*timestamppb.Timestamp)((*timestamppb1.Timestamp)(m.StartedAt).CloneVT())
-	r.ExpiredAt = (*timestamppb.Timestamp)((*timestamppb1.Timestamp)(m.ExpiredAt).CloneVT())
+	r.ExpiresAt = (*timestamppb.Timestamp)((*timestamppb1.Timestamp)(m.ExpiresAt).CloneVT())
 	r.CanceledAt = (*timestamppb.Timestamp)((*timestamppb1.Timestamp)(m.CanceledAt).CloneVT())
 	r.Progress = m.Progress
 	r.DiskUsage = m.DiskUsage
@@ -1275,7 +1275,7 @@ func (this *StartAsyncSearchRequest) EqualVT(that *StartAsyncSearchRequest) bool
 	if !this.Hist.EqualVT(that.Hist) {
 		return false
 	}
-	if this.Order != that.Order {
+	if this.WithDocs != that.WithDocs {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1316,13 +1316,13 @@ func (this *FetchAsyncSearchResultRequest) EqualVT(that *FetchAsyncSearchResultR
 	if this.SearchId != that.SearchId {
 		return false
 	}
-	if this.WithDocs != that.WithDocs {
-		return false
-	}
 	if this.Size != that.Size {
 		return false
 	}
 	if this.Offset != that.Offset {
+		return false
+	}
+	if this.Order != that.Order {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1350,7 +1350,7 @@ func (this *FetchAsyncSearchResultResponse) EqualVT(that *FetchAsyncSearchResult
 	if !(*timestamppb1.Timestamp)(this.StartedAt).EqualVT((*timestamppb1.Timestamp)(that.StartedAt)) {
 		return false
 	}
-	if !(*timestamppb1.Timestamp)(this.ExpiredAt).EqualVT((*timestamppb1.Timestamp)(that.ExpiredAt)) {
+	if !(*timestamppb1.Timestamp)(this.ExpiresAt).EqualVT((*timestamppb1.Timestamp)(that.ExpiresAt)) {
 		return false
 	}
 	if !(*timestamppb1.Timestamp)(this.CanceledAt).EqualVT((*timestamppb1.Timestamp)(that.CanceledAt)) {
@@ -3204,8 +3204,13 @@ func (m *StartAsyncSearchRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Order != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Order))
+	if m.WithDocs {
+		i--
+		if m.WithDocs {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
 		i--
 		dAtA[i] = 0x28
 	}
@@ -3324,23 +3329,18 @@ func (m *FetchAsyncSearchResultRequest) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Offset != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Offset))
+	if m.Order != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Order))
 		i--
 		dAtA[i] = 0x20
 	}
-	if m.Size != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
+	if m.Offset != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Offset))
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.WithDocs {
-		i--
-		if m.WithDocs {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
+	if m.Size != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -3405,8 +3405,8 @@ func (m *FetchAsyncSearchResultResponse) MarshalToSizedBufferVT(dAtA []byte) (in
 		i--
 		dAtA[i] = 0x2a
 	}
-	if m.ExpiredAt != nil {
-		size, err := (*timestamppb1.Timestamp)(m.ExpiredAt).MarshalToSizedBufferVT(dAtA[:i])
+	if m.ExpiresAt != nil {
+		size, err := (*timestamppb1.Timestamp)(m.ExpiresAt).MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -5128,8 +5128,13 @@ func (m *StartAsyncSearchRequest) MarshalToSizedBufferVTStrict(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Order != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Order))
+	if m.WithDocs {
+		i--
+		if m.WithDocs {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
 		i--
 		dAtA[i] = 0x28
 	}
@@ -5248,23 +5253,18 @@ func (m *FetchAsyncSearchResultRequest) MarshalToSizedBufferVTStrict(dAtA []byte
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Offset != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Offset))
+	if m.Order != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Order))
 		i--
 		dAtA[i] = 0x20
 	}
-	if m.Size != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
+	if m.Offset != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Offset))
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.WithDocs {
-		i--
-		if m.WithDocs {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
+	if m.Size != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -5329,8 +5329,8 @@ func (m *FetchAsyncSearchResultResponse) MarshalToSizedBufferVTStrict(dAtA []byt
 		i--
 		dAtA[i] = 0x2a
 	}
-	if m.ExpiredAt != nil {
-		size, err := (*timestamppb1.Timestamp)(m.ExpiredAt).MarshalToSizedBufferVTStrict(dAtA[:i])
+	if m.ExpiresAt != nil {
+		size, err := (*timestamppb1.Timestamp)(m.ExpiresAt).MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -6505,8 +6505,8 @@ func (m *StartAsyncSearchRequest) SizeVT() (n int) {
 		l = m.Hist.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Order != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Order))
+	if m.WithDocs {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -6536,14 +6536,14 @@ func (m *FetchAsyncSearchResultRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.WithDocs {
-		n += 2
-	}
 	if m.Size != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Size))
 	}
 	if m.Offset != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Offset))
+	}
+	if m.Order != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Order))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -6566,8 +6566,8 @@ func (m *FetchAsyncSearchResultResponse) SizeVT() (n int) {
 		l = (*timestamppb1.Timestamp)(m.StartedAt).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ExpiredAt != nil {
-		l = (*timestamppb1.Timestamp)(m.ExpiredAt).SizeVT()
+	if m.ExpiresAt != nil {
+		l = (*timestamppb1.Timestamp)(m.ExpiresAt).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.CanceledAt != nil {
@@ -9175,9 +9175,9 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 5:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Order", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field WithDocs", wireType)
 			}
-			m.Order = 0
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -9187,11 +9187,12 @@ func (m *StartAsyncSearchRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Order |= Order(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.WithDocs = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -9360,26 +9361,6 @@ func (m *FetchAsyncSearchResultRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WithDocs", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.WithDocs = bool(v != 0)
-		case 3:
-			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
 			}
 			m.Size = 0
@@ -9397,7 +9378,7 @@ func (m *FetchAsyncSearchResultRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Offset", wireType)
 			}
@@ -9412,6 +9393,25 @@ func (m *FetchAsyncSearchResultRequest) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Offset |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Order", wireType)
+			}
+			m.Order = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Order |= Order(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -9560,7 +9560,7 @@ func (m *FetchAsyncSearchResultResponse) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpiredAt", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresAt", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -9587,10 +9587,10 @@ func (m *FetchAsyncSearchResultResponse) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.ExpiredAt == nil {
-				m.ExpiredAt = &timestamppb.Timestamp{}
+			if m.ExpiresAt == nil {
+				m.ExpiresAt = &timestamppb.Timestamp{}
 			}
-			if err := (*timestamppb1.Timestamp)(m.ExpiredAt).UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := (*timestamppb1.Timestamp)(m.ExpiresAt).UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -13724,9 +13724,9 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 5:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Order", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field WithDocs", wireType)
 			}
-			m.Order = 0
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -13736,11 +13736,12 @@ func (m *StartAsyncSearchRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Order |= Order(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.WithDocs = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -13917,26 +13918,6 @@ func (m *FetchAsyncSearchResultRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WithDocs", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.WithDocs = bool(v != 0)
-		case 3:
-			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
 			}
 			m.Size = 0
@@ -13954,7 +13935,7 @@ func (m *FetchAsyncSearchResultRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Offset", wireType)
 			}
@@ -13969,6 +13950,25 @@ func (m *FetchAsyncSearchResultRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Offset |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Order", wireType)
+			}
+			m.Order = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Order |= Order(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -14117,7 +14117,7 @@ func (m *FetchAsyncSearchResultResponse) UnmarshalVTUnsafe(dAtA []byte) error {
 			iNdEx = postIndex
 		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpiredAt", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresAt", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -14144,10 +14144,10 @@ func (m *FetchAsyncSearchResultResponse) UnmarshalVTUnsafe(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.ExpiredAt == nil {
-				m.ExpiredAt = &timestamppb.Timestamp{}
+			if m.ExpiresAt == nil {
+				m.ExpiresAt = &timestamppb.Timestamp{}
 			}
-			if err := (*timestamppb1.Timestamp)(m.ExpiredAt).UnmarshalVTUnsafe(dAtA[iNdEx:postIndex]); err != nil {
+			if err := (*timestamppb1.Timestamp)(m.ExpiresAt).UnmarshalVTUnsafe(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

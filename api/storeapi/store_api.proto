@@ -125,16 +125,15 @@ message StartAsyncSearchRequest {
   int64 to = 5;
   repeated AggQuery aggs = 6;
   int64 histogram_interval = 7;
-  Order order = 8;
+  bool with_docs = 8;
 }
 
 message StartAsyncSearchResponse {}
 
 message FetchAsyncSearchResultRequest {
   string search_id = 1;
-  bool with_docs = 2;
-  int32 size = 3;
-  int32 offset = 4;
+  int32 size = 2;
+  int32 offset = 3;
 }
 
 enum AsyncSearchStatus {
@@ -148,7 +147,7 @@ message FetchAsyncSearchResultResponse {
   AsyncSearchStatus status = 1;
   SearchResponse response = 2;
   google.protobuf.Timestamp started_at = 3;
-  google.protobuf.Timestamp expired_at = 4;
+  google.protobuf.Timestamp expires_at = 4;
   optional google.protobuf.Timestamp canceled_at = 5;
   uint64 fracs_done = 6;
   uint64 fracs_queue = 7;
@@ -156,7 +155,6 @@ message FetchAsyncSearchResultResponse {
 
   repeated AggQuery aggs = 9;
   int64 histogram_interval = 10;
-  Order order = 11;
 }
 
 message IdWithHint {

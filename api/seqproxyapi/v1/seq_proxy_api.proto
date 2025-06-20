@@ -231,7 +231,7 @@ message StartAsyncSearchRequest {
   SearchQuery query = 2;        // Search query.
   repeated AggQuery aggs = 3;   // List of aggregation queries.
   optional HistQuery hist = 4;  // Histogram query.
-  Order order = 5;              // Document order ORDER_DESC/ORDER_ASC.
+  bool with_docs = 5;
 }
 
 message StartAsyncSearchResponse {
@@ -240,9 +240,9 @@ message StartAsyncSearchResponse {
 
 message FetchAsyncSearchResultRequest {
   string search_id = 1;
-  bool with_docs = 2;
-  int32 size = 3;
-  int32 offset = 4;
+  int32 size = 2;
+  int32 offset = 3;
+  Order order = 4;
 }
 
 enum AsyncSearchStatus {
@@ -256,9 +256,9 @@ message FetchAsyncSearchResultResponse {
   AsyncSearchStatus status = 1;
   ComplexSearchResponse response = 2;
   google.protobuf.Timestamp started_at = 3;
-  google.protobuf.Timestamp expired_at = 4;
+  google.protobuf.Timestamp expires_at = 4;
   optional google.protobuf.Timestamp canceled_at = 5;
-  // Search progress in range [0, 1]
+  // Search progress in range [0, 1].
   double progress = 6;
   // The size of data stored on disk, in bytes.
   uint64 disk_usage = 7;

@@ -641,7 +641,7 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 		}
 		qprsPaths = v
 	}
-	qpr, size := as.loadSearchResult(qprsPaths, info.Request.Params.Order)
+	qpr, _ := as.loadSearchResult(qprsPaths, info.Request.Params.Order)
 
 	var status AsyncSearchStatus
 	var fracsDone, fracsInQueue int
@@ -679,7 +679,7 @@ func (as *AsyncSearcher) FetchSearchResult(r FetchSearchResultRequest) (FetchSea
 		CanceledAt:   info.CanceledAt,
 		FracsDone:    fracsDone,
 		FracsInQueue: fracsInQueue,
-		DiskUsage:    size,
+		DiskUsage:    int(info.infoSize.Load() + info.qprsSize.Load()),
 		Error:        info.Error,
 		AggQueries:   info.Request.Params.AggQ,
 		HistInterval: info.Request.Params.HistInterval,
@@ -732,7 +732,7 @@ func (as *AsyncSearcher) merge() {
 	now := timeNow()
 	var mergeJobs []mergeJob
 	as.requestsMu.RLock()
-	for id := range as.requests {
+	for id, info := range as.requests {
 		r := as.requests[id]
 		if !r.Finished || r.merged.Load() {
 			continue
@@ -748,13 +748,11 @@ func (as *AsyncSearcher) merge() {
 		mergeJobs = append(mergeJobs, mergeJob{
 			ID:    id,
 			Fracs: r.Fractions,
+			Info:  info,
 		})
 	}
 	as.requestsMu.RUnlock()
 
-	if len(mergeJobs) == 0 {
-		return
-	}
 	for id := range mergeJobs {
 		job := mergeJobs[id]
 		as.mergeQPRs(job)

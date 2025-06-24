@@ -127,6 +127,10 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 		if pr.ExpiresAt.IsZero() || pr.ExpiresAt.After(t) {
 			pr.ExpiresAt = t
 		}
+		t = sr.StartedAt.AsTime()
+		if pr.StartedAt.IsZero() || pr.StartedAt.After(t) {
+			pr.StartedAt = t
+		}
 
 		qpr := responseToQPR(sr.Response, si.sourceByClient[replica], false)
 		seq.MergeQPRs(&pr.QPR, []*seq.QPR{qpr}, r.Size, histInterval, r.Order)
@@ -160,7 +164,9 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 		return FetchAsyncSearchResultResponse{}, status.Error(codes.NotFound, "async search result not found")
 	}
 
-	pr.Progress = (float64(fracsDone) + float64(fracsInQueue)) / float64(fracsDone)
+	if fracsDone != 0 {
+		pr.Progress = float64(fracsDone+fracsInQueue) / float64(fracsDone)
+	}
 	if pr.Status == fracmanager.AsyncSearchStatusDone {
 		pr.Progress = 1
 	}

@@ -132,11 +132,14 @@ func makeProtoAggregation(allAggregations []seq.AggregationResult) []*seqproxyap
 			bucket := &bucketsBuf[i]
 
 			bucket.Key = item.Name
-			bucket.Ts = timestamppb.New(item.MID.Time())
 			bucket.Value = item.Value
 
 			bucket.NotExists = item.NotExists
 			bucket.Quantiles = item.Quantiles
+
+			if item.MID != consts.DummyMID {
+				bucket.Ts = timestamppb.New(item.MID.Time())
+			}
 
 			buckets[i] = bucket
 		}

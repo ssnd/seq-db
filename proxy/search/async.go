@@ -9,6 +9,7 @@ import (
 	"github.com/ozontech/seq-db/fracmanager"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/pkg/storeapi"
+	"github.com/ozontech/seq-db/proxy/stores"
 	"github.com/ozontech/seq-db/seq"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -90,10 +91,20 @@ type FetchAsyncSearchResultResponse struct {
 	AggResult []seq.AggregationResult
 }
 
-func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSearchResultRequest) (FetchAsyncSearchResultResponse, error) {
-	searchStores := si.config.HotStores
-	if si.config.HotReadStores != nil && len(si.config.HotReadStores.Shards) > 0 {
-		searchStores = si.config.HotReadStores
+func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSearchResultRequest) (FetchAsyncSearchResultResponse, DocsIterator, error) {
+	var searchStores *stores.Stores
+	// TODO: should we support QueryWantsOldData?
+	rs := si.config.ReadStores
+	hrs := si.config.HotReadStores
+	hs := si.config.HotStores
+	if rs != nil && len(rs.Shards) != 0 {
+		searchStores = rs
+	} else if hrs != nil && len(hrs.Shards) != 0 {
+		searchStores = hrs
+	} else if hs != nil && len(hs.Shards) != 0 {
+		searchStores = si.config.HotStores
+	} else {
+		return FetchAsyncSearchResultResponse{}, nil, fmt.Errorf("can't find store shards in config")
 	}
 
 	req := storeapi.FetchAsyncSearchResultRequest{
@@ -133,7 +144,7 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 		}
 
 		qpr := responseToQPR(sr.Response, si.sourceByClient[replica], false)
-		seq.MergeQPRs(&pr.QPR, []*seq.QPR{qpr}, r.Size, histInterval, r.Order)
+		seq.MergeQPRs(&pr.QPR, []*seq.QPR{qpr}, r.Size+r.Offset, histInterval, r.Order)
 	}
 
 	var aggQueries []seq.AggregateArgs
@@ -145,7 +156,7 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 				if status.Code(err) == codes.NotFound {
 					continue
 				}
-				return FetchAsyncSearchResultResponse{}, err
+				return FetchAsyncSearchResultResponse{}, nil, err
 			}
 			anyResponse = true
 			mergeStoreResp(storeResp, replica)
@@ -161,7 +172,7 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 		}
 	}
 	if !anyResponse {
-		return FetchAsyncSearchResultResponse{}, status.Error(codes.NotFound, "async search result not found")
+		return FetchAsyncSearchResultResponse{}, nil, status.Error(codes.NotFound, "async search result not found")
 	}
 
 	if fracsDone != 0 {
@@ -171,7 +182,21 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 		pr.Progress = 1
 	}
 	pr.AggResult = pr.QPR.Aggregate(aggQueries)
-	return pr, nil
+
+	docsStream := DocsIterator(EmptyDocsStream{})
+	var size int
+	pr.QPR.IDs, size = paginateIDs(pr.QPR.IDs, r.Offset, r.Size)
+	if size > 0 {
+		// TODO: parse pipes from the pr.Query (not provided yet)
+		emptyFieldsFilter := FetchFieldsFilter{}
+		var err error
+		docsStream, err = si.FetchDocsStream(ctx, pr.QPR.IDs, false, emptyFieldsFilter)
+		if err != nil {
+			return pr, nil, err
+		}
+	}
+
+	return pr, docsStream, nil
 }
 
 func mergeAsyncSearchStatus(a, b fracmanager.AsyncSearchStatus) fracmanager.AsyncSearchStatus {

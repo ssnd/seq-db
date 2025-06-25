@@ -16,7 +16,7 @@ func TestQPRMarshalUnmarshal(t *testing.T) {
 
 		rawQPR := marshalQPR(&qpr, nil)
 		var out seq.QPR
-		tail, err := unmarshalQPR(&out, rawQPR, math.MaxInt, 0)
+		tail, err := unmarshalQPR(&out, rawQPR, math.MaxInt)
 		require.NoError(t, err)
 		require.Equal(t, 0, len(tail))
 		require.EqualExportedValues(t, qpr, out)

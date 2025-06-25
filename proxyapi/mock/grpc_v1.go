@@ -56,12 +56,13 @@ func (mr *MockSearchIngestorMockRecorder) Documents(ctx, r interface{}) *gomock.
 }
 
 // FetchAsyncSearchResult mocks base method.
-func (m *MockSearchIngestor) FetchAsyncSearchResult(arg0 context.Context, arg1 search.FetchAsyncSearchResultRequest) (search.FetchAsyncSearchResultResponse, error) {
+func (m *MockSearchIngestor) FetchAsyncSearchResult(arg0 context.Context, arg1 search.FetchAsyncSearchResultRequest) (search.FetchAsyncSearchResultResponse, search.DocsIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FetchAsyncSearchResult", arg0, arg1)
 	ret0, _ := ret[0].(search.FetchAsyncSearchResultResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(search.DocsIterator)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // FetchAsyncSearchResult indicates an expected call of FetchAsyncSearchResult.

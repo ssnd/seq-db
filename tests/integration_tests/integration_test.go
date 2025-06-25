@@ -1792,7 +1792,7 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 		Offset: 0,
 	}
 	for ctx.Err() == nil {
-		fresp, err := searcher.FetchAsyncSearchResult(ctx, freq)
+		fresp, _, err := searcher.FetchAsyncSearchResult(ctx, freq)
 		r.NoError(err)
 		if fresp.Status == fracmanager.AsyncSearchStatusInProgress {
 			time.Sleep(time.Millisecond * 50)
@@ -1802,7 +1802,7 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 	}
 	r.NoError(ctx.Err())
 
-	fresp, err := searcher.FetchAsyncSearchResult(ctx, freq)
+	fresp, _, err := searcher.FetchAsyncSearchResult(ctx, freq)
 	r.NoError(err)
 
 	r.Equalf(fracmanager.AsyncSearchStatusDone, fresp.Status, "unexpected status code=%d with error=%q", fresp.Status, fresp.QPR.Errors)

@@ -50,7 +50,11 @@ func (g *GrpcV1) StartAsyncSearch(_ context.Context, r *storeapi.StartAsyncSearc
 }
 
 func (g *GrpcV1) FetchAsyncSearchResult(_ context.Context, r *storeapi.FetchAsyncSearchResultRequest) (*storeapi.FetchAsyncSearchResultResponse, error) {
-	fr, exists := g.asyncSearcher.FetchSearchResult(fracmanager.FetchSearchResultRequest{ID: r.SearchId})
+	fr, exists := g.asyncSearcher.FetchSearchResult(fracmanager.FetchSearchResultRequest{
+		ID:    r.SearchId,
+		Limit: int(r.Size + r.Offset),
+		Order: r.Order.MustDocsOrder(),
+	})
 	if !exists {
 		return nil, status.Error(codes.NotFound, "search not found")
 	}

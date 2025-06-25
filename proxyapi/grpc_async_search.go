@@ -44,7 +44,7 @@ func (g *grpcV1) StartAsyncSearch(ctx context.Context, r *seqproxyapi.StartAsync
 }
 
 func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.FetchAsyncSearchResultRequest) (*seqproxyapi.FetchAsyncSearchResultResponse, error) {
-	resp, err := g.searchIngestor.FetchAsyncSearchResult(ctx, search.FetchAsyncSearchResultRequest{
+	resp, stream, err := g.searchIngestor.FetchAsyncSearchResult(ctx, search.FetchAsyncSearchResultRequest{
 		ID:     r.SearchId,
 		Size:   int(r.Size),
 		Offset: int(r.Offset),
@@ -58,11 +58,13 @@ func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.Fetc
 		canceledAt = nil
 	}
 
+	docs := makeProtoDocs(&resp.QPR, stream)
+
 	return &seqproxyapi.FetchAsyncSearchResultResponse{
 		Status: seqproxyapi.MustProtoAsyncSearchStatus(resp.Status),
 		Response: &seqproxyapi.ComplexSearchResponse{
-			Total:   0,
-			Docs:    makeProtoDocs(&resp.QPR, nil),
+			Total:   int64(resp.QPR.Total),
+			Docs:    docs,
 			Aggs:    makeProtoAggregation(resp.AggResult),
 			Hist:    makeProtoHistogram(&resp.QPR),
 			Error:   nil,

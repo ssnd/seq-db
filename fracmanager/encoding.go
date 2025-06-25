@@ -33,7 +33,7 @@ func marshalQPR(q *seq.QPR, dst []byte) []byte {
 	return dst
 }
 
-func unmarshalQPR(dst *seq.QPR, src []byte, idsLimit, idsOffset int) (_ []byte, err error) {
+func unmarshalQPR(dst *seq.QPR, src []byte, idsLimit int) (_ []byte, err error) {
 	if len(src) < 19 {
 		return nil, fmt.Errorf("invalid QPR format; want %d bytes, got %d", 41, len(src))
 	}
@@ -50,9 +50,8 @@ func unmarshalQPR(dst *seq.QPR, src []byte, idsLimit, idsOffset int) (_ []byte, 
 		return nil, fmt.Errorf("invalid ids block length %d; want %d", len(src), idsBlocksLen)
 	}
 	idsBlocks := src[:idsBlocksLen]
-	idsToLoad := idsLimit + idsOffset
 	for i := 0; len(idsBlocks) > 0; i++ {
-		if len(dst.IDs) >= idsToLoad {
+		if len(dst.IDs) >= idsLimit {
 			break
 		}
 		idsBlocks, err = unmarshalIDsBlock(dst, idsBlocks)
@@ -60,8 +59,8 @@ func unmarshalQPR(dst *seq.QPR, src []byte, idsLimit, idsOffset int) (_ []byte, 
 			return nil, fmt.Errorf("can't unmarshal ids block at pos %d: %s", i, err)
 		}
 	}
-	if len(dst.IDs) > idsToLoad {
-		dst.IDs = dst.IDs[:idsToLoad]
+	if len(dst.IDs) > idsLimit {
+		dst.IDs = dst.IDs[:idsLimit]
 	}
 	src = src[idsBlocksLen:]
 

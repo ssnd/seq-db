@@ -189,10 +189,16 @@ func (Order) EnumDescriptor() ([]byte, []int) {
 type AsyncSearchStatus int32
 
 const (
+	// The asynchronous search is still in progress.
+	// See the 'progress' field for completion percentage.
 	AsyncSearchStatus_AsyncSearchStatusInProgress AsyncSearchStatus = 0
-	AsyncSearchStatus_AsyncSearchStatusDone       AsyncSearchStatus = 1
-	AsyncSearchStatus_AsyncSearchStatusCanceled   AsyncSearchStatus = 2
-	AsyncSearchStatus_AsyncSearchStatusError      AsyncSearchStatus = 3
+	// The asynchronous search completed successfully.
+	AsyncSearchStatus_AsyncSearchStatusDone AsyncSearchStatus = 1
+	// The asynchronous search was canceled, possibly via the CancelAsyncSearch handler.
+	AsyncSearchStatus_AsyncSearchStatusCanceled AsyncSearchStatus = 2
+	// The asynchronous search encountered errors in some shards.
+	// See ComplexSearchResponse.Error for details.
+	AsyncSearchStatus_AsyncSearchStatusError AsyncSearchStatus = 3
 )
 
 // Enum value maps for AsyncSearchStatus.
@@ -1027,12 +1033,19 @@ func (x *ComplexSearchResponse) GetExplain() *ExplainEntry {
 }
 
 type StartAsyncSearchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Retention     *durationpb.Duration   `protobuf:"bytes,1,opt,name=retention,proto3" json:"retention,omitempty"`
-	Query         *SearchQuery           `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`     // Search query.
-	Aggs          []*AggQuery            `protobuf:"bytes,3,rep,name=aggs,proto3" json:"aggs,omitempty"`       // List of aggregation queries.
-	Hist          *HistQuery             `protobuf:"bytes,4,opt,name=hist,proto3,oneof" json:"hist,omitempty"` // Histogram query.
-	WithDocs      bool                   `protobuf:"varint,5,opt,name=with_docs,json=withDocs,proto3" json:"with_docs,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Duration to retain the result of an asynchronous query.
+	// After this period, the result will be deleted.
+	Retention *durationpb.Duration `protobuf:"bytes,1,opt,name=retention,proto3" json:"retention,omitempty"`
+	// Search query to execute.
+	Query *SearchQuery `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	// List of aggregation queries.
+	Aggs []*AggQuery `protobuf:"bytes,3,rep,name=aggs,proto3" json:"aggs,omitempty"`
+	// Optional histogram query.
+	Hist *HistQuery `protobuf:"bytes,4,opt,name=hist,proto3,oneof" json:"hist,omitempty"`
+	// Set this to true to enable document retrieval via FetchAsyncSearch.
+	// Note: enabling this may significantly increase disk space usage.
+	WithDocs      bool `protobuf:"varint,5,opt,name=with_docs,json=withDocs,proto3" json:"with_docs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1103,8 +1116,9 @@ func (x *StartAsyncSearchRequest) GetWithDocs() bool {
 }
 
 type StartAsyncSearchResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SearchId      string                 `protobuf:"bytes,1,opt,name=search_id,json=searchId,proto3" json:"search_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unique ID used to retrieve search results with FetchAsyncSearchResult.
+	SearchId      string `protobuf:"bytes,1,opt,name=search_id,json=searchId,proto3" json:"search_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1147,11 +1161,16 @@ func (x *StartAsyncSearchResponse) GetSearchId() string {
 }
 
 type FetchAsyncSearchResultRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SearchId      string                 `protobuf:"bytes,1,opt,name=search_id,json=searchId,proto3" json:"search_id,omitempty"`
-	Size          int32                  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
-	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
-	Order         Order                  `protobuf:"varint,4,opt,name=order,proto3,enum=seqproxyapi.v1.Order" json:"order,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	SearchId string                 `protobuf:"bytes,1,opt,name=search_id,json=searchId,proto3" json:"search_id,omitempty"`
+	// Maximum number of documents to fetch (pagination).
+	// Ignored if with_docs was set to false, since documents are not stored in that case.
+	Size int32 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	// Document offset (pagination).
+	// Ignored if with_docs was set to false, since documents are not stored in that case.
+	Offset int32 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	// Documents sort order.
+	Order         Order `protobuf:"varint,4,opt,name=order,proto3,enum=seqproxyapi.v1.Order" json:"order,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

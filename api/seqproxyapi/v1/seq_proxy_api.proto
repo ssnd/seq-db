@@ -227,28 +227,47 @@ message ComplexSearchResponse {
 }
 
 message StartAsyncSearchRequest {
+  // Duration to retain the result of an asynchronous query.
+  // After this period, the result will be deleted.
   google.protobuf.Duration retention = 1;
-  SearchQuery query = 2;        // Search query.
-  repeated AggQuery aggs = 3;   // List of aggregation queries.
-  optional HistQuery hist = 4;  // Histogram query.
+  // Search query to execute.
+  SearchQuery query = 2;
+  // List of aggregation queries.
+  repeated AggQuery aggs = 3;
+  // Optional histogram query.
+  optional HistQuery hist = 4;
+  // Set this to true to enable document retrieval via FetchAsyncSearch.
+  // Note: enabling this may significantly increase disk space usage.
   bool with_docs = 5;
 }
 
 message StartAsyncSearchResponse {
+  // Unique ID used to retrieve search results with FetchAsyncSearchResult.
   string search_id = 1;
 }
 
 message FetchAsyncSearchResultRequest {
   string search_id = 1;
+  // Maximum number of documents to fetch (pagination).
+  // Ignored if with_docs was set to false, since documents are not stored in that case.
   int32 size = 2;
+  // Document offset (pagination).
+  // Ignored if with_docs was set to false, since documents are not stored in that case.
   int32 offset = 3;
+  // Documents sort order.
   Order order = 4;
 }
 
 enum AsyncSearchStatus {
+  // The asynchronous search is still in progress.
+  // See the 'progress' field for completion percentage.
   AsyncSearchStatusInProgress = 0;
+  // The asynchronous search completed successfully.
   AsyncSearchStatusDone = 1;
+  // The asynchronous search was canceled, possibly via the CancelAsyncSearch handler.
   AsyncSearchStatusCanceled = 2;
+  // The asynchronous search encountered errors in some shards.
+  // See ComplexSearchResponse.Error for details.
   AsyncSearchStatusError = 3;
 }
 

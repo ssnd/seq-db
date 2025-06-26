@@ -361,21 +361,34 @@ func validateAgg(agg *seqproxyapi.AggQuery) error {
 		if agg.GroupBy == "" && agg.Field == "" {
 			return status.Error(codes.InvalidArgument, "'groupBy' or 'field' must be set")
 		}
+
 	case seqproxyapi.AggFunc_AGG_FUNC_UNIQUE:
 		if agg.GroupBy == "" {
 			return status.Error(codes.InvalidArgument, "'groupBy' must be set")
 		}
-	case seqproxyapi.AggFunc_AGG_FUNC_SUM, seqproxyapi.AggFunc_AGG_FUNC_MIN, seqproxyapi.AggFunc_AGG_FUNC_MAX, seqproxyapi.AggFunc_AGG_FUNC_AVG:
+
+		if agg.Interval != nil {
+			return status.Error(
+				codes.InvalidArgument,
+				"remove 'interval' parameter: 'unique' aggregations do not support timeseries",
+			)
+		}
+
+	case seqproxyapi.AggFunc_AGG_FUNC_SUM, seqproxyapi.AggFunc_AGG_FUNC_MIN,
+		seqproxyapi.AggFunc_AGG_FUNC_MAX, seqproxyapi.AggFunc_AGG_FUNC_AVG:
 		if agg.Field == "" {
 			return status.Error(codes.InvalidArgument, "'field' must be set")
 		}
+
 	case seqproxyapi.AggFunc_AGG_FUNC_QUANTILE:
 		if agg.Field == "" {
 			return status.Error(codes.InvalidArgument, "'field' must be set")
 		}
+
 		if len(agg.Quantiles) == 0 {
 			return status.Error(codes.InvalidArgument, "aggregation query with QUANTILE function must contain at least one quantile")
 		}
+
 		for _, q := range agg.Quantiles {
 			if q < 0 || q > 1 {
 				return status.Error(codes.InvalidArgument, "quantile must be between 0 and 1")

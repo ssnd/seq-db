@@ -34,9 +34,9 @@ type AsyncResponse struct {
 func (si *Ingestor) StartAsyncSearch(ctx context.Context, r AsyncRequest) (AsyncResponse, error) {
 	requestID := uuid.New().String()
 
-	searchStores := si.config.HotStores
-	if si.config.HotReadStores != nil && len(si.config.HotReadStores.Shards) > 0 {
-		searchStores = si.config.HotReadStores
+	searchStores, err := si.getAsyncSearchStores()
+	if err != nil {
+		return AsyncResponse{}, err
 	}
 
 	req := storeapi.StartAsyncSearchRequest{
@@ -91,20 +91,11 @@ type FetchAsyncSearchResultResponse struct {
 	AggResult []seq.AggregationResult
 }
 
+// TODO: should we support QueryWantsOldData?
 func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSearchResultRequest) (FetchAsyncSearchResultResponse, DocsIterator, error) {
-	var searchStores *stores.Stores
-	// TODO: should we support QueryWantsOldData?
-	rs := si.config.ReadStores
-	hrs := si.config.HotReadStores
-	hs := si.config.HotStores
-	if rs != nil && len(rs.Shards) != 0 {
-		searchStores = rs
-	} else if hrs != nil && len(hrs.Shards) != 0 {
-		searchStores = hrs
-	} else if hs != nil && len(hs.Shards) != 0 {
-		searchStores = si.config.HotStores
-	} else {
-		return FetchAsyncSearchResultResponse{}, nil, fmt.Errorf("can't find store shards in config")
+	searchStores, err := si.getAsyncSearchStores()
+	if err != nil {
+		return FetchAsyncSearchResultResponse{}, nil, err
 	}
 
 	req := storeapi.FetchAsyncSearchResultRequest{
@@ -213,4 +204,84 @@ func mergeAsyncSearchStatus(a, b fracmanager.AsyncSearchStatus) fracmanager.Asyn
 		return a
 	}
 	return b
+}
+
+func (si *Ingestor) CancelAsyncSearch(ctx context.Context, id string) error {
+	searchStores, err := si.getAsyncSearchStores()
+	if err != nil {
+		return err
+	}
+
+	var lastErr error
+	cancelSearch := func(client storeapi.StoreApiClient) error {
+		_, err := client.CancelAsyncSearch(ctx, &storeapi.CancelAsyncSearchRequest{SearchId: id})
+		if err != nil {
+			logger.Error("can't cancel async search", zap.String("id", id), zap.Error(err))
+			lastErr = err
+		}
+		return nil
+	}
+
+	if err := si.visitEachReplica(searchStores, cancelSearch); err != nil {
+		panic(fmt.Errorf("BUG: unexpected error from visit func"))
+	}
+	if lastErr != nil {
+		return fmt.Errorf("unable to cancel async search for all shards in cluster; last err: %w", lastErr)
+	}
+	return nil
+}
+
+func (si *Ingestor) DeleteAsyncSearch(ctx context.Context, id string) error {
+	searchStores, err := si.getAsyncSearchStores()
+	if err != nil {
+		return err
+	}
+
+	var lastErr error
+	cancelSearch := func(client storeapi.StoreApiClient) error {
+		_, err := client.DeleteAsyncSearch(ctx, &storeapi.DeleteAsyncSearchRequest{SearchId: id})
+		if err != nil {
+			logger.Error("can't delete async search", zap.String("id", id), zap.Error(err))
+			lastErr = err
+		}
+		return nil
+	}
+
+	if err := si.visitEachReplica(searchStores, cancelSearch); err != nil {
+		panic(fmt.Errorf("BUG: unexpected error from visit func"))
+	}
+	if lastErr != nil {
+		return fmt.Errorf("unable to delete async search for all shards in cluster; last err: %w", lastErr)
+	}
+	return nil
+}
+
+func (si *Ingestor) visitEachReplica(s *stores.Stores, cb func(client storeapi.StoreApiClient) error) error {
+	for _, shard := range s.Shards {
+		for _, replica := range shard {
+			client := si.clients[replica]
+			if err := cb(client); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (si *Ingestor) getAsyncSearchStores() (*stores.Stores, error) {
+	var searchStores *stores.Stores
+	// TODO: should we support QueryWantsOldData?
+	rs := si.config.ReadStores
+	hrs := si.config.HotReadStores
+	hs := si.config.HotStores
+	if rs != nil && len(rs.Shards) != 0 {
+		searchStores = rs
+	} else if hrs != nil && len(hrs.Shards) != 0 {
+		searchStores = hrs
+	} else if hs != nil && len(hs.Shards) != 0 {
+		searchStores = si.config.HotStores
+	} else {
+		return nil, fmt.Errorf("can't find store shards in config")
+	}
+	return searchStores, nil
 }

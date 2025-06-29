@@ -216,10 +216,6 @@ func (as *AsyncSearcher) StartSearch(r AsyncSearchRequest, fracs List) error {
 	}
 	r.Params.AST = ast.Root
 
-	// It can be empty if the replica does not contain the required data.
-	// In this case, it is necessary to consider that the asynchronous request is completed.
-	requestDone := len(fracs) == 0
-
 	now := timeNow()
 	if r.Retention < time.Minute*5 {
 		return fmt.Errorf("retention time should be at least 5 minutes, got %s", r.Retention)
@@ -234,11 +230,9 @@ func (as *AsyncSearcher) StartSearch(r AsyncSearchRequest, fracs List) error {
 		// Request was saved previously, skip it
 		return nil
 	}
-	if !requestDone {
-		activeSearches.Add(1)
-		as.processWg.Add(1)
-		go as.processRequest(r.ID, fracs)
-	}
+	activeSearches.Add(1)
+	as.processWg.Add(1)
+	go as.processRequest(r.ID, fracs)
 	return nil
 }
 
@@ -256,7 +250,10 @@ func (as *AsyncSearcher) saveSearchInfo(r AsyncSearchRequest, fracs List) bool {
 func (as *AsyncSearcher) updateSearchInfo(id string, update func(info *asyncSearchInfo)) {
 	as.requestsMu.Lock()
 	defer as.requestsMu.Unlock()
-	info := as.requests[id]
+	info, ok := as.requests[id]
+	if !ok {
+		return
+	}
 	update(&info)
 	as.storeSearchInfoLocked(id, info)
 }
@@ -881,6 +878,25 @@ func (as *AsyncSearcher) checkDiskUsage() {
 		as.readOnly.Store(false)
 		readOnly.Set(0)
 	}
+}
+
+func (as *AsyncSearcher) CancelSearch(id string) {
+	as.updateSearchInfo(id, func(info *asyncSearchInfo) {
+		if info.CanceledAt.IsZero() {
+			info.CanceledAt = time.Now()
+			info.cancel()
+		}
+	})
+}
+
+func (as *AsyncSearcher) DeleteSearch(id string) {
+	as.updateSearchInfo(id, func(info *asyncSearchInfo) {
+		if info.CanceledAt.IsZero() {
+			info.CanceledAt = time.Now()
+			info.cancel()
+		}
+		info.Request.Retention = 0
+	})
 }
 
 func mustWriteFileAtomic(fpath string, data []byte) {

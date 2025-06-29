@@ -77,3 +77,17 @@ func (g *grpcV1) FetchAsyncSearchResult(ctx context.Context, r *seqproxyapi.Fetc
 		DiskUsage:  resp.DiskUsage,
 	}, nil
 }
+
+func (g *grpcV1) CancelAsyncSearch(ctx context.Context, r *seqproxyapi.CancelAsyncSearchRequest) (*seqproxyapi.CancelAsyncSearchResponse, error) {
+	if err := g.searchIngestor.CancelAsyncSearch(ctx, r.SearchId); err != nil {
+		return nil, fmt.Errorf("cancelling search: %s", err)
+	}
+	return &seqproxyapi.CancelAsyncSearchResponse{}, nil
+}
+
+func (g *grpcV1) DeleteAsyncSearch(ctx context.Context, r *seqproxyapi.DeleteAsyncSearchRequest) (*seqproxyapi.DeleteAsyncSearchResponse, error) {
+	if err := g.searchIngestor.DeleteAsyncSearch(ctx, r.SearchId); err != nil {
+		return nil, fmt.Errorf("deleting search: %s", err)
+	}
+	return &seqproxyapi.DeleteAsyncSearchResponse{}, nil
+}

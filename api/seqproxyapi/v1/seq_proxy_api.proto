@@ -76,7 +76,7 @@ service SeqProxyApi {
   // The server processes the request in the background and returns a search ID.
   rpc StartAsyncSearch(StartAsyncSearchRequest) returns (StartAsyncSearchResponse) {
     option (google.api.http) = {
-      post: "/async-search"
+      post: "/async-searches"
       body: "*"
     };
   }
@@ -85,15 +85,21 @@ service SeqProxyApi {
   // Clients should use the search ID returned by StartAsyncSearch.
   rpc FetchAsyncSearchResult(FetchAsyncSearchResultRequest) returns (FetchAsyncSearchResultResponse) {
     option (google.api.http) = {
-      get: "/async-search/{search_id}"
+      get: "/async-searches/{search_id}"
     };
   }
 
   // Cancels an ongoing asynchronous search operation if it hasn't completed yet.
-  // Useful for freeing up resources if the result is no longer needed.
   rpc CancelAsyncSearch(CancelAsyncSearchRequest) returns (CancelAsyncSearchResponse) {
     option (google.api.http) = {
-      delete: "/async-search/{search_id}"
+      post: "/async-searches/{search_id}/cancel"
+    };
+  }
+
+  // Frees up resources if the result is no longer needed.
+  rpc DeleteAsyncSearch(DeleteAsyncSearchRequest) returns (DeleteAsyncSearchResponse) {
+    option (google.api.http) = {
+      delete: "/async-searches/{search_id}"
     };
   }
 }
@@ -288,6 +294,12 @@ message CancelAsyncSearchRequest{
 }
 
 message CancelAsyncSearchResponse{}
+
+message DeleteAsyncSearchRequest {
+  string search_id = 1;
+}
+
+message DeleteAsyncSearchResponse {}
 
 message GetAggregationRequest {
   SearchQuery query = 1;      // Search query.

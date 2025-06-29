@@ -40,6 +40,34 @@ func (m *MockSearchIngestor) EXPECT() *MockSearchIngestorMockRecorder {
 	return m.recorder
 }
 
+// CancelAsyncSearch mocks base method.
+func (m *MockSearchIngestor) CancelAsyncSearch(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelAsyncSearch", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CancelAsyncSearch indicates an expected call of CancelAsyncSearch.
+func (mr *MockSearchIngestorMockRecorder) CancelAsyncSearch(ctx, id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelAsyncSearch", reflect.TypeOf((*MockSearchIngestor)(nil).CancelAsyncSearch), ctx, id)
+}
+
+// DeleteAsyncSearch mocks base method.
+func (m *MockSearchIngestor) DeleteAsyncSearch(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteAsyncSearch", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteAsyncSearch indicates an expected call of DeleteAsyncSearch.
+func (mr *MockSearchIngestorMockRecorder) DeleteAsyncSearch(ctx, id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAsyncSearch", reflect.TypeOf((*MockSearchIngestor)(nil).DeleteAsyncSearch), ctx, id)
+}
+
 // Documents mocks base method.
 func (m *MockSearchIngestor) Documents(ctx context.Context, r search.FetchRequest) (search.DocsIterator, error) {
 	m.ctrl.T.Helper()

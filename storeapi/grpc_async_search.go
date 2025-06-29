@@ -80,6 +80,16 @@ func (g *GrpcV1) FetchAsyncSearchResult(_ context.Context, r *storeapi.FetchAsyn
 	}, nil
 }
 
+func (g *GrpcV1) CancelAsyncSearch(_ context.Context, r *storeapi.CancelAsyncSearchRequest) (*storeapi.CancelAsyncSearchResponse, error) {
+	g.asyncSearcher.CancelSearch(r.SearchId)
+	return &storeapi.CancelAsyncSearchResponse{}, nil
+}
+
+func (g *GrpcV1) DeleteAsyncSearch(_ context.Context, r *storeapi.DeleteAsyncSearchRequest) (*storeapi.DeleteAsyncSearchResponse, error) {
+	g.asyncSearcher.DeleteSearch(r.SearchId)
+	return &storeapi.DeleteAsyncSearchResponse{}, nil
+}
+
 func convertAggQueriesToProto(query []processor.AggQuery) []*storeapi.AggQuery {
 	var res []*storeapi.AggQuery
 	for _, q := range query {

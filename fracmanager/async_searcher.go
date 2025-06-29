@@ -375,7 +375,7 @@ func compressQPR(qpr *seq.QPR, cb func(compressed []byte) error) error {
 
 	rawQPR.B = marshalQPR(qpr, rawQPR.B)
 
-	compressed := bytespool.AcquireReset(len(rawQPR.B))
+	compressed := bytespool.Acquire(len(rawQPR.B))
 	defer bytespool.Release(compressed)
 
 	level := getCompressLevel(len(rawQPR.B))

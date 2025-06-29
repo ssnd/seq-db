@@ -91,8 +91,8 @@ type FetchAsyncSearchResultResponse struct {
 	AggResult []seq.AggregationResult
 }
 
-// TODO: should we support QueryWantsOldData?
 func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSearchResultRequest) (FetchAsyncSearchResultResponse, DocsIterator, error) {
+	// TODO: should we support QueryWantsOldData?
 	searchStores, err := si.getAsyncSearchStores()
 	if err != nil {
 		return FetchAsyncSearchResultResponse{}, nil, err

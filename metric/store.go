@@ -126,13 +126,6 @@ var (
 		Help:      "",
 	})
 
-	BulkInFlightQueriesTotal = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "bulk",
-		Name:      "in_flight_queries_total",
-		Help:      "",
-	})
-
 	BulkDurationSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "seq_db_store",
 		Subsystem: "bulk",
@@ -280,12 +273,6 @@ var (
 		Namespace: "seq_db_store",
 		Subsystem: "common",
 		Name:      "panics_total",
-		Help:      "",
-	})
-	StoreBytesRead = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "seq_db_store",
-		Subsystem: "common",
-		Name:      "bytes_read",
 		Help:      "",
 	})
 

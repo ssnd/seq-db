@@ -17,8 +17,8 @@ type IndexReader struct {
 	cache   *cache.Cache[[]byte]
 }
 
-func NewIndexReader(reader *ReadLimiter, file *os.File, registryCache *cache.Cache[[]byte]) *IndexReader {
-	return &IndexReader{
+func NewIndexReader(reader *ReadLimiter, file *os.File, registryCache *cache.Cache[[]byte]) IndexReader {
+	return IndexReader{
 		limiter: reader,
 		file:    file,
 		cache:   registryCache,
@@ -88,7 +88,7 @@ func (r *IndexReader) ReadIndexBlock(blockIndex uint32, dst []byte) ([]byte, uin
 		return dst, uint64(n), err
 	}
 
-	buf := bytespool.Acquire(int(header.Len()))
+	buf := bytespool.AcquireLen(int(header.Len()))
 	defer bytespool.Release(buf)
 
 	n, err := r.limiter.ReadAt(r.file, buf.B, int64(header.GetPos()))

@@ -78,7 +78,7 @@ func (e *errsCollapser) Error() string {
 		}
 	}
 
-	buf := bytespool.AcquireReset(errorLength)
+	buf := bytespool.Acquire(errorLength)
 	defer bytespool.Release(buf)
 
 	first := true

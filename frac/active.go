@@ -18,8 +18,6 @@ import (
 	"github.com/ozontech/seq-db/conf"
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/disk"
-	"github.com/ozontech/seq-db/frac/lids"
-	"github.com/ozontech/seq-db/frac/token"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/seq"
@@ -27,7 +25,7 @@ import (
 )
 
 type Active struct {
-	Config Config
+	Config *Config
 
 	BaseFileName string
 
@@ -47,24 +45,20 @@ type Active struct {
 
 	DocsPositions *DocsPositions
 
-	docsReader *disk.DocsReader
+	docsFile   *os.File
+	docsReader disk.DocsReader
+	sortReader disk.DocsReader
 	docsCache  *cache.Cache[[]byte]
+	sortCache  *cache.Cache[[]byte]
 
-	docsFile *os.File
-	metaFile *os.File
+	metaFile   *os.File
+	metaReader disk.DocBlocksReader
 
 	appendQueueSize atomic.Uint32
 	appender        ActiveAppender
 
 	sealingMu sync.RWMutex
 	isSealed  bool
-
-	// to transfer data to sealed frac
-	idsTable            IDsTable
-	lidsTable           *lids.Table
-	tokenTable          token.Table
-	sortedDocsFile      *os.File
-	sortedBlocksOffsets []uint64
 }
 
 const (
@@ -82,7 +76,8 @@ func NewActive(
 	indexWorkers *IndexWorkers,
 	readLimiter *disk.ReadLimiter,
 	docsCache *cache.Cache[[]byte],
-	config Config,
+	sortCache *cache.Cache[[]byte],
+	config *Config,
 ) *Active {
 	docsFile, docsStats := openFile(baseFileName+consts.DocsFileSuffix, conf.SkipFsync)
 	metaFile, metaStats := openFile(baseFileName+consts.MetaFileSuffix, conf.SkipFsync)
@@ -93,10 +88,15 @@ func NewActive(
 		MIDs:          NewIDs(),
 		RIDs:          NewIDs(),
 		DocBlocks:     NewIDs(),
-		docsFile:      docsFile,
-		metaFile:      metaFile,
-		docsReader:    disk.NewDocsReader(readLimiter, docsFile, docsCache),
-		docsCache:     docsCache,
+
+		docsFile:   docsFile,
+		docsCache:  docsCache,
+		sortCache:  sortCache,
+		docsReader: disk.NewDocsReader(readLimiter, docsFile, docsCache),
+		sortReader: disk.NewDocsReader(readLimiter, docsFile, sortCache),
+
+		metaFile:   metaFile,
+		metaReader: disk.NewDocBlocksReader(readLimiter, metaFile),
 
 		appender: StartAppender(docsFile, metaFile, conf.IndexWorkers, conf.SkipFsync, indexWorkers),
 
@@ -132,20 +132,11 @@ func openFile(name string, skipFsync bool) (*os.File, os.FileInfo) {
 	return file, stat
 }
 
-func (f *Active) ReplayBlocks(ctx context.Context, reader *disk.ReadLimiter) error {
+func (f *Active) ReplayBlocks(ctx context.Context) error {
 	logger.Info("start replaying...")
-
-	if _, err := f.docsFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("can't seek docs file: filename=%s, err=%w", f.docsFile.Name(), err)
-	}
-	if _, err := f.metaFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("can't seek metas file: filename=%s, err=%w", f.metaFile.Name(), err)
-	}
 
 	targetSize := f.info.MetaOnDisk
 	t := time.Now()
-
-	metaReader := disk.NewDocsReader(reader, f.metaFile, nil)
 
 	f.info.DocsOnDisk = 0
 	f.info.MetaOnDisk = 0
@@ -159,9 +150,9 @@ out:
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			result, n, err := metaReader.ReadDocBlock(int64(metaPos))
+			meta, metaSize, err := f.metaReader.ReadDocBlock(int64(metaPos))
 			if err == io.EOF {
-				if n != 0 {
+				if metaSize != 0 {
 					logger.Warn("last meta block is partially written, skipping it")
 				}
 				break out
@@ -175,17 +166,17 @@ out:
 				progress := float64(metaPos) / float64(targetSize) * 100
 				logger.Info("replaying batch, meta",
 					zap.Uint64("from", metaPos),
-					zap.Uint64("to", metaPos+n),
+					zap.Uint64("to", metaPos+metaSize),
 					zap.Uint64("target", targetSize),
 					util.ZapFloat64WithPrec("progress_percentage", progress, 2),
 				)
 			}
 
-			docBlockLen := disk.DocBlock(result).GetExt1()
+			docBlockLen := disk.DocBlock(meta).GetExt1()
 			docsPos += docBlockLen
-			metaPos += n
+			metaPos += metaSize
 
-			if err := f.Replay(docBlockLen, result); err != nil {
+			if err := f.Replay(docBlockLen, meta); err != nil {
 				return err
 			}
 		}
@@ -216,12 +207,12 @@ out:
 
 // Append causes data to be written on disk and sends IndexTask to index workers
 // Checks the state of a faction and may return an error if the faction has already started sealing.
-func (f *Active) Append(docs, metas []byte, writeQueue *atomic.Uint64) error {
+func (f *Active) Append(docs, metas []byte) error {
 	if !f.incAppendQueueSize() {
 		return errors.New("fraction is not writable")
 	}
 
-	f.appender.In(f, docs, metas, writeQueue, &f.appendQueueSize)
+	f.appender.In(f, docs, metas, &f.appendQueueSize)
 
 	return nil
 }
@@ -266,7 +257,7 @@ func (f *Active) setSealed() error {
 	return nil
 }
 
-func (f *Active) Seal(params SealParams, readLimiter *disk.ReadLimiter, sdocsCache *cache.Cache[[]byte]) (*os.File, error) {
+func (f *Active) Seal(params SealParams) (*PreloadedData, error) {
 	if err := f.setSealed(); err != nil {
 		return nil, err
 	}
@@ -276,15 +267,14 @@ func (f *Active) Seal(params SealParams, readLimiter *disk.ReadLimiter, sdocsCac
 	f.WaitWriteIdle()
 	logger.Info("write is stopped", zap.Float64("time_wait_s", util.DurationToUnit(time.Since(start), "s")))
 
-	docsReader := disk.NewDocsReader(readLimiter, f.docsFile, sdocsCache)
-	return seal(f, params, docsReader), nil
+	return seal(f, params)
 }
 
 func (f *Active) GetAllDocuments() []uint32 {
 	return f.TokenList.GetAllTokenLIDs().GetLIDs(f.MIDs, f.RIDs)
 }
 
-func (f *Active) Release(sealed Fraction, removeMeta bool) error {
+func (f *Active) Release(sealed Fraction) error {
 	f.useMu.Lock()
 	f.sealed = sealed
 	f.useMu.Unlock()
@@ -299,7 +289,7 @@ func (f *Active) Release(sealed Fraction, removeMeta bool) error {
 	// Once frac is released, it is safe to remove the docs file,
 	// since search queries will use the sealed implementation.
 
-	if conf.SortDocs {
+	if !f.Config.SkipSortDocs {
 		if err := f.docsFile.Close(); err != nil {
 			return fmt.Errorf("closing docs file: %w", err)
 		}
@@ -312,8 +302,9 @@ func (f *Active) Release(sealed Fraction, removeMeta bool) error {
 	}
 
 	f.docsCache.Release()
+	f.sortCache.Release()
 
-	if removeMeta {
+	if !f.Config.KeepMetaFile {
 		rmFileName := f.BaseFileName + consts.MetaFileSuffix
 		if err := os.Remove(rmFileName); err != nil {
 			logger.Error("can't delete metas file", zap.String("file", rmFileName), zap.Error(err))
@@ -330,12 +321,6 @@ func (f *Active) UpdateDiskStats(docsLen, metaLen uint64) uint64 {
 	f.info.MetaOnDisk += metaLen
 	f.infoMu.Unlock()
 	return pos
-}
-
-func (f *Active) setInfoDocsOnDisk(v uint64) {
-	f.useMu.Lock()
-	defer f.useMu.Unlock()
-	f.info.DocsOnDisk = v
 }
 
 func (f *Active) close(closeDocs bool, hint string) {
@@ -393,15 +378,6 @@ func (f *Active) UpdateStats(minMID, maxMID seq.MID, docCount uint32, sizeCount 
 	}
 	f.info.DocsTotal += docCount
 	f.info.DocsRaw += sizeCount
-}
-
-func (f *Active) buildInfoDistribution(ids []seq.ID) {
-	// We must update `info` inside active fraction because we are passing this `info`
-	// with built `distribution` to derivative sealed fraction.
-	// In fact we must not call this method concurrently so no one else should wait for Lock().
-	f.infoMu.Lock()
-	f.info.BuildDistribution(ids)
-	f.infoMu.Unlock()
 }
 
 func (f *Active) Suicide() { // it seams we never call this method (of Active fraction)
@@ -481,7 +457,7 @@ func (f *Active) DataProvider(ctx context.Context) (DataProvider, func()) {
 func (f *Active) createDataProvider(ctx context.Context) *activeDataProvider {
 	return &activeDataProvider{
 		ctx:    ctx,
-		config: &f.Config,
+		config: f.Config,
 		info:   f.Info(),
 
 		mids:      f.MIDs,
@@ -490,20 +466,8 @@ func (f *Active) createDataProvider(ctx context.Context) *activeDataProvider {
 
 		blocksOffsets: f.DocBlocks.GetVals(),
 		docsPositions: f.DocsPositions,
-		docsReader:    f.docsReader,
+		docsReader:    &f.docsReader,
 	}
-}
-
-func (f *Active) setInfoSealingTime(newTime uint64) {
-	f.infoMu.Lock()
-	f.info.SealingTime = newTime
-	f.infoMu.Unlock()
-}
-
-func (f *Active) setInfoIndexOnDisk(newSize uint64) {
-	f.infoMu.Lock()
-	f.info.IndexOnDisk = newSize
-	f.infoMu.Unlock()
 }
 
 func (f *Active) Info() *Info {

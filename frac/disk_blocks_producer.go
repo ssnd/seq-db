@@ -3,7 +3,6 @@ package frac
 import (
 	"bytes"
 	"sort"
-	"sync"
 
 	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/frac/lids"
@@ -13,7 +12,6 @@ import (
 )
 
 type DiskBlocksProducer struct {
-	tidsMu     sync.Mutex
 	sortedTids map[string][]uint32
 	fields     []string
 }
@@ -103,9 +101,6 @@ func (p *valSort) Less(i, j int) bool { return p.lessFn(i, j) }
 func (p *valSort) Swap(i, j int)      { p.val[i], p.val[j] = p.val[j], p.val[i] }
 
 func (g *DiskBlocksProducer) getTIDsSortedByToken(tokenList *TokenList, field string) []uint32 {
-	g.tidsMu.Lock()
-	defer g.tidsMu.Unlock()
-
 	if tids, ok := g.sortedTids[field]; ok {
 		return tids
 	}

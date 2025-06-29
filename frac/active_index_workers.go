@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/ozontech/seq-db/bytespool"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
+	"github.com/ozontech/seq-db/bytespool"
 	"github.com/ozontech/seq-db/disk"
 	"github.com/ozontech/seq-db/logger"
 	"github.com/ozontech/seq-db/metric"
@@ -113,7 +113,7 @@ func (w *IndexWorkers) appendWorker(index int) {
 		sw := stopwatch.New()
 		total := sw.Start("total_indexing")
 
-		metaBuf := bytespool.AcquireReset(int(task.Metas.RawLen()))
+		metaBuf := bytespool.Acquire(int(task.Metas.RawLen()))
 
 		if metaBuf.B, err = task.Metas.DecompressTo(metaBuf.B); err != nil {
 			logger.Panic("error decompressing meta", zap.Error(err)) // TODO: error handling

@@ -10,11 +10,9 @@ import (
 
 	insaneJSON "github.com/ozontech/insane-json"
 	"github.com/stretchr/testify/assert"
-	"github.com/ozontech/seq-db/consts"
-	"go.uber.org/atomic"
 
+	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/disk"
-	"github.com/ozontech/seq-db/metric"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/tests/common"
 )
@@ -51,7 +49,7 @@ func fillActiveFraction(active *Active) error {
 			dp.Append(doc, docRoot, seq.SimpleID(0), nil)
 		}
 		docs, metas := dp.Provide()
-		if err := active.Append(docs, metas, atomic.NewUint64(0)); err != nil {
+		if err := active.Append(docs, metas); err != nil {
 			return err
 		}
 	}
@@ -67,7 +65,7 @@ func BenchmarkSealing(b *testing.B) {
 	dataDir := filepath.Join(b.TempDir(), "BenchmarkSealing")
 	common.RecreateDir(dataDir)
 
-	readLimiter := disk.NewReadLimiter(1, metric.StoreBytesRead)
+	readLimiter := disk.NewReadLimiter(1, nil)
 
 	indexWorkers := NewIndexWorkers(10, 10)
 
@@ -85,7 +83,8 @@ func BenchmarkSealing(b *testing.B) {
 		DocBlockSize:           consts.MB * 4,
 	}
 	for i := 0; i < b.N; i++ {
-		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), indexWorkers, readLimiter, nil, Config{})
+
+		active := NewActive(filepath.Join(dataDir, "test_"+strconv.Itoa(i)), indexWorkers, readLimiter, nil, nil, &Config{})
 		err := fillActiveFraction(active)
 		assert.NoError(b, err)
 
@@ -93,7 +92,7 @@ func BenchmarkSealing(b *testing.B) {
 		active.GetAllDocuments() // emulate search-pre-sorted LIDs
 
 		b.StartTimer()
-		_, err = active.Seal(defaultSealParams, readLimiter, nil)
+		_, err = active.Seal(defaultSealParams)
 		assert.NoError(b, err)
 
 		b.StopTimer()

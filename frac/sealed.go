@@ -22,7 +22,7 @@ import (
 const seqDBMagic = "SEQM"
 
 type Sealed struct {
-	Config Config
+	Config *Config
 
 	BaseFileName string
 
@@ -33,11 +33,11 @@ type Sealed struct {
 
 	docsFile   *os.File
 	docsCache  *cache.Cache[[]byte]
-	docsReader *disk.DocsReader
+	docsReader disk.DocsReader
 
 	indexFile   *os.File
 	indexCache  *IndexCache
-	indexReader *disk.IndexReader
+	indexReader disk.IndexReader
 
 	idsTable      IDsTable
 	lidsTable     *lids.Table
@@ -65,8 +65,8 @@ func NewSealed(
 	readLimiter *disk.ReadLimiter,
 	indexCache *IndexCache,
 	docsCache *cache.Cache[[]byte],
-	fracInfoCache *Info,
-	config Config,
+	info *Info,
+	config *Config,
 ) *Sealed {
 	f := &Sealed{
 		loadMu: &sync.RWMutex{},
@@ -75,7 +75,7 @@ func NewSealed(
 		docsCache:   docsCache,
 		indexCache:  indexCache,
 
-		info:         fracInfoCache,
+		info:         info,
 		BaseFileName: baseFile,
 		Config:       config,
 
@@ -83,7 +83,7 @@ func NewSealed(
 	}
 
 	// fast path if fraction-info cache exists AND it has valid index size
-	if fracInfoCache != nil && fracInfoCache.IndexOnDisk > 0 {
+	if info != nil && info.IndexOnDisk > 0 {
 		return f
 	}
 
@@ -94,7 +94,7 @@ func NewSealed(
 }
 
 func (f *Sealed) openIndex() {
-	if f.indexReader == nil {
+	if f.indexFile == nil {
 		var err error
 		name := f.BaseFileName + consts.IndexFileSuffix
 		f.indexFile, err = os.Open(name)
@@ -106,7 +106,7 @@ func (f *Sealed) openIndex() {
 }
 
 func (f *Sealed) openDocs() {
-	if f.docsReader == nil {
+	if f.docsFile == nil {
 		var err error
 		f.docsFile, err = os.Open(f.BaseFileName + consts.DocsFileSuffix)
 		if err != nil {
@@ -122,34 +122,50 @@ func (f *Sealed) openDocs() {
 	}
 }
 
-func NewSealedFromActive(a *Active, rl *disk.ReadLimiter, indexFile *os.File, indexCache *IndexCache, docsCache *cache.Cache[[]byte]) *Sealed {
-	infoCopy := *a.info
+type PreloadedData struct {
+	info          *Info
+	idsTable      IDsTable
+	lidsTable     *lids.Table
+	tokenTable    token.Table
+	blocksOffsets []uint64
+	indexFile     *os.File
+	docsFile      *os.File
+}
+
+func NewSealedPreloaded(
+	baseFile string,
+	preloaded *PreloadedData,
+	rl *disk.ReadLimiter,
+	indexCache *IndexCache,
+	docsCache *cache.Cache[[]byte],
+	config *Config,
+) *Sealed {
 	f := &Sealed{
-		idsTable:      a.idsTable,
-		lidsTable:     a.lidsTable,
-		BlocksOffsets: a.sortedBlocksOffsets,
+		idsTable:      preloaded.idsTable,
+		lidsTable:     preloaded.lidsTable,
+		BlocksOffsets: preloaded.blocksOffsets,
 
-		docsFile:   a.sortedDocsFile,
+		docsFile:   preloaded.docsFile,
 		docsCache:  docsCache,
-		docsReader: disk.NewDocsReader(rl, a.sortedDocsFile, docsCache),
+		docsReader: disk.NewDocsReader(rl, preloaded.docsFile, docsCache),
 
-		indexFile:   indexFile,
+		indexFile:   preloaded.indexFile,
 		indexCache:  indexCache,
-		indexReader: disk.NewIndexReader(rl, indexFile, indexCache.Registry),
+		indexReader: disk.NewIndexReader(rl, preloaded.indexFile, indexCache.Registry),
 
 		loadMu:   &sync.RWMutex{},
 		isLoaded: true,
 
 		readLimiter: rl,
 
-		info:         &infoCopy,
-		BaseFileName: a.BaseFileName,
-		Config:       a.Config,
+		info:         preloaded.info,
+		BaseFileName: baseFile,
+		Config:       config,
 	}
 
 	// put the token table built during sealing into the cache of the sealed faction
 	indexCache.TokenTable.Get(token.CacheKeyTable, func() (token.Table, int) {
-		return a.tokenTable, a.tokenTable.Size()
+		return preloaded.tokenTable, preloaded.tokenTable.Size()
 	})
 
 	docsCountK := float64(f.info.DocsTotal) / 1000
@@ -338,17 +354,17 @@ func (f *Sealed) createDataProvider(ctx context.Context) *sealedDataProvider {
 	return &sealedDataProvider{
 		ctx:              ctx,
 		info:             f.info,
-		config:           &f.Config,
-		docsReader:       f.docsReader,
+		config:           f.Config,
+		docsReader:       &f.docsReader,
 		blocksOffsets:    f.BlocksOffsets,
 		fracVersion:      f.info.BinaryDataVer,
 		midCache:         NewUnpackCache(),
 		ridCache:         NewUnpackCache(),
 		lidsTable:        f.lidsTable,
-		idsLoader:        NewIDsLoader(f.indexReader, f.indexCache, f.idsTable),
-		lidsLoader:       lids.NewLoader(f.indexReader, f.indexCache.LIDs),
-		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, f.indexReader, f.indexCache.Tokens),
-		tokenTableLoader: token.NewTableLoader(f.BaseFileName, f.indexReader, f.indexCache.TokenTable),
+		idsLoader:        NewIDsLoader(&f.indexReader, f.indexCache, f.idsTable),
+		lidsLoader:       lids.NewLoader(&f.indexReader, f.indexCache.LIDs),
+		tokenBlockLoader: token.NewBlockLoader(f.BaseFileName, &f.indexReader, f.indexCache.Tokens),
+		tokenTableLoader: token.NewTableLoader(f.BaseFileName, &f.indexReader, f.indexCache.TokenTable),
 	}
 }
 

@@ -66,12 +66,9 @@ func (c *APIConfig) setDefaults() error {
 }
 
 type bulkData struct {
-	appendQueue *atomic.Uint64
-	writeQueue  *atomic.Uint64
-
-	took     atomic.Uint64
-	batches  atomic.Uint64
-	inflight atomic.Int64
+	appendQueue atomic.Uint64
+	took        atomic.Uint64
+	batches     atomic.Uint64
 }
 
 type searchData struct {
@@ -96,6 +93,8 @@ type GrpcV1 struct {
 	searchData    searchData
 	fetchData     fetchData
 	asyncSearcher *fracmanager.AsyncSearcher
+
+	inflightBulks atomic.Int64
 }
 
 func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingProvider MappingProvider) *GrpcV1 {
@@ -104,10 +103,6 @@ func NewGrpcV1(config APIConfig, fracManager *fracmanager.FracManager, mappingPr
 		config:          config,
 		fracManager:     fracManager,
 		mappingProvider: mappingProvider,
-		bulkData: bulkData{
-			appendQueue: atomic.NewUint64(0),
-			writeQueue:  atomic.NewUint64(0),
-		},
 		searchData: searchData{
 			searcher: fracmanager.NewSearcher(config.Search.WorkersCount, fracmanager.SearcherCfg{
 				MaxFractionHits:       config.Search.MaxFractionHits,
@@ -155,7 +150,6 @@ func (g *GrpcV1) bulkStats() {
 				util.ZapFloat64WithPrec("took_per_doc_ms", tookPerDoc, 4),
 				util.ZapFloat64WithPrec("took_per_size_ms", tookPerSize, 1),
 				zap.Uint64("append_queue", g.bulkData.appendQueue.Load()),
-				zap.Uint64("write_queue", g.bulkData.writeQueue.Load()),
 			)
 			g.bulkData.batches.Store(0)
 			g.bulkData.took.Store(0)

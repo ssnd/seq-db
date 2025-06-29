@@ -6,18 +6,28 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/atomic"
 
 	"github.com/ozontech/seq-db/frac"
 	"github.com/ozontech/seq-db/seq"
 	"github.com/ozontech/seq-db/tests/common"
 )
 
+// newFracManagerWithBackgroundStart only used from tests
+func newFracManagerWithBackgroundStart(config *Config) (*FracManager, error) {
+	fracManager := NewFracManager(config)
+	if err := fracManager.Load(context.Background()); err != nil {
+		return nil, err
+	}
+	fracManager.Start()
+
+	return fracManager, nil
+}
+
 func addDummyDoc(t *testing.T, fm *FracManager, dp *frac.DocProvider, seqID seq.ID) {
 	doc := []byte("document")
 	dp.Append(doc, nil, seqID, seq.Tokens("service:100500", "k8s_pod", "_all_:"))
 	docs, metas := dp.Provide()
-	err := fm.Append(context.Background(), docs, metas, atomic.NewUint64(0))
+	err := fm.Append(context.Background(), docs, metas)
 	assert.NoError(t, err)
 }
 
@@ -44,12 +54,11 @@ func TestCleanUp(t *testing.T) {
 	common.RecreateDir(dataDir)
 	defer common.RemoveDir(dataDir)
 
-	fm, err := NewFracManagerWithBackgroundStart(&Config{
-		FracSize:         1000,
-		TotalSize:        100000,
-		ShouldReplay:     false,
-		ShouldRemoveMeta: true,
-		DataDir:          dataDir,
+	fm, err := newFracManagerWithBackgroundStart(&Config{
+		FracSize:     1000,
+		TotalSize:    100000,
+		ShouldReplay: false,
+		DataDir:      dataDir,
 	})
 
 	assert.NoError(t, err)
@@ -70,12 +79,11 @@ func TestCleanUp(t *testing.T) {
 		t.Error("active fraction should be empty after rotation and sealing")
 	}
 
-	fm, err = NewFracManagerWithBackgroundStart(&Config{
-		FracSize:         100,
-		TotalSize:        100000,
-		ShouldReplay:     false,
-		ShouldRemoveMeta: true,
-		DataDir:          dataDir,
+	fm, err = newFracManagerWithBackgroundStart(&Config{
+		FracSize:     100,
+		TotalSize:    100000,
+		ShouldReplay: false,
+		DataDir:      dataDir,
 	})
 
 	assert.NoError(t, err)
@@ -92,17 +100,16 @@ func TestMatureMode(t *testing.T) {
 
 	launchAndCheck := func(checkFn func(fm *FracManager)) {
 		fm := NewFracManager(&Config{
-			FracSize:         500,
-			TotalSize:        5000,
-			ShouldReplay:     false,
-			ShouldRemoveMeta: true,
-			DataDir:          dataDir,
+			FracSize:     500,
+			TotalSize:    5000,
+			ShouldReplay: false,
+			DataDir:      dataDir,
 		})
 		assert.NoError(t, fm.Load(context.Background()))
 
 		checkFn(fm)
 
-		fm.indexWorkers.Stop()
+		fm.fracProvider.Stop()
 	}
 
 	id := 1

@@ -1,0 +1,9 @@
+mapping-list:
+  - name: clientip
+    type: keyword
+  - name: request
+    type: text
+  - name: size
+    type: keyword
+  - name: status
+    type: keyword

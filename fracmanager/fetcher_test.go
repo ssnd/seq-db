@@ -16,13 +16,12 @@ func testFetcher(t *testing.T, fetcher *Fetcher, hasHint bool) {
 	common.RecreateDir(dataDir)
 	defer common.RemoveDir(dataDir)
 	config := &Config{
-		FracSize:         1000,
-		TotalSize:        100000,
-		ShouldReplay:     false,
-		ShouldRemoveMeta: true,
-		DataDir:          dataDir,
+		FracSize:     1000,
+		TotalSize:    100000,
+		ShouldReplay: false,
+		DataDir:      dataDir,
 	}
-	fm, err := NewFracManagerWithBackgroundStart(config)
+	fm, err := newFracManagerWithBackgroundStart(config)
 	assert.NoError(t, err)
 	dp := frac.NewDocProvider()
 	addDummyDoc(t, fm, dp, seq.SimpleID(1))

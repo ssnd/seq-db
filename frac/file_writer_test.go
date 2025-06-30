@@ -2,7 +2,11 @@ package frac
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"math/rand/v2"
+	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -122,4 +126,137 @@ func TestFileWriterError(t *testing.T) {
 
 	wg.Wait()
 	fw.Stop()
+}
+
+type testRandPauseWriterAt struct {
+	f *os.File
+}
+
+func (w *testRandPauseWriterAt) WriteAt(p []byte, off int64) (n int, err error) {
+	// random pause
+	time.Sleep(time.Microsecond * time.Duration(rand.IntN(20)))
+	return w.f.WriteAt(p, off)
+}
+
+func (w *testRandPauseWriterAt) Sync() error {
+	return w.f.Sync()
+}
+
+func TestConcurrentFileWriting(t *testing.T) {
+	f, e := os.Create(t.TempDir() + "/test.txt")
+	assert.NoError(t, e)
+
+	defer f.Close()
+
+	fw := NewFileWriter(&testRandPauseWriterAt{f: f}, 0, true)
+
+	const (
+		writersCount = 100
+		writesCount  = 1000
+	)
+
+	type writeSample struct {
+		offset int64
+		data   []byte
+	}
+
+	wg := sync.WaitGroup{}
+	samplesQueues := [writersCount][]writeSample{}
+
+	// run writers
+	for i := range writersCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			sw := stopwatch.New()
+			workerName := strconv.Itoa(i)
+
+			for j := range writesCount {
+
+				data := []byte("<" + workerName + "-" + strconv.Itoa(j) + ">")
+				offset, e := fw.Write(data, sw)
+				assert.NoError(t, e)
+
+				samplesQueues[i] = append(samplesQueues[i], writeSample{data: data, offset: offset})
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// join and sort all samples by offset
+	all := make([]writeSample, 0, writersCount*writersCount)
+	for _, c := range samplesQueues {
+		all = append(all, c...)
+	}
+	slices.SortFunc(all, func(a, b writeSample) int {
+		if a.offset < b.offset {
+			return -1
+		}
+		if a.offset > b.offset {
+			return 1
+		}
+		return 0
+	})
+
+	// check all samples and file content
+	offset := int64(0)
+	buf := make([]byte, 1000)
+	for _, w := range all {
+		s := len(w.data)
+		buf = buf[:s]
+		_, e = f.ReadAt(buf, int64(offset))
+		assert.NoError(t, e)
+		assert.Equal(t, w.data, buf)
+		assert.Equal(t, w.offset, offset)
+		offset += int64(s)
+	}
+
+	s, e := f.Stat()
+	assert.NoError(t, e)
+	fmt.Println(s.Size())
+
+	assert.Equal(t, offset, s.Size())
+
+	e = os.Remove(f.Name())
+	assert.NoError(t, e)
+}
+
+func TestSparseWrite(t *testing.T) {
+	wf, e := os.Create(t.TempDir() + "/test.txt")
+	assert.NoError(t, e)
+
+	_, e = wf.WriteAt([]byte("333"), 30)
+	assert.NoError(t, e)
+
+	_, e = wf.WriteAt([]byte("222"), 20)
+	assert.NoError(t, e)
+
+	_, e = wf.WriteAt([]byte("111"), 10)
+	assert.NoError(t, e)
+
+	e = wf.Close()
+	assert.NoError(t, e)
+
+	rf, e := os.Open(wf.Name())
+	buf := make([]byte, 33)
+
+	n, e := rf.Read(buf)
+	assert.NoError(t, e)
+	assert.Equal(t, len(buf), n)
+
+	expected := []byte("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00111\x00\x00\x00\x00\x00\x00\x00222\x00\x00\x00\x00\x00\x00\x00333")
+	assert.Equal(t, expected, buf)
+
+	n, e = rf.Read(buf)
+	assert.Error(t, e)
+	assert.Equal(t, 0, n)
+	assert.ErrorIs(t, e, io.EOF)
+
+	e = rf.Close()
+	assert.NoError(t, e)
+
+	e = os.Remove(rf.Name())
+	assert.NoError(t, e)
 }

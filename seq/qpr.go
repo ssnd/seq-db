@@ -12,6 +12,7 @@ import (
 
 	"github.com/valyala/fastrand"
 
+	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/metric"
 )
 
@@ -186,15 +187,22 @@ type AggregationResult struct {
 }
 
 type AggregateArgs struct {
-	Func      AggFunc
-	Quantiles []float64
+	Func                 AggFunc
+	SkipWithoutTimestamp bool
+	Quantiles            []float64
 }
 
 func (q *QPRHistogram) Aggregate(args AggregateArgs) AggregationResult {
 	buckets := make([]AggregationBucket, 0, len(q.HistogramByToken))
 
 	for bin, hist := range q.HistogramByToken {
-		buckets = append(buckets, q.getAggBucket(bin, hist, args))
+		bucket := q.getAggBucket(bin, hist, args)
+
+		if args.SkipWithoutTimestamp && bucket.MID == consts.DummyMID {
+			continue
+		}
+
+		buckets = append(buckets, bucket)
 	}
 
 	sortBuckets(args.Func, buckets)

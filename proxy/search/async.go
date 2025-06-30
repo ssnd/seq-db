@@ -137,8 +137,9 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 
 		for _, agg := range storeResp.Aggs {
 			aggQueries = append(aggQueries, seq.AggregateArgs{
-				Func:      agg.Func.MustAggFunc(),
-				Quantiles: agg.Quantiles,
+				Func:                 agg.Func.MustAggFunc(),
+				Quantiles:            agg.Quantiles,
+				SkipWithoutTimestamp: agg.Interval > 0,
 			})
 		}
 		qpr := responseToQPR(storeResp.Response, si.sourceByClient[replica], false) // todo pass args

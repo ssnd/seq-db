@@ -175,6 +175,6 @@ func iteratorFromLiteral(ti tokenIndex, literal *parser.Literal, sw *stopwatch.S
 		stats.AggNodesTotal += len(lidsTids)*2 - 1
 	}
 
-	sourcedNode := node.BuildORTreeAgg(lidsTids)
+	sourcedNode := node.BuildORTreeAgg(lidsTids, order.IsReverse())
 	return NewSourcedNodeIterator(sourcedNode, ti, tids, iteratorLimit, order.IsReverse()), nil
 }

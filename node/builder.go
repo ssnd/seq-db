@@ -13,8 +13,9 @@ func BuildORTree(nodes []Node, reverse bool) Node {
 	)
 }
 
-func BuildORTreeAgg(nodes []Node) Sourced {
-	return TreeFold(NewNodeOrAgg,
+func BuildORTreeAgg(nodes []Node, reverse bool) Sourced {
+	return TreeFold(
+		func(l, r Sourced) Sourced { return NewNodeOrAgg(l, r, reverse) },
 		emptyNodeSourced,
 		WrapWithSource(nodes),
 	)
@@ -34,5 +35,9 @@ func treeFold[V any](op func(V, V) V, values []V) V {
 	}
 
 	mid := len(values) / 2
-	return op(treeFold(op, values[:mid]), treeFold(op, values[mid:]))
+
+	return op(
+		treeFold(op, values[:mid]),
+		treeFold(op, values[mid:]),
+	)
 }

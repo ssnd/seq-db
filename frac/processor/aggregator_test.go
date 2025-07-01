@@ -16,6 +16,9 @@ import (
 )
 
 func TestSingleSourceCountAggregator(t *testing.T) {
+	// For now input for this test is incorrect since we support
+	// aggregations only for `keyword` index type.
+	// Will be fixed in #310.
 	searchDocs := []uint32{2, 3, 5, 8, 10, 12, 15}
 	sources := [][]uint32{
 		{2, 3, 5, 8, 10, 12},
@@ -23,7 +26,7 @@ func TestSingleSourceCountAggregator(t *testing.T) {
 		{1, 2, 4, 5, 8, 11, 12},
 	}
 
-	source := node.BuildORTreeAgg(node.MakeStaticNodes(sources))
+	source := node.BuildORTreeAgg(node.MakeStaticNodes(sources), false)
 	iter := NewSourcedNodeIterator(source, nil, nil, 0, false)
 	agg := NewSingleSourceCountAggregator(iter, provideExtractTimeFunc(nil, nil, 0))
 	for _, id := range searchDocs {
@@ -31,11 +34,19 @@ func TestSingleSourceCountAggregator(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	assert.Equal(t, map[AggBin[uint32]]int64{{Source: 0}: 6}, agg.countBySource)
+
+	assert.Equal(t, map[AggBin[uint32]]int64{
+		{Source: 0}: 2,
+		{Source: 2}: 4,
+	}, agg.countBySource)
+
 	assert.Equal(t, int64(1), agg.notExists)
 }
 
 func TestSingleSourceCountAggregatorWithInterval(t *testing.T) {
+	// For now input for this test is incorrect since we support
+	// aggregations only for `keyword` index type.
+	// Will be fixed in #310.
 	searchDocs := []uint32{2, 3, 5, 8, 10, 12, 15}
 	sources := [][]uint32{
 		{2, 3, 5, 8, 10, 12},
@@ -43,7 +54,7 @@ func TestSingleSourceCountAggregatorWithInterval(t *testing.T) {
 		{1, 2, 4, 5, 8, 11, 12},
 	}
 
-	source := node.BuildORTreeAgg(node.MakeStaticNodes(sources))
+	source := node.BuildORTreeAgg(node.MakeStaticNodes(sources), false)
 	iter := NewSourcedNodeIterator(source, nil, nil, 0, false)
 
 	agg := NewSingleSourceCountAggregator(iter, func(l seq.LID) seq.MID {
@@ -57,9 +68,10 @@ func TestSingleSourceCountAggregatorWithInterval(t *testing.T) {
 	}
 
 	assert.Equal(t, map[AggBin[uint32]]int64{
-		{Source: 0, MID: 0}: 2,
+		{Source: 0, MID: 0}: 1,
+		{Source: 2, MID: 0}: 1,
 		{Source: 0, MID: 1}: 1,
-		{Source: 0, MID: 2}: 3,
+		{Source: 2, MID: 2}: 3,
 	}, agg.countBySource)
 
 	assert.Equal(t, int64(1), agg.notExists)
@@ -101,7 +113,7 @@ func BenchmarkAggWide(b *testing.B) {
 		slices.Sort(wide[i])
 	}
 
-	source := node.BuildORTreeAgg(node.MakeStaticNodes(wide))
+	source := node.BuildORTreeAgg(node.MakeStaticNodes(wide), false)
 
 	iter := NewSourcedNodeIterator(source, nil, make([]uint32, len(wide)), 0, false)
 	n := NewSingleSourceCountAggregator(iter, provideExtractTimeFunc(nil, nil, 0))

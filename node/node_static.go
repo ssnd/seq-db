@@ -24,6 +24,7 @@ func NewStatic(data []uint32, reverse bool) Node {
 			data: data,
 		}}
 	}
+
 	return &staticAsc{staticCursor: staticCursor{
 		ptr:  0,
 		data: data,

@@ -42,19 +42,23 @@ func (n *nodeOr) Next() (uint32, bool) {
 	if !n.hasLeft && !n.hasRight {
 		return 0, false
 	}
+
 	if n.hasLeft && (!n.hasRight || n.less(n.leftID, n.rightID)) {
 		cur := n.leftID
 		n.readLeft()
 		return cur, true
 	}
+
 	if n.hasRight && (!n.hasLeft || n.less(n.rightID, n.leftID)) {
 		cur := n.rightID
 		n.readRight()
 		return cur, true
 	}
+
 	cur := n.leftID
 	n.readLeft()
 	n.readRight()
+
 	return cur, true
 }
 
@@ -69,16 +73,19 @@ type nodeOrAgg struct {
 	rightID     uint32
 	rightSource uint32
 	hasRight    bool
+
+	less LessFn
 }
 
 func (n *nodeOrAgg) String() string {
 	return fmt.Sprintf("(%s OR %s)", n.left.String(), n.right.String())
 }
 
-func NewNodeOrAgg(left, right Sourced) Sourced {
+func NewNodeOrAgg(left, right Sourced, reverse bool) Sourced {
 	n := &nodeOrAgg{
 		left:  left,
 		right: right,
+		less:  GetLessFn(reverse),
 	}
 	n.readLeft()
 	n.readRight()
@@ -97,15 +104,19 @@ func (n *nodeOrAgg) NextSourced() (uint32, uint32, bool) {
 	if !n.hasLeft && !n.hasRight {
 		return 0, 0, false
 	}
-	if n.hasLeft && (!n.hasRight || n.leftID <= n.rightID) {
+
+	if n.hasLeft && (!n.hasRight || n.less(n.leftID, n.rightID)) {
 		cur := n.leftID
 		curSource := n.leftSource
 		n.readLeft()
+
 		return cur, curSource, true
 	}
+
 	// we don't need deduplication
 	cur := n.rightID
 	curSource := n.rightSource
 	n.readRight()
+
 	return cur, curSource, true
 }

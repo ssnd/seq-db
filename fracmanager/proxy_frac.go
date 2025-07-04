@@ -14,6 +14,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var ErrSealingFractionSuicided = errors.New("sealing fraction is suicided")
+
 /**
  *   Possible states (only 4):
  *  --------------------------------------------------------
@@ -23,9 +25,9 @@ import (
  *  --------------------------------------------------------
  *  | Sealing   		|  value   |    nil   |  true      |
  *  --------------------------------------------------------
- *  | Sealed 			|   nil    |  value   |    ---     |
+ *  | Sealed 			|   nil    |  value   |  true      |
  *  --------------------------------------------------------
- *  | Suicided 			|   nil    |   nil    |    ---     |
+ *  | Suicided 			|   nil    |   nil    |  true      |
  *  --------------------------------------------------------
  *  All other states are impossible.
  */
@@ -104,9 +106,13 @@ func (f *proxyFrac) WaitWriteIdle() {
 
 func (f *proxyFrac) Seal(params frac.SealParams) (*frac.Sealed, error) {
 	f.useMu.Lock()
+	if f.isSuicidedState() {
+		f.useMu.Unlock()
+		return nil, ErrSealingFractionSuicided
+	}
 	if !f.isActiveState() {
 		f.useMu.Unlock()
-		return nil, errors.New("fraction is not active")
+		return nil, errors.New("sealing fraction is not active")
 	}
 	f.readonly = true
 	active := f.active
@@ -176,4 +182,8 @@ func (f *proxyFrac) isActiveState() bool {
 
 func (f *proxyFrac) isSealingState() bool {
 	return f.active != nil && f.sealed == nil && f.readonly
+}
+
+func (f *proxyFrac) isSuicidedState() bool {
+	return f.active == nil && f.sealed == nil
 }

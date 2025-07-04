@@ -2,6 +2,7 @@ package fracmanager
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math/rand"
 	"os"
@@ -349,6 +350,11 @@ func (fm *FracManager) seal(activeRef activeRef) {
 
 	sealed, err := activeRef.frac.Seal(fm.config.SealParams)
 	if err != nil {
+		if errors.Is(err, ErrSealingFractionSuicided) {
+			// the faction is suicided, this means that it has already pushed out of the list of factions,
+			// so we simply skip further actions
+			return
+		}
 		logger.Fatal("sealing error", zap.Error(err))
 	}
 

@@ -54,7 +54,7 @@ func (f *proxyFrac) cur() frac.Fraction {
 	return f.sealed
 }
 
-func (f *proxyFrac) IsIntersecting(from seq.MID, to seq.MID) bool {
+func (f *proxyFrac) IsIntersecting(from, to seq.MID) bool {
 	return f.cur().IsIntersecting(from, to)
 }
 
@@ -92,8 +92,7 @@ func (f *proxyFrac) Append(docs, meta []byte) error {
 	f.indexWg.Add(1) // It's important to put wg.Add() inside a lock, otherwise we might call WaitWriteIdle() before it
 	f.useMu.RUnlock()
 
-	active.Append(docs, meta, &f.indexWg)
-	return nil
+	return active.Append(docs, meta, &f.indexWg)
 }
 
 func (f *proxyFrac) WaitWriteIdle() {

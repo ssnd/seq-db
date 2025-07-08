@@ -241,6 +241,7 @@ func TestSparseWrite(t *testing.T) {
 
 	rf, e := os.Open(wf.Name())
 	buf := make([]byte, 33)
+	assert.NoError(t, e)
 
 	n, e := rf.Read(buf)
 	assert.NoError(t, e)

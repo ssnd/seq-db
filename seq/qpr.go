@@ -108,32 +108,35 @@ const (
 	AggFuncUnique
 )
 
-const TimeBinSeparator = "|"
+const AggBinSeparator = "|"
 
-type TimeBin struct {
+type AggBin struct {
 	MID   MID
 	Token string
 }
 
-func (tb *TimeBin) toKey() string {
+func (tb *AggBin) toKey() string {
 	mid := strconv.Itoa(int(tb.MID))
-	return mid + TimeBinSeparator + tb.Token
+	return mid + AggBinSeparator + tb.Token
 }
 
-func (tb *TimeBin) fromKey(k string) {
-	smid, token, found := strings.Cut(k, TimeBinSeparator)
+func (tb *AggBin) fromKey(k string) {
+	smid, token, found := strings.Cut(k, AggBinSeparator)
 	if !found {
-		panic("BUG: key for histogram missing separator")
+		panic("BUG: AggBin missing separator")
+	}
+
+	mid, err := strconv.Atoi(smid)
+	if err != nil {
+		panic("BUG: AggBin key contains invalid MID")
 	}
 
 	tb.Token = token
-	mid, _ := strconv.Atoi(smid)
-
 	tb.MID = MID(mid)
 }
 
 type QPRHistogram struct {
-	HistogramByToken map[TimeBin]*AggregationHistogram
+	HistogramByToken map[AggBin]*AggregationHistogram
 	NotExists        int64
 }
 
@@ -161,12 +164,12 @@ func (q *QPRHistogram) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	q.HistogramByToken = make(map[TimeBin]*AggregationHistogram, len(qh.HistogramByToken))
+	q.HistogramByToken = make(map[AggBin]*AggregationHistogram, len(qh.HistogramByToken))
 	q.NotExists = qh.NotExists
 
 	for bKey, hist := range qh.HistogramByToken {
-		var tb TimeBin
-		(&tb).fromKey(bKey)
+		var tb AggBin
+		tb.fromKey(bKey)
 		q.HistogramByToken[tb] = hist
 	}
 
@@ -196,13 +199,10 @@ func (q *QPRHistogram) Aggregate(args AggregateArgs) AggregationResult {
 	buckets := make([]AggregationBucket, 0, len(q.HistogramByToken))
 
 	for bin, hist := range q.HistogramByToken {
-		bucket := q.getAggBucket(bin, hist, args)
-
-		if args.SkipWithoutTimestamp && bucket.MID == consts.DummyMID {
+		if args.SkipWithoutTimestamp && bin.MID == consts.DummyMID {
 			continue
 		}
-
-		buckets = append(buckets, bucket)
+		buckets = append(buckets, q.getAggBucket(bin, hist, args))
 	}
 
 	sortBuckets(args.Func, buckets)
@@ -252,7 +252,7 @@ func sortBuckets(aggFunc AggFunc, buckets []AggregationBucket) {
 	slices.SortFunc(buckets, sortFunc)
 }
 
-func (q *QPRHistogram) getAggBucket(bin TimeBin, hist *AggregationHistogram, args AggregateArgs) AggregationBucket {
+func (q *QPRHistogram) getAggBucket(bin AggBin, hist *AggregationHistogram, args AggregateArgs) AggregationBucket {
 	var (
 		value     float64
 		quantiles []float64
@@ -299,7 +299,7 @@ func (q *QPRHistogram) getAggBucket(bin TimeBin, hist *AggregationHistogram, arg
 
 func (q *QPRHistogram) Merge(agg QPRHistogram) {
 	if q.HistogramByToken == nil {
-		q.HistogramByToken = make(map[TimeBin]*AggregationHistogram, len(agg.HistogramByToken))
+		q.HistogramByToken = make(map[AggBin]*AggregationHistogram, len(agg.HistogramByToken))
 	}
 
 	for bin, hist := range agg.HistogramByToken {

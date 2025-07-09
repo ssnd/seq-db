@@ -493,12 +493,12 @@ func responseToQPR(resp *storeapi.SearchResponse, source uint64, explain bool) *
 	aggs := make([]seq.QPRHistogram, len(resp.Aggs))
 	for i, agg := range resp.Aggs {
 		from := agg.Timeseries
-		to := make(map[seq.TimeBin]*seq.AggregationHistogram)
+		to := make(map[seq.AggBin]*seq.AggregationHistogram)
 
 		for _, bin := range from {
 			pbhist := bin.Hist
 
-			tbin := seq.TimeBin{
+			tbin := seq.AggBin{
 				MID:   seq.MID(bin.Ts.AsTime().UnixMilli()),
 				Token: bin.Label,
 			}

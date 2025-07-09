@@ -688,13 +688,13 @@ func (s *IntegrationTestSuite) TestAgg() {
 		qpr, _, _, err := env.Search(`service:x1`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
-		r.NotNil(qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}], qpr.Aggs[0].HistogramByToken)
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
+		r.NotNil(qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}], qpr.Aggs[0].HistogramByToken)
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		aggQ := setup.WithAggQuery(
 			"service",
@@ -704,15 +704,15 @@ func (s *IntegrationTestSuite) TestAgg() {
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.TimeBin{Token: "y1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, aggQ, setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.TimeBin{Token: "y1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 	}
 
 	env.SealAll()
@@ -721,12 +721,12 @@ func (s *IntegrationTestSuite) TestAgg() {
 		qpr, _, _, err := env.Search(`service:x1`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		aggQ := setup.WithAggQuery(
 			"service",
@@ -736,15 +736,15 @@ func (s *IntegrationTestSuite) TestAgg() {
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.TimeBin{Token: "y1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, aggQ, setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: "x1"}].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.TimeBin{Token: "y1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 	}
 }
 
@@ -912,9 +912,9 @@ func (s *IntegrationTestSuite) TestTimeseries() {
 	})
 }
 
-func sortedTimeBins(hist map[seq.TimeBin]*seq.AggregationHistogram) []seq.TimeBin {
+func sortedTimeBins(hist map[seq.AggBin]*seq.AggregationHistogram) []seq.AggBin {
 	keys := slices.Collect(maps.Keys(hist))
-	slices.SortFunc(keys, func(a, b seq.TimeBin) int {
+	slices.SortFunc(keys, func(a, b seq.AggBin) int {
 		return a.MID.Time().Compare(b.MID.Time())
 	})
 	return keys
@@ -1260,7 +1260,7 @@ func (s *IntegrationTestSuite) TestAggNoTotal() {
 		assert.Equal(t, size, len(qpr.IDs), "we must get only size ids")
 		for i := 0; i < parts; i++ {
 			k := "x" + strconv.Itoa(i)
-			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: k}].Total), "we expect 1/%d of all documents", parts)
+			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: k}].Total), "we expect 1/%d of all documents", parts)
 		}
 
 		qpr, _, _, err = searchNoTotal("service", 0)
@@ -1269,7 +1269,7 @@ func (s *IntegrationTestSuite) TestAggNoTotal() {
 		assert.Equal(t, size, len(qpr.IDs), "we must get only size ids")
 		for i := 0; i < parts; i++ {
 			k := "x" + strconv.Itoa(i)
-			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[seq.TimeBin{Token: k}].Total), "we expect 1/%d of all documents", parts)
+			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: k}].Total), "we expect 1/%d of all documents", parts)
 		}
 
 		// histogram

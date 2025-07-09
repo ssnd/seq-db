@@ -11,9 +11,9 @@ import (
 	"github.com/ozontech/seq-db/seq"
 )
 
-// TimeBin is a container for documents which were written in the same time interval.
-// When dealing with aggregation (without need in building time series) [TimeBin.MID] is equal to [DummyMID].
-type TimeBin[T comparable] struct {
+// AggBin is a container for documents which were written in the same time interval.
+// When dealing with aggregation (without need in building time series) [AggBin.MID] is equal to [DummyMID].
+type AggBin[T comparable] struct {
 	MID    seq.MID
 	Source T
 }
@@ -42,7 +42,7 @@ type TwoSourceAggregator struct {
 	// collectSamples is a flag to indicate if collect samples is required, this is useful if you need to calculate the quantile.
 	collectSamples bool
 	// countBySource map to count occurrences by histogram source.
-	countBySource map[TimeBin[twoSources]]int64
+	countBySource map[AggBin[twoSources]]int64
 	// extractMID will be used for building time series.
 	extractMID ExtractMIDFunc
 }
@@ -53,7 +53,7 @@ func NewGroupAndFieldAggregator(
 ) *TwoSourceAggregator {
 	return &TwoSourceAggregator{
 		collectSamples:   collectSamples,
-		countBySource:    make(map[TimeBin[twoSources]]int64),
+		countBySource:    make(map[AggBin[twoSources]]int64),
 		field:            fieldIterator,
 		groupNotExists:   0,
 		groupBy:          groupByIterator,
@@ -92,7 +92,7 @@ func (n *TwoSourceAggregator) Next(lid uint32) error {
 	}
 
 	// Both group and field exist, increment the count for the combined sources.
-	source := TimeBin[twoSources]{
+	source := AggBin[twoSources]{
 		MID: n.extractMID(seq.LID(lid)),
 		Source: twoSources{
 			GroupBySource: groupBySource,
@@ -106,10 +106,10 @@ func (n *TwoSourceAggregator) Next(lid uint32) error {
 
 // Aggregate processes and returns the final aggregation result.
 func (n *TwoSourceAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[seq.TimeBin]*seq.AggregationHistogram, n.groupBy.UniqueSources())
+	aggMap := make(map[seq.AggBin]*seq.AggregationHistogram, n.groupBy.UniqueSources())
 
 	for groupBySource, cnt := range n.groupByNotExists {
-		groupByVal := seq.TimeBin{Token: n.groupBy.ValueBySource(groupBySource)}
+		groupByVal := seq.AggBin{Token: n.groupBy.ValueBySource(groupBySource)}
 		if aggMap[groupByVal] == nil {
 			aggMap[groupByVal] = seq.NewAggregationHistogram()
 		}
@@ -120,7 +120,7 @@ func (n *TwoSourceAggregator) Aggregate() (seq.QPRHistogram, error) {
 		// Name of the group, for example, it can be service name.
 		groupByVal := n.groupBy.ValueBySource(bin.Source.GroupBySource)
 
-		aggBin := seq.TimeBin{MID: bin.MID, Token: groupByVal}
+		aggBin := seq.AggBin{MID: bin.MID, Token: groupByVal}
 		if aggMap[aggBin] == nil {
 			aggMap[aggBin] = seq.NewAggregationHistogram()
 		}
@@ -159,7 +159,7 @@ func parseNum(str string) (float64, error) {
 // SingleSourceCountAggregator aggregates counts for a single source.
 type SingleSourceCountAggregator struct {
 	// countBySource needs to count occurrences by source.
-	countBySource map[TimeBin[uint32]]int64
+	countBySource map[AggBin[uint32]]int64
 	// notExists is the counter for non-existent sources.
 	notExists int64
 	group     *SourcedNodeIterator
@@ -171,7 +171,7 @@ func NewSingleSourceCountAggregator(
 	iterator *SourcedNodeIterator, fn ExtractMIDFunc,
 ) *SingleSourceCountAggregator {
 	return &SingleSourceCountAggregator{
-		countBySource: make(map[TimeBin[uint32]]int64),
+		countBySource: make(map[AggBin[uint32]]int64),
 		notExists:     0,
 		group:         iterator,
 		extractMID:    fn,
@@ -188,7 +188,7 @@ func (n *SingleSourceCountAggregator) Next(lid uint32) error {
 	if has {
 		mid := n.extractMID(seq.LID(lid))
 
-		n.countBySource[TimeBin[uint32]{
+		n.countBySource[AggBin[uint32]{
 			MID:    mid,
 			Source: source,
 		}]++
@@ -201,10 +201,10 @@ func (n *SingleSourceCountAggregator) Next(lid uint32) error {
 }
 
 func (n *SingleSourceCountAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[seq.TimeBin]*seq.AggregationHistogram, n.group.UniqueSources())
+	aggMap := make(map[seq.AggBin]*seq.AggregationHistogram, n.group.UniqueSources())
 
 	for bin, cnt := range n.countBySource {
-		aggBin := seq.TimeBin{
+		aggBin := seq.AggBin{
 			Token: n.group.ValueBySource(bin.Source),
 			MID:   bin.MID,
 		}
@@ -220,9 +220,9 @@ func (n *SingleSourceCountAggregator) Aggregate() (seq.QPRHistogram, error) {
 	// we also have to spread [notExists] accross different time bins.
 	if n.notExists > 0 {
 		// Handle non-existent sources in legacy format.
-		aggMap[seq.TimeBin{
+		aggMap[seq.AggBin{
 			Token: "_not_exists",
-			MID:   0,
+			MID:   consts.DummyMID,
 		}] = &seq.AggregationHistogram{Total: n.notExists}
 	}
 
@@ -264,10 +264,10 @@ func (n *SingleSourceUniqueAggregator) Next(lid uint32) error {
 }
 
 func (n *SingleSourceUniqueAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[seq.TimeBin]*seq.AggregationHistogram, n.group.UniqueSources())
+	aggMap := make(map[seq.AggBin]*seq.AggregationHistogram, n.group.UniqueSources())
 
 	for val := range n.values {
-		aggBin := seq.TimeBin{
+		aggBin := seq.AggBin{
 			Token: n.group.ValueBySource(val),
 		}
 
@@ -333,11 +333,11 @@ func (n *SingleSourceHistogramAggregator) Next(lid uint32) error {
 
 func (n *SingleSourceHistogramAggregator) Aggregate() (seq.QPRHistogram, error) {
 	qprHist := seq.QPRHistogram{
-		HistogramByToken: make(map[seq.TimeBin]*seq.AggregationHistogram, len(n.histogram)),
+		HistogramByToken: make(map[seq.AggBin]*seq.AggregationHistogram, len(n.histogram)),
 	}
 
 	for mid, histogram := range n.histogram {
-		qprHist.HistogramByToken[seq.TimeBin{
+		qprHist.HistogramByToken[seq.AggBin{
 			MID: mid,
 		}] = histogram
 	}

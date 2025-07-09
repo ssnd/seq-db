@@ -31,7 +31,7 @@ func TestSingleSourceCountAggregator(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	assert.Equal(t, map[TimeBin[uint32]]int64{{Source: 0}: 6}, agg.countBySource)
+	assert.Equal(t, map[AggBin[uint32]]int64{{Source: 0}: 6}, agg.countBySource)
 	assert.Equal(t, int64(1), agg.notExists)
 }
 
@@ -56,7 +56,7 @@ func TestSingleSourceCountAggregatorWithInterval(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, map[TimeBin[uint32]]int64{
+	assert.Equal(t, map[AggBin[uint32]]int64{
 		{Source: 0, MID: 0}: 2,
 		{Source: 0, MID: 1}: 1,
 		{Source: 0, MID: 2}: 3,
@@ -182,7 +182,7 @@ func TestTwoSourceAggregator(t *testing.T) {
 	}
 
 	for source, count := range expectedCountBySource {
-		r.Equal(count, aggregator.countBySource[TimeBin[twoSources]{
+		r.Equal(count, aggregator.countBySource[AggBin[twoSources]{
 			Source: source,
 		}])
 	}
@@ -228,7 +228,7 @@ func TestSingleTreeCountAggregator(t *testing.T) {
 	}
 
 	expectedResult := seq.QPRHistogram{
-		HistogramByToken: map[seq.TimeBin]*seq.AggregationHistogram{
+		HistogramByToken: map[seq.AggBin]*seq.AggregationHistogram{
 			// "0" because DataProvider converts TID source (tid index) to string
 			{Token: "0"}: {Total: 1},
 		},

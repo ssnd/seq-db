@@ -123,22 +123,33 @@ func makeProtoHistogram(qpr *seq.QPR) *seqproxyapi.Histogram {
 
 func makeProtoAggregation(allAggregations []seq.AggregationResult) []*seqproxyapi.Aggregation {
 	aggs := make([]*seqproxyapi.Aggregation, 0, len(allAggregations))
+
 	for _, agg := range allAggregations {
 		bucketsBuf := make([]seqproxyapi.Aggregation_Bucket, len(agg.Buckets))
 		buckets := make([]*seqproxyapi.Aggregation_Bucket, len(agg.Buckets))
+
 		for i, item := range agg.Buckets {
 			bucket := &bucketsBuf[i]
-			bucket.Value = item.Value
+
 			bucket.Key = item.Name
+			bucket.Value = item.Value
+
 			bucket.NotExists = item.NotExists
 			bucket.Quantiles = item.Quantiles
+
+			if item.MID != consts.DummyMID {
+				bucket.Ts = timestamppb.New(item.MID.Time())
+			}
+
 			buckets[i] = bucket
 		}
+
 		aggs = append(aggs, &seqproxyapi.Aggregation{
 			Buckets:   buckets,
 			NotExists: agg.NotExists,
 		})
 	}
+
 	return aggs
 }
 
@@ -221,6 +232,7 @@ func (g *grpcV1) doSearch(
 		ShouldFetch: shouldFetch,
 		Order:       req.Order.MustDocsOrder(),
 	}
+
 	if len(req.Aggs) > 0 {
 		aggs, err := convertAggsQuery(req.Aggs)
 		if err != nil {
@@ -228,6 +240,7 @@ func (g *grpcV1) doSearch(
 		}
 		proxyReq.AggQ = aggs
 	}
+
 	if req.Hist != nil {
 		intervalDuration, err := util.ParseDuration(req.Hist.Interval)
 		if err != nil {
@@ -292,12 +305,29 @@ func convertAggsQuery(aggs []*seqproxyapi.AggQuery) ([]search.AggQuery, error) {
 			return nil, err
 		}
 
-		result = append(result, search.AggQuery{
+		aggQuery := search.AggQuery{
 			Field:     agg.Field,
 			GroupBy:   agg.GroupBy,
 			Func:      aggFunc,
 			Quantiles: agg.Quantiles,
-		})
+		}
+
+		if agg.Interval == nil {
+			result = append(result, aggQuery)
+			continue
+		}
+
+		interval, err := util.ParseDuration(*agg.Interval)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.InvalidArgument,
+				"failed to parse 'interval': %v",
+				err,
+			)
+		}
+
+		aggQuery.Interval = seq.MID(interval.Milliseconds())
+		result = append(result, aggQuery)
 	}
 	return result, nil
 }
@@ -331,21 +361,34 @@ func validateAgg(agg *seqproxyapi.AggQuery) error {
 		if agg.GroupBy == "" && agg.Field == "" {
 			return status.Error(codes.InvalidArgument, "'groupBy' or 'field' must be set")
 		}
+
 	case seqproxyapi.AggFunc_AGG_FUNC_UNIQUE:
 		if agg.GroupBy == "" {
 			return status.Error(codes.InvalidArgument, "'groupBy' must be set")
 		}
-	case seqproxyapi.AggFunc_AGG_FUNC_SUM, seqproxyapi.AggFunc_AGG_FUNC_MIN, seqproxyapi.AggFunc_AGG_FUNC_MAX, seqproxyapi.AggFunc_AGG_FUNC_AVG:
+
+		if agg.Interval != nil {
+			return status.Error(
+				codes.InvalidArgument,
+				"remove 'interval' parameter: 'unique' aggregations do not support timeseries",
+			)
+		}
+
+	case seqproxyapi.AggFunc_AGG_FUNC_SUM, seqproxyapi.AggFunc_AGG_FUNC_MIN,
+		seqproxyapi.AggFunc_AGG_FUNC_MAX, seqproxyapi.AggFunc_AGG_FUNC_AVG:
 		if agg.Field == "" {
 			return status.Error(codes.InvalidArgument, "'field' must be set")
 		}
+
 	case seqproxyapi.AggFunc_AGG_FUNC_QUANTILE:
 		if agg.Field == "" {
 			return status.Error(codes.InvalidArgument, "'field' must be set")
 		}
+
 		if len(agg.Quantiles) == 0 {
 			return status.Error(codes.InvalidArgument, "aggregation query with QUANTILE function must contain at least one quantile")
 		}
+
 		for _, q := range agg.Quantiles {
 			if q < 0 || q > 1 {
 				return status.Error(codes.InvalidArgument, "quantile must be between 0 and 1")

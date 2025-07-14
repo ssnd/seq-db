@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/rand"
 	"net/http"
@@ -687,13 +688,13 @@ func (s *IntegrationTestSuite) TestAgg() {
 		qpr, _, _, err := env.Search(`service:x1`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
-		r.NotNil(qpr.Aggs[0].HistogramByToken["x1"], qpr.Aggs[0].HistogramByToken)
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
+		r.NotNil(qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}], qpr.Aggs[0].HistogramByToken)
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		aggQ := setup.WithAggQuery(
 			"service",
@@ -703,15 +704,15 @@ func (s *IntegrationTestSuite) TestAgg() {
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken["y1"].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, aggQ, setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken["y1"].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 	}
 
 	env.SealAll()
@@ -720,12 +721,12 @@ func (s *IntegrationTestSuite) TestAgg() {
 		qpr, _, _, err := env.Search(`service:x1`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, setup.WithAggQuery("service"), setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
 
 		aggQ := setup.WithAggQuery(
 			"service",
@@ -735,16 +736,188 @@ func (s *IntegrationTestSuite) TestAgg() {
 		r.NoError(err, "should be no errors")
 		r.Equal(getTotal(allDocsNum/3, withTotal), qpr.Total, "wrong doc count")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken["y1"].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 
 		qpr, _, _, err = env.Search(`service:x*`, 10, aggQ, setup.NoFetch(), setup.WithTotal(withTotal))
 		r.NoError(err, "should be no errors")
 		r.Equal(2, len(qpr.Aggs), "wrong agg count")
 		r.Equal(getTotal(allDocsNum, withTotal), qpr.Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken["x1"].Total, "wrong doc count")
-		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken["y1"].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: "x1"}].Total, "wrong doc count")
+		r.Equal(int64(allDocsNum/3), qpr.Aggs[1].HistogramByToken[seq.AggBin{Token: "y1"}].Total, "wrong doc count")
 	}
+}
+
+func (s *IntegrationTestSuite) TestTimeseries() {
+	t := s.T()
+
+	env := setup.NewTestingEnv(s.Config)
+	defer env.StopAll()
+
+	timeBinsCount := 10
+	timeBins := []time.Time{time.Now().Truncate(time.Second)}
+
+	// We have [timeBinsCount] intervals and each document will have timestamp
+	// that equals to some value in [timeBins].
+	//
+	// Each [nextBin] documents we are going to advance select time interval in one position
+	// to the right.
+	for i := 1; i < timeBinsCount; i++ {
+		timeBins = append(timeBins, timeBins[i-1].Add(time.Second*30))
+	}
+
+	var (
+		docs      []string
+		nextBin   = 10
+		batchSize = timeBinsCount * nextBin
+	)
+
+	bulkDataset := func(service string, level func(i int) int) {
+		for i := range batchSize {
+			first, err := json.Marshal(map[string]any{
+				"ts":      timeBins[i/nextBin],
+				"service": service,
+				"level":   level(i),
+			})
+			require.NoError(t, err)
+
+			second, err := json.Marshal(map[string]any{
+				"ts":      timeBins[i/nextBin],
+				"service": fmt.Sprintf("%s-noise", service),
+				"level":   level(i),
+			})
+			require.NoError(t, err)
+
+			docs = append(docs, string(first), string(second))
+		}
+		setup.Bulk(t, env.IngestorBulkAddr(), docs)
+		env.WaitIdle()
+	}
+
+	t.Run("count", func(t *testing.T) {
+		bulkDataset("nginx-count", func(int) int { return 1 })
+
+		qpr, _, _, err := env.Search(`service:"nginx-count"`, 1024, setup.WithAggQuery(search.AggQuery{
+			GroupBy:  "level",
+			Func:     seq.AggFuncCount,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, int64(nextBin), hist[bins[i]].Total)
+		}
+	})
+
+	t.Run("min", func(t *testing.T) {
+		bulkDataset("nginx-min", func(i int) int { return i })
+
+		qpr, _, _, err := env.Search(`service:"nginx-min"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			GroupBy:  "service",
+			Func:     seq.AggFuncMin,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin*i), hist[bins[i]].Min)
+			require.Equal(t, "nginx-min", bins[i].Token)
+		}
+	})
+
+	t.Run("max", func(t *testing.T) {
+		bulkDataset("nginx-max", func(i int) int { return i })
+
+		qpr, _, _, err := env.Search(`service:"nginx-max"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			Func:     seq.AggFuncMax,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin*(i+1)-1), hist[bins[i]].Max)
+		}
+	})
+
+	t.Run("avg", func(t *testing.T) {
+		bulkDataset("nginx-avg", func(int) int { return 1 })
+
+		qpr, _, _, err := env.Search(`service:"nginx-avg"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			Func:     seq.AggFuncAvg,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(1), hist[bins[i]].Sum/float64(hist[bins[i]].Total))
+		}
+	})
+
+	t.Run("sum", func(t *testing.T) {
+		bulkDataset("nginx-sum", func(int) int { return 1 })
+
+		qpr, _, _, err := env.Search(`service:"nginx-sum"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:    "level",
+			Func:     seq.AggFuncSum,
+			Interval: 30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin), hist[bins[i]].Sum)
+		}
+	})
+
+	t.Run("quantile", func(t *testing.T) {
+		bulkDataset("nginx-quantile", func(i int) int { return i })
+
+		qpr, _, _, err := env.Search(`service:"nginx-quantile"`, 1024, setup.WithAggQuery(search.AggQuery{
+			Field:     "level",
+			Func:      seq.AggFuncQuantile,
+			Quantiles: []float64{0.5},
+			Interval:  30 * 1000, // 30 sec interval
+		}))
+		require.NoError(t, err)
+
+		hist := qpr.Aggs[0].HistogramByToken
+		require.Len(t, hist, timeBinsCount)
+
+		bins := sortedTimeBins(hist)
+		for i := range timeBinsCount {
+			require.Equal(t, float64(nextBin*i+5), hist[bins[i]].Quantile(0.5))
+		}
+	})
+}
+
+func sortedTimeBins(hist map[seq.AggBin]*seq.AggregationHistogram) []seq.AggBin {
+	keys := slices.Collect(maps.Keys(hist))
+	slices.SortFunc(keys, func(a, b seq.AggBin) int {
+		return a.MID.Time().Compare(b.MID.Time())
+	})
+	return keys
 }
 
 func (s *IntegrationTestSuite) TestAggStat() {
@@ -1087,7 +1260,7 @@ func (s *IntegrationTestSuite) TestAggNoTotal() {
 		assert.Equal(t, size, len(qpr.IDs), "we must get only size ids")
 		for i := 0; i < parts; i++ {
 			k := "x" + strconv.Itoa(i)
-			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[k].Total), "we expect 1/%d of all documents", parts)
+			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: k}].Total), "we expect 1/%d of all documents", parts)
 		}
 
 		qpr, _, _, err = searchNoTotal("service", 0)
@@ -1096,7 +1269,7 @@ func (s *IntegrationTestSuite) TestAggNoTotal() {
 		assert.Equal(t, size, len(qpr.IDs), "we must get only size ids")
 		for i := 0; i < parts; i++ {
 			k := "x" + strconv.Itoa(i)
-			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[k].Total), "we expect 1/%d of all documents", parts)
+			assert.Equal(t, int(aggCnt), int(qpr.Aggs[0].HistogramByToken[seq.AggBin{Token: k}].Total), "we expect 1/%d of all documents", parts)
 		}
 
 		// histogram
@@ -1809,22 +1982,28 @@ func (s *IntegrationTestSuite) TestAsyncSearch() {
 	r.True(fetchResp.Done)
 	r.True(fetchResp.Expiration.After(time.Now()))
 	r.Equal([]seq.AggregationResult{
-		{Buckets: []seq.AggregationBucket{
-			{Name: "226.166.207.153", Value: 5116},
-			{Name: "117.81.168.0", Value: 4734},
-			{Name: "107.2.249.68", Value: 4334},
-			{Name: "181.10.24.51", Value: 4002},
-			{Name: "13.30.65.187", Value: 3892},
-			{Name: "106.51.48.84", Value: 3015},
-			{Name: "222.36.179.145", Value: 2683},
-			{Name: "70.83.163.58", Value: 2525},
-			{Name: "211.170.224.81", Value: 2375},
-			{Name: "132.240.243.74", Value: 1598}}},
-		{Buckets: []seq.AggregationBucket{
-			{Name: "delete", Value: 3015, Quantiles: []float64{3015, 3015, 3015}},
-			{Name: "get", Value: 4734, Quantiles: []float64{4734, 4734, 4002}},
-			{Name: "post", Value: 3892, Quantiles: []float64{3892, 3892, 3892}},
-			{Name: "put", Value: 5116, Quantiles: []float64{5116, 5116, 4334}}}},
+		{
+			Buckets: []seq.AggregationBucket{
+				{Name: "226.166.207.153", Value: 5116},
+				{Name: "117.81.168.0", Value: 4734},
+				{Name: "107.2.249.68", Value: 4334},
+				{Name: "181.10.24.51", Value: 4002},
+				{Name: "13.30.65.187", Value: 3892},
+				{Name: "106.51.48.84", Value: 3015},
+				{Name: "222.36.179.145", Value: 2683},
+				{Name: "70.83.163.58", Value: 2525},
+				{Name: "211.170.224.81", Value: 2375},
+				{Name: "132.240.243.74", Value: 1598},
+			},
+		},
+		{
+			Buckets: []seq.AggregationBucket{
+				{Name: "delete", Value: 3015, Quantiles: []float64{3015, 3015, 3015}},
+				{Name: "get", Value: 4734, Quantiles: []float64{4734, 4734, 4002}},
+				{Name: "post", Value: 3892, Quantiles: []float64{3892, 3892, 3892}},
+				{Name: "put", Value: 5116, Quantiles: []float64{5116, 5116, 4334}},
+			},
+		},
 	}, fetchResp.AggResult)
 
 	r.True(len(fetchResp.QPR.Histogram) != 0)

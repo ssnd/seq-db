@@ -64,8 +64,9 @@ func aggregationArgsFromProto(aggs []*seqproxyapi.AggQuery) []seq.AggregateArgs 
 	args := make([]seq.AggregateArgs, len(aggs))
 	for i, agg := range aggs {
 		args[i] = seq.AggregateArgs{
-			Func:      agg.Func.MustAggFunc(),
-			Quantiles: agg.Quantiles,
+			Func:                 agg.Func.MustAggFunc(),
+			Quantiles:            agg.Quantiles,
+			SkipWithoutTimestamp: agg.Interval != nil,
 		}
 	}
 	return args

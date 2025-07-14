@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -25,20 +25,50 @@ func TestSingleSourceCountAggregator(t *testing.T) {
 
 	source := node.BuildORTreeAgg(node.MakeStaticNodes(sources))
 	iter := NewSourcedNodeIterator(source, nil, nil, 0, false)
-	agg := NewSingleSourceCountAggregator(iter)
+	agg := NewSingleSourceCountAggregator(iter, provideExtractTimeFunc(nil, nil, 0))
 	for _, id := range searchDocs {
 		if err := agg.Next(id); err != nil {
 			t.Fatal(err)
 		}
 	}
-	assert.Equal(t, map[uint32]int64{0: 6}, agg.countBySource)
+	assert.Equal(t, map[AggBin[uint32]]int64{{Source: 0}: 6}, agg.countBySource)
+	assert.Equal(t, int64(1), agg.notExists)
+}
+
+func TestSingleSourceCountAggregatorWithInterval(t *testing.T) {
+	searchDocs := []uint32{2, 3, 5, 8, 10, 12, 15}
+	sources := [][]uint32{
+		{2, 3, 5, 8, 10, 12},
+		{1, 4, 6, 9, 11, 13},
+		{1, 2, 4, 5, 8, 11, 12},
+	}
+
+	source := node.BuildORTreeAgg(node.MakeStaticNodes(sources))
+	iter := NewSourcedNodeIterator(source, nil, nil, 0, false)
+
+	agg := NewSingleSourceCountAggregator(iter, func(l seq.LID) seq.MID {
+		return seq.MID(l) % 3
+	})
+
+	for _, id := range searchDocs {
+		if err := agg.Next(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	assert.Equal(t, map[AggBin[uint32]]int64{
+		{Source: 0, MID: 0}: 2,
+		{Source: 0, MID: 1}: 1,
+		{Source: 0, MID: 2}: 3,
+	}, agg.countBySource)
+
 	assert.Equal(t, int64(1), agg.notExists)
 }
 
 func Generate(n int) ([]uint32, uint32) {
 	v := make([]uint32, n)
 	last := uint32(1)
-	for i := 0; i < len(v); i++ {
+	for i := range v {
 		v[i] = last
 		last += uint32(1 + rand.Intn(5))
 	}
@@ -49,7 +79,7 @@ func BenchmarkAggDeep(b *testing.B) {
 	v, _ := Generate(b.N)
 	src := node.NewSourcedNodeWrapper(node.NewStatic(v, false), 0)
 	iter := NewSourcedNodeIterator(src, nil, make([]uint32, 1), 0, false)
-	n := NewSingleSourceCountAggregator(iter)
+	n := NewSingleSourceCountAggregator(iter, provideExtractTimeFunc(nil, nil, 0))
 	vals, _ := Generate(b.N)
 	b.ResetTimer()
 	for _, v := range vals {
@@ -65,18 +95,16 @@ func BenchmarkAggWide(b *testing.B) {
 	factor := int(math.Sqrt(float64(b.N)))
 	wide := make([][]uint32, b.N/factor)
 	for i := range wide {
-		for j := 0; j < factor; j++ {
+		for range factor {
 			wide[i] = append(wide[i], v[rand.Intn(b.N)])
 		}
-		sort.Slice(wide[i], func(j, k int) bool {
-			return wide[i][j] < wide[i][k]
-		})
+		slices.Sort(wide[i])
 	}
 
 	source := node.BuildORTreeAgg(node.MakeStaticNodes(wide))
 
 	iter := NewSourcedNodeIterator(source, nil, make([]uint32, len(wide)), 0, false)
-	n := NewSingleSourceCountAggregator(iter)
+	n := NewSingleSourceCountAggregator(iter, provideExtractTimeFunc(nil, nil, 0))
 	vals, _ := Generate(b.N)
 	b.ResetTimer()
 	for _, v := range vals {
@@ -139,7 +167,9 @@ func TestTwoSourceAggregator(t *testing.T) {
 	groupByTIDs := []uint32{1, 2}
 	groupIterator := NewSourcedNodeIterator(groupBy, dp, groupByTIDs, 0, false)
 	fieldIterator := NewSourcedNodeIterator(field, dp, fieldTIDs, 0, false)
-	aggregator := NewGroupAndFieldAggregator(fieldIterator, groupIterator, true)
+	aggregator := NewGroupAndFieldAggregator(
+		fieldIterator, groupIterator, provideExtractTimeFunc(nil, nil, 0), true,
+	)
 
 	// Call Next for two data points.
 	r.NoError(aggregator.Next(1))
@@ -150,8 +180,11 @@ func TestTwoSourceAggregator(t *testing.T) {
 		{GroupBySource: 0, FieldSource: 0}: 1,
 		{GroupBySource: 1, FieldSource: 1}: 1,
 	}
+
 	for source, count := range expectedCountBySource {
-		r.Equal(count, aggregator.countBySource[source])
+		r.Equal(count, aggregator.countBySource[AggBin[twoSources]{
+			Source: source,
+		}])
 	}
 
 	agg, err := aggregator.Aggregate()
@@ -167,9 +200,11 @@ func TestTwoSourceAggregator(t *testing.T) {
 			Value: 42,
 		},
 	}
+
 	got := agg.Aggregate(seq.AggregateArgs{
 		Func: seq.AggFuncMax,
 	})
+
 	r.Equal(wantBuckets, got.Buckets)
 }
 
@@ -183,23 +218,22 @@ func TestSingleTreeCountAggregator(t *testing.T) {
 	}
 
 	iter := NewSourcedNodeIterator(field, dp, []uint32{0}, 0, false)
-	aggregator := NewSingleSourceCountAggregator(iter)
+	aggregator := NewSingleSourceCountAggregator(iter, provideExtractTimeFunc(nil, nil, 0))
 
 	r.NoError(aggregator.Next(1))
 
 	result, err := aggregator.Aggregate()
-
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
+
 	expectedResult := seq.QPRHistogram{
-		HistogramByToken: map[string]*seq.AggregationHistogram{
+		HistogramByToken: map[seq.AggBin]*seq.AggregationHistogram{
 			// "0" because DataProvider converts TID source (tid index) to string
-			"0": {
-				Total: 1,
-			},
+			{Token: "0"}: {Total: 1},
 		},
 	}
+
 	r.Equal(len(expectedResult.HistogramByToken), len(result.HistogramByToken))
 	for token, hist := range expectedResult.HistogramByToken {
 		r.Equal(hist.Total, result.HistogramByToken[token].Total)

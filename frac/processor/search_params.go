@@ -10,6 +10,7 @@ type AggQuery struct {
 	GroupBy   *parser.Literal
 	Func      seq.AggFunc
 	Quantiles []float64
+	Interval  int64
 }
 
 type SearchParams struct {

@@ -492,18 +492,27 @@ func responseToQPR(resp *storeapi.SearchResponse, source uint64, explain bool) *
 
 	aggs := make([]seq.QPRHistogram, len(resp.Aggs))
 	for i, agg := range resp.Aggs {
-		from := agg.AggHistogram
-		to := make(map[string]*seq.AggregationHistogram)
-		for k, v := range from {
-			to[k] = &seq.AggregationHistogram{
-				Min:       v.Min,
-				Max:       v.Max,
-				Sum:       v.Sum,
-				Total:     v.Total,
-				Samples:   v.Samples,
-				NotExists: v.NotExists,
+		from := agg.Timeseries
+		to := make(map[seq.AggBin]*seq.AggregationHistogram)
+
+		for _, bin := range from {
+			pbhist := bin.Hist
+
+			tbin := seq.AggBin{
+				MID:   seq.MID(bin.Ts.AsTime().UnixMilli()),
+				Token: bin.Label,
+			}
+
+			to[tbin] = &seq.AggregationHistogram{
+				Min:       pbhist.Min,
+				Max:       pbhist.Max,
+				Sum:       pbhist.Sum,
+				Total:     pbhist.Total,
+				Samples:   pbhist.Samples,
+				NotExists: pbhist.NotExists,
 			}
 		}
+
 		aggs[i] = seq.QPRHistogram{
 			HistogramByToken: to,
 			NotExists:        agg.NotExists,

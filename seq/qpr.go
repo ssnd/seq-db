@@ -2,13 +2,17 @@ package seq
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/valyala/fastrand"
 
+	"github.com/ozontech/seq-db/consts"
 	"github.com/ozontech/seq-db/metric"
 )
 
@@ -104,9 +108,72 @@ const (
 	AggFuncUnique
 )
 
+const AggBinSeparator = "|"
+
+type AggBin struct {
+	MID   MID
+	Token string
+}
+
+func (tb *AggBin) toKey() string {
+	mid := strconv.Itoa(int(tb.MID))
+	return mid + AggBinSeparator + tb.Token
+}
+
+func (tb *AggBin) fromKey(k string) {
+	smid, token, found := strings.Cut(k, AggBinSeparator)
+	if !found {
+		panic("BUG: AggBin missing separator")
+	}
+
+	mid, err := strconv.Atoi(smid)
+	if err != nil {
+		panic("BUG: AggBin key contains invalid MID")
+	}
+
+	tb.Token = token
+	tb.MID = MID(mid)
+}
+
 type QPRHistogram struct {
+	HistogramByToken map[AggBin]*AggregationHistogram
+	NotExists        int64
+}
+
+type qprHistogram struct {
 	HistogramByToken map[string]*AggregationHistogram
 	NotExists        int64
+}
+
+func (q *QPRHistogram) MarshalJSON() ([]byte, error) {
+	qh := qprHistogram{
+		HistogramByToken: make(map[string]*AggregationHistogram),
+		NotExists:        q.NotExists,
+	}
+
+	for bin, hist := range q.HistogramByToken {
+		qh.HistogramByToken[bin.toKey()] = hist
+	}
+
+	return json.Marshal(qh)
+}
+
+func (q *QPRHistogram) UnmarshalJSON(b []byte) error {
+	var qh qprHistogram
+	if err := json.Unmarshal(b, &qh); err != nil {
+		return err
+	}
+
+	q.HistogramByToken = make(map[AggBin]*AggregationHistogram, len(qh.HistogramByToken))
+	q.NotExists = qh.NotExists
+
+	for bKey, hist := range qh.HistogramByToken {
+		var tb AggBin
+		tb.fromKey(bKey)
+		q.HistogramByToken[tb] = hist
+	}
+
+	return nil
 }
 
 type AggregationBucket struct {
@@ -114,6 +181,7 @@ type AggregationBucket struct {
 	Value     float64
 	Quantiles []float64
 	NotExists int64
+	MID       MID
 }
 
 type AggregationResult struct {
@@ -122,14 +190,19 @@ type AggregationResult struct {
 }
 
 type AggregateArgs struct {
-	Func      AggFunc
-	Quantiles []float64
+	Func                 AggFunc
+	SkipWithoutTimestamp bool
+	Quantiles            []float64
 }
 
 func (q *QPRHistogram) Aggregate(args AggregateArgs) AggregationResult {
 	buckets := make([]AggregationBucket, 0, len(q.HistogramByToken))
-	for token, hist := range q.HistogramByToken {
-		buckets = append(buckets, q.getAggBucket(token, hist, args))
+
+	for bin, hist := range q.HistogramByToken {
+		if args.SkipWithoutTimestamp && bin.MID == consts.DummyMID {
+			continue
+		}
+		buckets = append(buckets, q.getAggBucket(bin, hist, args))
 	}
 
 	sortBuckets(args.Func, buckets)
@@ -143,38 +216,47 @@ func (q *QPRHistogram) Aggregate(args AggregateArgs) AggregationResult {
 func sortBuckets(aggFunc AggFunc, buckets []AggregationBucket) {
 	sortByValueDescNameAsc := func(left, right AggregationBucket) int {
 		return cmp.Or(
+			cmp.Compare(left.MID, right.MID),
 			cmp.Compare(right.Value, left.Value),
 			cmp.Compare(left.Name, right.Name),
 		)
 	}
+
 	sortByNameAscValueDesc := func(left, right AggregationBucket) int {
 		return cmp.Or(
+			cmp.Compare(left.MID, right.MID),
 			cmp.Compare(left.Name, right.Name),
 			cmp.Compare(right.Value, left.Value),
 		)
 	}
+
 	sortByValueNameAsc := func(left, right AggregationBucket) int {
 		return cmp.Or(
+			cmp.Compare(left.MID, right.MID),
 			cmp.Compare(left.Value, right.Value),
 			cmp.Compare(left.Name, right.Name),
 		)
 	}
 
 	sortFunc := sortByValueDescNameAsc
-	if aggFunc == AggFuncMin {
+
+	switch aggFunc {
+	case AggFuncMin:
 		// Sort the MIN aggregation result in ascending order.
 		sortFunc = sortByValueNameAsc
-	}
-	if aggFunc == AggFuncQuantile {
+	case AggFuncQuantile:
 		// Sort the QUANTILE aggregation result by name ASC, then by value DESC.
 		sortFunc = sortByNameAscValueDesc
 	}
+
 	slices.SortFunc(buckets, sortFunc)
 }
 
-func (q *QPRHistogram) getAggBucket(token string, hist *AggregationHistogram, args AggregateArgs) AggregationBucket {
-	var value float64
-	var quantiles []float64
+func (q *QPRHistogram) getAggBucket(bin AggBin, hist *AggregationHistogram, args AggregateArgs) AggregationBucket {
+	var (
+		value     float64
+		quantiles []float64
+	)
 
 	switch args.Func {
 	case AggFuncCount, AggFuncUnique:
@@ -207,7 +289,8 @@ func (q *QPRHistogram) getAggBucket(token string, hist *AggregationHistogram, ar
 	}
 
 	return AggregationBucket{
-		Name:      token,
+		Name:      bin.Token,
+		MID:       bin.MID,
 		Value:     value,
 		Quantiles: quantiles,
 		NotExists: hist.NotExists,
@@ -216,17 +299,17 @@ func (q *QPRHistogram) getAggBucket(token string, hist *AggregationHistogram, ar
 
 func (q *QPRHistogram) Merge(agg QPRHistogram) {
 	if q.HistogramByToken == nil {
-		q.HistogramByToken = make(map[string]*AggregationHistogram, len(agg.HistogramByToken))
+		q.HistogramByToken = make(map[AggBin]*AggregationHistogram, len(agg.HistogramByToken))
+	}
+
+	for bin, hist := range agg.HistogramByToken {
+		if q.HistogramByToken[bin] == nil {
+			q.HistogramByToken[bin] = NewAggregationHistogram()
+		}
+		q.HistogramByToken[bin].Merge(hist)
 	}
 
 	q.NotExists += agg.NotExists
-
-	for k, v := range agg.HistogramByToken {
-		if q.HistogramByToken[k] == nil {
-			q.HistogramByToken[k] = NewAggregationHistogram()
-		}
-		q.HistogramByToken[k].Merge(v)
-	}
 }
 
 // AggregationHistogram is a histogram that is used for aggregations.
@@ -296,6 +379,7 @@ func (h *AggregationHistogram) Merge(hist *AggregationHistogram) {
 
 	h.Sum += hist.Sum
 	h.Total += hist.Total
+
 	for _, v := range hist.Samples {
 		h.InsertSample(v)
 	}

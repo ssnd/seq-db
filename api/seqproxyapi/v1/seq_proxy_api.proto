@@ -124,10 +124,11 @@ message Aggregation {
   // Key-value pair containing result of single aggregation.
   message Bucket {
     reserved 1;
-    string key = 2;                           // Field name.
-    double value = 3;                         // Calculated aggregation value.
-    int64 not_exists = 4;                     // Number of documents without presence of that field.
-    repeated double quantiles = 5;            // Value of quantiles for given request. Returned when quantiles aggregation func used.
+    string key = 2;                            // Field name.
+    double value = 3;                          // Calculated aggregation value.
+    int64 not_exists = 4;                      // Number of documents without presence of that field.
+    repeated double quantiles = 5;             // Value of quantiles for given request. Returned when quantiles aggregation func used.
+    optional google.protobuf.Timestamp ts = 6; // Will be used to determine bin of time series.
   }
 
   repeated Bucket buckets = 1; // List of aggregations for given request.
@@ -177,6 +178,7 @@ message AggQuery {
   string group_by = 3;           // Field over which to create group for further aggregation.
   AggFunc func = 4;              // Function to apply on aggregated field.
   repeated double quantiles = 5; // Field used only for `AGG_FUNC_QUANTILE`. Represents list of quantiles to calculate.
+  optional string interval = 6;  // Field used only for time series.
 }
 
 // Histogram query

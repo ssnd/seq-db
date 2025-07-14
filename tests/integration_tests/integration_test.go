@@ -1161,36 +1161,47 @@ func (s *IntegrationTestSuite) TestAggStat() {
 		},
 	}
 
+	aggregateWithOrder := func(r *require.Assertions, env *setup.TestingEnv, tc *TestCase, order seq.DocsOrder) {
+		qpr, _, _, err := env.Search(tc.SearchQuery, math.MaxInt32, setup.WithAggQuery(tc.AggQuery), setup.WithOrder(order))
+		r.NoError(err)
+
+		gotBuckets := qpr.Aggregate([]seq.AggregateArgs{{Func: tc.AggQuery.Func, Quantiles: tc.AggQuery.Quantiles}})
+
+		r.Equal(1, len(gotBuckets))
+		r.Equal(1, len(qpr.Aggs))
+		r.Equal(tc.Expected.NotExists, qpr.Aggs[0].NotExists)
+
+		// Handwritten bucket comparison to ignore NaN values
+		r.Len(gotBuckets[0].Buckets, len(tc.Expected.Buckets), "wrong bucket count, expected=%v, got=%v", tc.Expected.Buckets, gotBuckets[0])
+		for i, expBucket := range tc.Expected.Buckets {
+			gotBucket := gotBuckets[0].Buckets[i]
+			if math.IsNaN(expBucket.Value) || math.IsNaN(gotBucket.Value) {
+				r.Truef(math.IsNaN(expBucket.Value) && math.IsNaN(gotBucket.Value), "wrong bucket value, expected=%v, got=%v", expBucket.Value, gotBucket.Value)
+				expBucket.Value = 0
+				gotBucket.Value = 0
+			}
+			r.EqualValues(expBucket, gotBucket)
+		}
+	}
+
 	for i := range tcs {
 		tc := &tcs[i]
 		t.Run(tc.Name, func(t *testing.T) {
-			r := require.New(t)
 			env := setup.NewTestingEnv(&cfg)
 			defer env.StopAll()
 
 			setup.Bulk(t, env.IngestorBulkAddr(), tc.ToBulk)
 			env.WaitIdle()
 
-			qpr, _, _, err := env.Search(tc.SearchQuery, math.MaxInt32, setup.WithAggQuery(tc.AggQuery))
-			r.NoError(err)
+			t.Run("asc", func(t *testing.T) {
+				r := require.New(t)
+				aggregateWithOrder(r, env, tc, seq.DocsOrderAsc)
+			})
 
-			gotBuckets := qpr.Aggregate([]seq.AggregateArgs{{Func: tc.AggQuery.Func, Quantiles: tc.AggQuery.Quantiles}})
-
-			r.Equal(1, len(gotBuckets))
-			r.Equal(1, len(qpr.Aggs))
-			r.Equal(tc.Expected.NotExists, qpr.Aggs[0].NotExists)
-
-			// Handwritten bucket comparison to ignore NaN values
-			r.Len(tc.Expected.Buckets, len(gotBuckets[0].Buckets), "wrong bucket count, expected=%v, got=%v", tc.Expected.Buckets, gotBuckets[0])
-			for i, expBucket := range tc.Expected.Buckets {
-				gotBucket := gotBuckets[0].Buckets[i]
-				if math.IsNaN(expBucket.Value) || math.IsNaN(gotBucket.Value) {
-					r.Truef(math.IsNaN(expBucket.Value) && math.IsNaN(gotBucket.Value), "wrong bucket value, expected=%v, got=%v", expBucket.Value, gotBucket.Value)
-					expBucket.Value = 0
-					gotBucket.Value = 0
-				}
-				r.EqualValues(expBucket, gotBucket)
-			}
+			t.Run("desc", func(t *testing.T) {
+				r := require.New(t)
+				aggregateWithOrder(r, env, tc, seq.DocsOrderDesc)
+			})
 		})
 	}
 }

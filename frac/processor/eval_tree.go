@@ -72,7 +72,7 @@ type Aggregator interface {
 	// Next iterates to count the next lid.
 	Next(lid uint32) error
 	// Aggregate processes and returns the final aggregation result.
-	Aggregate() (seq.QPRHistogram, error)
+	Aggregate() (seq.AggregatableSamples, error)
 }
 
 type AggLimits struct {

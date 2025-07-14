@@ -116,7 +116,7 @@ func (si *Ingestor) Search(
 	t := time.Now()
 	qpr = &seq.QPR{
 		Histogram: make(map[seq.MID]uint64),
-		Aggs:      make([]seq.QPRHistogram, len(sr.AggQ)),
+		Aggs:      make([]seq.AggregatableSamples, len(sr.AggQ)),
 	}
 	seq.MergeQPRs(qpr, qprs, sr.Offset+sr.Size, sr.Interval, sr.Order)
 	mergeDuration := time.Since(t)
@@ -490,10 +490,10 @@ func responseToQPR(resp *storeapi.SearchResponse, source uint64, explain bool) *
 		hist[seq.MID(k)] = v
 	}
 
-	aggs := make([]seq.QPRHistogram, len(resp.Aggs))
+	aggs := make([]seq.AggregatableSamples, len(resp.Aggs))
 	for i, agg := range resp.Aggs {
 		from := agg.Timeseries
-		to := make(map[seq.AggBin]*seq.AggregationHistogram)
+		to := make(map[seq.AggBin]*seq.SamplesContainer)
 
 		for _, bin := range from {
 			pbhist := bin.Hist
@@ -503,7 +503,7 @@ func responseToQPR(resp *storeapi.SearchResponse, source uint64, explain bool) *
 				Token: bin.Label,
 			}
 
-			to[tbin] = &seq.AggregationHistogram{
+			to[tbin] = &seq.SamplesContainer{
 				Min:       pbhist.Min,
 				Max:       pbhist.Max,
 				Sum:       pbhist.Sum,
@@ -513,9 +513,9 @@ func responseToQPR(resp *storeapi.SearchResponse, source uint64, explain bool) *
 			}
 		}
 
-		aggs[i] = seq.QPRHistogram{
-			HistogramByToken: to,
-			NotExists:        agg.NotExists,
+		aggs[i] = seq.AggregatableSamples{
+			SamplesByBin: to,
+			NotExists:    agg.NotExists,
 		}
 	}
 

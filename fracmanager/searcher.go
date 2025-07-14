@@ -59,7 +59,7 @@ func (s *Searcher) SearchDocs(ctx context.Context, fracs []frac.Fraction, params
 
 	total := &seq.QPR{
 		Histogram: make(map[seq.MID]uint64),
-		Aggs:      make([]seq.QPRHistogram, len(params.AggQ)),
+		Aggs:      make([]seq.AggregatableSamples, len(params.AggQ)),
 	}
 
 	fracsChunkSize := s.cfg.FractionsPerIteration

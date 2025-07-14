@@ -94,9 +94,9 @@ func IndexSearch(
 
 	stats.HitsTotal += total
 
-	var aggsResult []seq.QPRHistogram
+	var aggsResult []seq.AggregatableSamples
 	if len(params.AggQ) > 0 {
-		aggsResult = make([]seq.QPRHistogram, len(aggs))
+		aggsResult = make([]seq.AggregatableSamples, len(aggs))
 		m = sw.Start("agg_node_make_map")
 		for i := range aggs {
 			aggsResult[i], err = aggs[i].Aggregate()
@@ -104,7 +104,7 @@ func IndexSearch(
 				m.Stop()
 				return nil, err
 			}
-			if len(aggsResult[i].HistogramByToken) > aggLimits.MaxGroupTokens && aggLimits.MaxGroupTokens > 0 {
+			if len(aggsResult[i].SamplesByBin) > aggLimits.MaxGroupTokens && aggLimits.MaxGroupTokens > 0 {
 				return nil, consts.ErrTooManyUniqValues
 			}
 		}
@@ -235,7 +235,7 @@ func MergeQPRs(qprs []*seq.QPR, params SearchParams) *seq.QPR {
 	if len(qprs) == 0 {
 		return &seq.QPR{
 			Histogram: make(map[seq.MID]uint64),
-			Aggs:      make([]seq.QPRHistogram, len(params.AggQ)),
+			Aggs:      make([]seq.AggregatableSamples, len(params.AggQ)),
 		}
 	}
 	qpr := qprs[0]

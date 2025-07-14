@@ -71,7 +71,7 @@ type ErrorSource struct {
 type QPR struct {
 	IDs       IDSources
 	Histogram map[MID]uint64
-	Aggs      []QPRHistogram
+	Aggs      []AggregatableSamples
 	Total     uint64
 	Errors    []ErrorSource
 }
@@ -135,42 +135,43 @@ func (tb *AggBin) fromKey(k string) {
 	tb.MID = MID(mid)
 }
 
-type QPRHistogram struct {
-	HistogramByToken map[AggBin]*AggregationHistogram
-	NotExists        int64
+type AggregatableSamples struct {
+	SamplesByBin map[AggBin]*SamplesContainer
+	NotExists    int64
 }
 
-type qprHistogram struct {
-	HistogramByToken map[string]*AggregationHistogram
-	NotExists        int64
+// aggregatableSamples is used for marshaling/unmarshaling to/from [AggregatableSamples].
+type aggregatableSamples struct {
+	SamplesByBin map[string]*SamplesContainer
+	NotExists    int64
 }
 
-func (q *QPRHistogram) MarshalJSON() ([]byte, error) {
-	qh := qprHistogram{
-		HistogramByToken: make(map[string]*AggregationHistogram),
-		NotExists:        q.NotExists,
+func (q *AggregatableSamples) MarshalJSON() ([]byte, error) {
+	qh := aggregatableSamples{
+		SamplesByBin: make(map[string]*SamplesContainer),
+		NotExists:    q.NotExists,
 	}
 
-	for bin, hist := range q.HistogramByToken {
-		qh.HistogramByToken[bin.toKey()] = hist
+	for bin, hist := range q.SamplesByBin {
+		qh.SamplesByBin[bin.toKey()] = hist
 	}
 
 	return json.Marshal(qh)
 }
 
-func (q *QPRHistogram) UnmarshalJSON(b []byte) error {
-	var qh qprHistogram
+func (q *AggregatableSamples) UnmarshalJSON(b []byte) error {
+	var qh aggregatableSamples
 	if err := json.Unmarshal(b, &qh); err != nil {
 		return err
 	}
 
-	q.HistogramByToken = make(map[AggBin]*AggregationHistogram, len(qh.HistogramByToken))
+	q.SamplesByBin = make(map[AggBin]*SamplesContainer, len(qh.SamplesByBin))
 	q.NotExists = qh.NotExists
 
-	for bKey, hist := range qh.HistogramByToken {
+	for bKey, hist := range qh.SamplesByBin {
 		var tb AggBin
 		tb.fromKey(bKey)
-		q.HistogramByToken[tb] = hist
+		q.SamplesByBin[tb] = hist
 	}
 
 	return nil
@@ -195,10 +196,10 @@ type AggregateArgs struct {
 	Quantiles            []float64
 }
 
-func (q *QPRHistogram) Aggregate(args AggregateArgs) AggregationResult {
-	buckets := make([]AggregationBucket, 0, len(q.HistogramByToken))
+func (q *AggregatableSamples) Aggregate(args AggregateArgs) AggregationResult {
+	buckets := make([]AggregationBucket, 0, len(q.SamplesByBin))
 
-	for bin, hist := range q.HistogramByToken {
+	for bin, hist := range q.SamplesByBin {
 		if args.SkipWithoutTimestamp && bin.MID == consts.DummyMID {
 			continue
 		}
@@ -252,7 +253,7 @@ func sortBuckets(aggFunc AggFunc, buckets []AggregationBucket) {
 	slices.SortFunc(buckets, sortFunc)
 }
 
-func (q *QPRHistogram) getAggBucket(bin AggBin, hist *AggregationHistogram, args AggregateArgs) AggregationBucket {
+func (q *AggregatableSamples) getAggBucket(bin AggBin, hist *SamplesContainer, args AggregateArgs) AggregationBucket {
 	var (
 		value     float64
 		quantiles []float64
@@ -297,24 +298,24 @@ func (q *QPRHistogram) getAggBucket(bin AggBin, hist *AggregationHistogram, args
 	}
 }
 
-func (q *QPRHistogram) Merge(agg QPRHistogram) {
-	if q.HistogramByToken == nil {
-		q.HistogramByToken = make(map[AggBin]*AggregationHistogram, len(agg.HistogramByToken))
+func (q *AggregatableSamples) Merge(agg AggregatableSamples) {
+	if q.SamplesByBin == nil {
+		q.SamplesByBin = make(map[AggBin]*SamplesContainer, len(agg.SamplesByBin))
 	}
 
-	for bin, hist := range agg.HistogramByToken {
-		if q.HistogramByToken[bin] == nil {
-			q.HistogramByToken[bin] = NewAggregationHistogram()
+	for bin, hist := range agg.SamplesByBin {
+		if q.SamplesByBin[bin] == nil {
+			q.SamplesByBin[bin] = NewSamplesContainers()
 		}
-		q.HistogramByToken[bin].Merge(hist)
+		q.SamplesByBin[bin].Merge(hist)
 	}
 
 	q.NotExists += agg.NotExists
 }
 
-// AggregationHistogram is a histogram that is used for aggregations.
+// SamplesContainer is a container that is used for aggregations.
 // Implements reservoir sampling algorithm.
-type AggregationHistogram struct {
+type SamplesContainer struct {
 	rng fastrand.RNG
 
 	Min float64
@@ -327,8 +328,8 @@ type AggregationHistogram struct {
 	Samples   []float64
 }
 
-func NewAggregationHistogram() *AggregationHistogram {
-	h := &AggregationHistogram{
+func NewSamplesContainers() *SamplesContainer {
+	h := &SamplesContainer{
 		Min: math.MaxInt64,
 		Max: math.MinInt64,
 	}
@@ -341,7 +342,7 @@ func NewAggregationHistogram() *AggregationHistogram {
 // The argument should be in [0, 1] range.
 //
 // The implementation is taken and adapted from github.com/valyala/histogram.
-func (h *AggregationHistogram) Quantile(quantile float64) float64 {
+func (h *SamplesContainer) Quantile(quantile float64) float64 {
 	if quantile < 0 || quantile > 1 {
 		// Must be checked in seqproxy
 		panic(fmt.Errorf("BUG: invalid quantile: %f", quantile))
@@ -362,7 +363,7 @@ func (h *AggregationHistogram) Quantile(quantile float64) float64 {
 	return h.Samples[index]
 }
 
-func (h *AggregationHistogram) Merge(hist *AggregationHistogram) {
+func (h *SamplesContainer) Merge(hist *SamplesContainer) {
 	h.NotExists += hist.NotExists
 
 	if hist.Total == 0 {
@@ -385,7 +386,7 @@ func (h *AggregationHistogram) Merge(hist *AggregationHistogram) {
 	}
 }
 
-func (h *AggregationHistogram) InsertNTimes(num float64, cnt int64) {
+func (h *SamplesContainer) InsertNTimes(num float64, cnt int64) {
 	if h.Total == 0 {
 		h.Min = num
 		h.Max = num
@@ -397,7 +398,7 @@ func (h *AggregationHistogram) InsertNTimes(num float64, cnt int64) {
 	h.Total += cnt
 }
 
-func (h *AggregationHistogram) InsertSampleNTimes(sample float64, cnt int64) {
+func (h *SamplesContainer) InsertSampleNTimes(sample float64, cnt int64) {
 	for i := int64(0); i < cnt; i++ {
 		h.InsertSample(sample)
 	}
@@ -405,7 +406,7 @@ func (h *AggregationHistogram) InsertSampleNTimes(sample float64, cnt int64) {
 
 const maxHistogramSamples = 8096
 
-func (h *AggregationHistogram) InsertSample(num float64) {
+func (h *SamplesContainer) InsertSample(num float64) {
 	if len(h.Samples) < maxHistogramSamples {
 		h.Samples = append(h.Samples, num)
 	} else {
@@ -431,7 +432,7 @@ func MergeQPRs(dst *QPR, qprs []*QPR, limit int, histInterval MID, order DocsOrd
 		}
 
 		if qpr.Aggs != nil && dst.Aggs == nil {
-			dst.Aggs = make([]QPRHistogram, len(qpr.Aggs))
+			dst.Aggs = make([]AggregatableSamples, len(qpr.Aggs))
 		}
 		for i := range qpr.Aggs {
 			dst.Aggs[i].Merge(qpr.Aggs[i])

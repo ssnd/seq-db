@@ -227,15 +227,15 @@ func TestSingleTreeCountAggregator(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	expectedResult := seq.QPRHistogram{
-		HistogramByToken: map[seq.AggBin]*seq.AggregationHistogram{
+	expectedResult := seq.AggregatableSamples{
+		SamplesByBin: map[seq.AggBin]*seq.SamplesContainer{
 			// "0" because DataProvider converts TID source (tid index) to string
 			{Token: "0"}: {Total: 1},
 		},
 	}
 
-	r.Equal(len(expectedResult.HistogramByToken), len(result.HistogramByToken))
-	for token, hist := range expectedResult.HistogramByToken {
-		r.Equal(hist.Total, result.HistogramByToken[token].Total)
+	r.Equal(len(expectedResult.SamplesByBin), len(result.SamplesByBin))
+	for token, hist := range expectedResult.SamplesByBin {
+		r.Equal(hist.Total, result.SamplesByBin[token].Total)
 	}
 }

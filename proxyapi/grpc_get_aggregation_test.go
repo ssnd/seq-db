@@ -76,11 +76,11 @@ func prepareGetAggregationTestData(t *testing.T, cData getAggregationTestCaseDat
 			Error:           cData.respErr,
 		}
 		if len(cData.aggQ) > 0 {
-			qpr.Aggs = make([]seq.QPRHistogram, len(cData.aggQ))
+			qpr.Aggs = make([]seq.AggregatableSamples, len(cData.aggQ))
 			resp.Aggs = make([]*seqproxyapi.Aggregation, len(cData.aggQ))
 			for i, query := range cData.aggQ {
 				aRespData := makeGetAggRespData(cData.totalSize, query.bucketsCnt)
-				qpr.Aggs[i].Merge(seq.QPRHistogram{HistogramByToken: aRespData.qprAgg})
+				qpr.Aggs[i].Merge(seq.AggregatableSamples{SamplesByBin: aRespData.qprAgg})
 				resp.Aggs[i] = aRespData.apiAgg
 			}
 		}

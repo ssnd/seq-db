@@ -105,13 +105,13 @@ func (n *TwoSourceAggregator) Next(lid uint32) error {
 }
 
 // Aggregate processes and returns the final aggregation result.
-func (n *TwoSourceAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[seq.AggBin]*seq.AggregationHistogram, n.groupBy.UniqueSources())
+func (n *TwoSourceAggregator) Aggregate() (seq.AggregatableSamples, error) {
+	aggMap := make(map[seq.AggBin]*seq.SamplesContainer, n.groupBy.UniqueSources())
 
 	for groupBySource, cnt := range n.groupByNotExists {
 		groupByVal := seq.AggBin{Token: n.groupBy.ValueBySource(groupBySource)}
 		if aggMap[groupByVal] == nil {
-			aggMap[groupByVal] = seq.NewAggregationHistogram()
+			aggMap[groupByVal] = seq.NewSamplesContainers()
 		}
 		aggMap[groupByVal].NotExists = cnt
 	}
@@ -122,7 +122,7 @@ func (n *TwoSourceAggregator) Aggregate() (seq.QPRHistogram, error) {
 
 		aggBin := seq.AggBin{MID: bin.MID, Token: groupByVal}
 		if aggMap[aggBin] == nil {
-			aggMap[aggBin] = seq.NewAggregationHistogram()
+			aggMap[aggBin] = seq.NewSamplesContainers()
 		}
 		hist := aggMap[aggBin]
 
@@ -130,7 +130,7 @@ func (n *TwoSourceAggregator) Aggregate() (seq.QPRHistogram, error) {
 		value := n.field.ValueBySource(bin.Source.FieldSource)
 		num, err := parseNum(value)
 		if err != nil {
-			return seq.QPRHistogram{}, err
+			return seq.AggregatableSamples{}, err
 		}
 
 		// The same token can appear multiple times,
@@ -141,9 +141,9 @@ func (n *TwoSourceAggregator) Aggregate() (seq.QPRHistogram, error) {
 		}
 	}
 
-	return seq.QPRHistogram{
-		NotExists:        n.groupNotExists,
-		HistogramByToken: aggMap,
+	return seq.AggregatableSamples{
+		NotExists:    n.groupNotExists,
+		SamplesByBin: aggMap,
 	}, nil
 }
 
@@ -200,8 +200,8 @@ func (n *SingleSourceCountAggregator) Next(lid uint32) error {
 	return nil
 }
 
-func (n *SingleSourceCountAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[seq.AggBin]*seq.AggregationHistogram, n.group.UniqueSources())
+func (n *SingleSourceCountAggregator) Aggregate() (seq.AggregatableSamples, error) {
+	aggMap := make(map[seq.AggBin]*seq.SamplesContainer, n.group.UniqueSources())
 
 	for bin, cnt := range n.countBySource {
 		aggBin := seq.AggBin{
@@ -210,7 +210,7 @@ func (n *SingleSourceCountAggregator) Aggregate() (seq.QPRHistogram, error) {
 		}
 
 		if aggMap[aggBin] == nil {
-			aggMap[aggBin] = seq.NewAggregationHistogram()
+			aggMap[aggBin] = seq.NewSamplesContainers()
 		}
 
 		aggMap[aggBin].Total = cnt
@@ -223,12 +223,12 @@ func (n *SingleSourceCountAggregator) Aggregate() (seq.QPRHistogram, error) {
 		aggMap[seq.AggBin{
 			Token: "_not_exists",
 			MID:   consts.DummyMID,
-		}] = &seq.AggregationHistogram{Total: n.notExists}
+		}] = &seq.SamplesContainer{Total: n.notExists}
 	}
 
-	return seq.QPRHistogram{
-		NotExists:        n.notExists,
-		HistogramByToken: aggMap,
+	return seq.AggregatableSamples{
+		NotExists:    n.notExists,
+		SamplesByBin: aggMap,
 	}, nil
 }
 
@@ -263,8 +263,8 @@ func (n *SingleSourceUniqueAggregator) Next(lid uint32) error {
 	return nil
 }
 
-func (n *SingleSourceUniqueAggregator) Aggregate() (seq.QPRHistogram, error) {
-	aggMap := make(map[seq.AggBin]*seq.AggregationHistogram, n.group.UniqueSources())
+func (n *SingleSourceUniqueAggregator) Aggregate() (seq.AggregatableSamples, error) {
+	aggMap := make(map[seq.AggBin]*seq.SamplesContainer, n.group.UniqueSources())
 
 	for val := range n.values {
 		aggBin := seq.AggBin{
@@ -272,19 +272,19 @@ func (n *SingleSourceUniqueAggregator) Aggregate() (seq.QPRHistogram, error) {
 		}
 
 		if aggMap[aggBin] == nil {
-			aggMap[aggBin] = seq.NewAggregationHistogram()
+			aggMap[aggBin] = seq.NewSamplesContainers()
 		}
 	}
 
-	return seq.QPRHistogram{
-		NotExists:        n.notExists,
-		HistogramByToken: aggMap,
+	return seq.AggregatableSamples{
+		NotExists:    n.notExists,
+		SamplesByBin: aggMap,
 	}, nil
 }
 
 type SingleSourceHistogramAggregator struct {
 	field          *SourcedNodeIterator
-	histogram      map[seq.MID]*seq.AggregationHistogram
+	histogram      map[seq.MID]*seq.SamplesContainer
 	collectSamples bool
 	extractMID     ExtractMIDFunc
 }
@@ -294,7 +294,7 @@ func NewSingleSourceHistogramAggregator(
 ) *SingleSourceHistogramAggregator {
 	return &SingleSourceHistogramAggregator{
 		field:          field,
-		histogram:      make(map[seq.MID]*seq.AggregationHistogram),
+		histogram:      make(map[seq.MID]*seq.SamplesContainer),
 		collectSamples: collectSamples,
 		extractMID:     fn,
 	}
@@ -308,7 +308,7 @@ func (n *SingleSourceHistogramAggregator) Next(lid uint32) error {
 
 	mid := n.extractMID(seq.LID(lid))
 	if _, ok := n.histogram[mid]; !ok {
-		n.histogram[mid] = seq.NewAggregationHistogram()
+		n.histogram[mid] = seq.NewSamplesContainers()
 	}
 	histogram := n.histogram[mid]
 
@@ -331,13 +331,13 @@ func (n *SingleSourceHistogramAggregator) Next(lid uint32) error {
 	return nil
 }
 
-func (n *SingleSourceHistogramAggregator) Aggregate() (seq.QPRHistogram, error) {
-	qprHist := seq.QPRHistogram{
-		HistogramByToken: make(map[seq.AggBin]*seq.AggregationHistogram, len(n.histogram)),
+func (n *SingleSourceHistogramAggregator) Aggregate() (seq.AggregatableSamples, error) {
+	qprHist := seq.AggregatableSamples{
+		SamplesByBin: make(map[seq.AggBin]*seq.SamplesContainer, len(n.histogram)),
 	}
 
 	for mid, histogram := range n.histogram {
-		qprHist.HistogramByToken[seq.AggBin{
+		qprHist.SamplesByBin[seq.AggBin{
 			MID: mid,
 		}] = histogram
 	}

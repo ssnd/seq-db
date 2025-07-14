@@ -29,7 +29,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 94, RID: 4}},
 					},
 					Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 94: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 1001",
@@ -44,7 +44,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 104, RID: 14}},
 					},
 					Histogram: map[MID]uint64{101: 1, 102: 1, 103: 1, 104: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 2004",
@@ -64,7 +64,7 @@ func TestMergeQPRs(t *testing.T) {
 					{ID: ID{MID: 91, RID: 1}},
 				},
 				Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 94: 1, 101: 1, 102: 1, 103: 1, 104: 1},
-				Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
+				Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
 				Total:     8,
 				Errors: []ErrorSource{
 					{
@@ -89,9 +89,9 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 94, RID: 4}},
 					},
 					Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 94: 1},
-					Aggs: []QPRHistogram{
-						qprHistogramFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1}),
-						qprHistogramFromMap(map[string]uint64{"llog1": 1, "llog2": 1, "llog3": 2}),
+					Aggs: []AggregatableSamples{
+						aggSamplesFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1}),
+						aggSamplesFromMap(map[string]uint64{"llog1": 1, "llog2": 1, "llog3": 2}),
 					},
 					Total: 4,
 					Errors: []ErrorSource{{
@@ -107,9 +107,9 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 104, RID: 14}},
 					},
 					Histogram: map[MID]uint64{101: 1, 102: 1, 103: 1, 104: 1},
-					Aggs: []QPRHistogram{
-						qprHistogramFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1}),
-						qprHistogramFromMap(map[string]uint64{"llog1": 1, "llog2": 2, "llog3": 1}),
+					Aggs: []AggregatableSamples{
+						aggSamplesFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1}),
+						aggSamplesFromMap(map[string]uint64{"llog1": 1, "llog2": 2, "llog3": 1}),
 					},
 					Total: 4,
 					Errors: []ErrorSource{{
@@ -130,9 +130,9 @@ func TestMergeQPRs(t *testing.T) {
 					{ID: ID{MID: 91, RID: 1}},
 				},
 				Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 94: 1, 101: 1, 102: 1, 103: 1, 104: 1},
-				Aggs: []QPRHistogram{
-					qprHistogramFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2}),
-					qprHistogramFromMap(map[string]uint64{"llog1": 2, "llog2": 3, "llog3": 3}),
+				Aggs: []AggregatableSamples{
+					aggSamplesFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2}),
+					aggSamplesFromMap(map[string]uint64{"llog1": 2, "llog2": 3, "llog3": 3}),
 				},
 				Total: 8,
 				Errors: []ErrorSource{
@@ -158,7 +158,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 94, RID: 4}},
 					},
 					Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 94: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 1001",
@@ -173,7 +173,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 104, RID: 14}},
 					},
 					Histogram: map[MID]uint64{101: 1, 92: 1, 103: 1, 104: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 2004",
@@ -192,7 +192,7 @@ func TestMergeQPRs(t *testing.T) {
 					{ID: ID{MID: 91, RID: 1}},
 				},
 				Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 94: 1, 101: 1, 103: 1, 104: 1},
-				Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
+				Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
 				Total:     7,
 				Errors: []ErrorSource{
 					{
@@ -217,7 +217,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 91, RID: 1}},
 					},
 					Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 102: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 1001",
@@ -232,7 +232,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 102, RID: 12}},
 					},
 					Histogram: map[MID]uint64{91: 1, 102: 1, 103: 1, 104: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 2004",
@@ -250,7 +250,7 @@ func TestMergeQPRs(t *testing.T) {
 					{ID: ID{MID: 91, RID: 1}},
 				},
 				Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 102: 1, 103: 1, 104: 1},
-				Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
+				Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
 				Total:     6,
 				Errors: []ErrorSource{
 					{
@@ -275,7 +275,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 91, RID: 1}},
 					},
 					Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 102: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 1, "log2": 2, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 1001",
@@ -290,7 +290,7 @@ func TestMergeQPRs(t *testing.T) {
 						{ID: ID{MID: 102, RID: 12}},
 					},
 					Histogram: map[MID]uint64{91: 1, 102: 1, 103: 1, 104: 1},
-					Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
+					Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 2, "log2": 1, "log3": 1})},
 					Total:     4,
 					Errors: []ErrorSource{{
 						ErrStr: "problem with source 2004",
@@ -307,7 +307,7 @@ func TestMergeQPRs(t *testing.T) {
 					{ID: ID{MID: 92, RID: 2}},
 				},
 				Histogram: map[MID]uint64{91: 1, 92: 1, 93: 1, 102: 1, 103: 1, 104: 1},
-				Aggs:      []QPRHistogram{qprHistogramFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
+				Aggs:      []AggregatableSamples{aggSamplesFromMap(map[string]uint64{"log1": 3, "log2": 3, "log3": 2})},
 				Total:     6,
 				Errors: []ErrorSource{
 					{
@@ -328,7 +328,7 @@ func TestMergeQPRs(t *testing.T) {
 			t.Parallel()
 			result := &QPR{
 				Histogram: make(map[MID]uint64),
-				Aggs:      make([]QPRHistogram, len(test.exp.Aggs)),
+				Aggs:      make([]AggregatableSamples, len(test.exp.Aggs)),
 			}
 			MergeQPRs(result, test.qprs, test.limit, test.histInterval, DocsOrderDesc)
 
@@ -345,7 +345,7 @@ func TestMergeQPRs(t *testing.T) {
 			t.Parallel()
 			result := &QPR{
 				Histogram: make(map[MID]uint64),
-				Aggs:      make([]QPRHistogram, len(test.exp.Aggs)),
+				Aggs:      make([]AggregatableSamples, len(test.exp.Aggs)),
 			}
 			for _, qpr := range test.qprs {
 				MergeQPRs(result, []*QPR{qpr}, test.limit, test.histInterval, DocsOrderDesc)
@@ -499,18 +499,18 @@ func TestRemoveRepetitionsAdvancedCombined(t *testing.T) {
 	}
 }
 
-func qprHistogramFromMap(other map[string]uint64) QPRHistogram {
-	histByToken := make(map[AggBin]*AggregationHistogram, len(other))
+func aggSamplesFromMap(other map[string]uint64) AggregatableSamples {
+	histByToken := make(map[AggBin]*SamplesContainer, len(other))
 
 	for k, cnt := range other {
-		hist := NewAggregationHistogram()
+		hist := NewSamplesContainers()
 		hist.Total = int64(cnt)
 		histByToken[AggBin{Token: k}] = hist
 	}
 
-	return QPRHistogram{
-		HistogramByToken: histByToken,
-		NotExists:        int64(other["_not_exists"]),
+	return AggregatableSamples{
+		SamplesByBin: histByToken,
+		NotExists:    int64(other["_not_exists"]),
 	}
 }
 
@@ -527,7 +527,7 @@ func BenchmarkMergeQPRs_ReusingQPR(b *testing.B) {
 	b.ResetTimer()
 	aggQpr := QPR{
 		Histogram: make(map[MID]uint64),
-		Aggs:      make([]QPRHistogram, int(totalQPRs)),
+		Aggs:      make([]AggregatableSamples, int(totalQPRs)),
 	}
 
 	for range b.N {
@@ -540,7 +540,7 @@ func BenchmarkMergeQPRs_ReusingQPR(b *testing.B) {
 		clear(aggQpr.Histogram)
 
 		for i := range aggQpr.Aggs {
-			clear(aggQpr.Aggs[i].HistogramByToken)
+			clear(aggQpr.Aggs[i].SamplesByBin)
 			aggQpr.Aggs[i].NotExists = 0
 		}
 		aggQpr.Aggs = aggQpr.Aggs[:0]
@@ -550,7 +550,7 @@ func BenchmarkMergeQPRs_ReusingQPR(b *testing.B) {
 func getRandomQPR(size uint64) QPR {
 	ids := make(IDSources, size)
 	hists := make(map[MID]uint64)
-	aggs := make([]QPRHistogram, size)
+	aggs := make([]AggregatableSamples, size)
 	errs := make([]ErrorSource, 0)
 
 	curTime := time.Now()
@@ -565,7 +565,7 @@ func getRandomQPR(size uint64) QPR {
 	}
 
 	for i := uint64(0); i < size; i++ {
-		aggs[i] = qprHistogramFromMap(map[string]uint64{"_not_exists": 1})
+		aggs[i] = aggSamplesFromMap(map[string]uint64{"_not_exists": 1})
 	}
 
 	for i := uint64(0); i < size; i++ {

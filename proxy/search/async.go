@@ -151,7 +151,7 @@ func (si *Ingestor) FetchAsyncSearchResult(ctx context.Context, r FetchAsyncSear
 	}
 
 	qpr := seq.QPR{
-		Aggs: make([]seq.QPRHistogram, aggsCount),
+		Aggs: make([]seq.AggregatableSamples, aggsCount),
 	}
 	seq.MergeQPRs(&qpr, qprs, r.Size, histInterval, order)
 

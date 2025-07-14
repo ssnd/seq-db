@@ -247,7 +247,7 @@ func buildSearchResponse(qpr *seq.QPR) *storeapi.SearchResponse {
 	for i, fromAgg := range qpr.Aggs {
 		curAgg := &aggsBuf[i]
 
-		from := fromAgg.HistogramByToken
+		from := fromAgg.SamplesByBin
 		to := make(map[string]*storeapi.SearchResponse_Histogram, len(from))
 
 		// TODO(dkharms): We can remove this variable since [Agg] is deprecated.

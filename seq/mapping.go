@@ -34,6 +34,9 @@ var TestMapping = Mapping{
 	"tags.sometag":        NewSingleType(TokenizerTypeKeyword, "", 0),
 	"request_duration":    NewSingleType(TokenizerTypeKeyword, "", 0),
 	"spans":               NewSingleType(TokenizerTypeNested, "", 0),
+	"status":              NewSingleType(TokenizerTypeKeyword, "", 0),
+	"clientip":            NewSingleType(TokenizerTypeKeyword, "", 0),
+	"request":             NewSingleType(TokenizerTypeKeyword, "", 0),
 	"spans.span_id":       NewSingleType(TokenizerTypeKeyword, "", 0),
 	"_exists_":            NewSingleType(TokenizerTypeKeyword, "", 0),
 

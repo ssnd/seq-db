@@ -12,6 +12,9 @@ import (
 	"github.com/ozontech/seq-db/seq"
 )
 
+// parseSeqQLFieldFilter parses a field filter expression from the lexer and mapping, supporting range, IP range, 'in', and full-text search filters.
+// It validates the field name, ensures the field is indexed, and constructs an AST node representing the filter condition.
+// Returns an AST node for the parsed filter or an error if parsing fails.
 func parseSeqQLFieldFilter(lex *lexer, mapping seq.Mapping) (*ASTNode, error) {
 	fieldName, err := parseCompositeTokenReplaceWildcards(lex)
 	if err != nil {

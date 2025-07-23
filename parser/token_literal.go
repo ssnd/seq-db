@@ -114,6 +114,8 @@ var quoteEscapedSymbol = map[rune]bool{
 	'*':  true,
 }
 
+// GetField returns the Field attribute from a token if it is a *Literal, *Range, or *IpRange.
+// Panics if the token is of an unknown type.
 func GetField(token Token) string {
 	switch t := token.(type) {
 	case *Literal:

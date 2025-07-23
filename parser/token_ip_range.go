@@ -43,7 +43,8 @@ func (n *IpRange) DumpSeqQL(b *strings.Builder) {
 // Example queries:
 //
 //	service:in(auth-api, api-gateway, clickhouse-shard-*)
-//	phone:in(`+7 999 ** **`, '+995'*)
+// parseFilterIpRange parses an IP range filter expression from the lexer in the form field:ip_range(ipFrom, ipTo).
+// It validates the syntax, parses the two IP addresses, ensures the first is less than or equal to the second, and returns an IpRange struct or an error if parsing fails.
 func parseFilterIpRange(lex *lexer, fieldName string, t seq.TokenizerType, caseSensitive bool) (*IpRange, error) {
 	r := &IpRange{Field: fieldName}
 	if !lex.IsKeyword("(") {
@@ -102,6 +103,8 @@ func parseFilterIpRange(lex *lexer, fieldName string, t seq.TokenizerType, caseS
 	return r, nil
 }
 
+// parseIpAddr parses a single IP address token from the lexer and returns it as a netip.Addr.
+// Returns an error if the token is not a valid IP address.
 func parseIpAddr(lex *lexer) (netip.Addr, error) {
 	ip, err := parseCompositeToken(lex)
 	if err != nil {

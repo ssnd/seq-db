@@ -202,6 +202,8 @@ type rangeNumberSearch struct {
 	includeTo   bool
 }
 
+// newRangeNumberSearch creates a rangeNumberSearch for numeric range queries, parsing the range boundaries from the provided token.
+// Returns nil if the boundaries cannot be parsed as valid finite float64 values.
 func newRangeNumberSearch(base baseSearch, token *parser.Range) *rangeNumberSearch {
 	var err error
 	s := &rangeNumberSearch{
@@ -263,6 +265,8 @@ type rangeIpSearch struct {
 	to   netip.Addr
 }
 
+// newRangeIpSearch creates a rangeIpSearch for searching tokens within an inclusive IP address range.
+// Returns nil if either IP address cannot be parsed. Panics if the token terms are not text.
 func newRangeIpSearch(base baseSearch, token *parser.IpRange) *rangeIpSearch {
 	// only creating text terms, other types are impossible
 	if token.From.Kind != parser.TermText || token.To.Kind != parser.TermText {
@@ -302,6 +306,9 @@ type searcher interface {
 	check(val []byte) bool
 }
 
+// newSearcher creates a searcher implementation suitable for the given token type and tokenProvider.
+// It selects the most efficient search strategy based on the token's type and the ordering of the tokenProvider.
+// Panics if the token type is unrecognized.
 func newSearcher(token parser.Token, tp tokenProvider) searcher {
 	base := baseSearch{
 		first: int(tp.FirstTID()),

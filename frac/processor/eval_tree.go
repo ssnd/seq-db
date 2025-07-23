@@ -12,7 +12,9 @@ import (
 
 type createLeafFunc func(parser.Token) (node.Node, error)
 
-// buildEvalTree builds eval tree based on syntax tree (of search query) where each leaf is DataNode
+// buildEvalTree constructs an evaluation tree from a parsed search query syntax tree, producing a node.Node where each leaf represents a data node.
+// It recursively processes the syntax tree, creating logical nodes for operators and leaf nodes for literals, ranges, or IP ranges using the provided newLeaf function.
+// Returns the root of the evaluation tree or an error if an unknown token type is encountered.
 func buildEvalTree(root *parser.ASTNode, minVal, maxVal uint32, stats *searchStats, reverse bool, newLeaf createLeafFunc) (node.Node, error) {
 	children := make([]node.Node, 0, len(root.Children))
 	for _, child := range root.Children {
